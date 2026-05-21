@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="日報">
+<title>日報</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Hiragino Kaku Gothic ProN', sans-serif; background: #f5f0ea; min-height: 100vh; }
+
+/* ヘッダー */
+.header { background: #fff; border-bottom: 1px solid #ede8e2; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.header-inner { max-width: 540px; margin: 0 auto; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.logo { font-size: 16px; font-weight: 700; color: #2d2a26; white-space: nowrap; }
+.tabs { display: flex; gap: 2px; background: #f5f0ea; border-radius: 10px; padding: 3px; }
+.tab { padding: 6px 10px; border-radius: 7px; border: none; background: transparent; color: #888; font-size: 12px; cursor: pointer; font-weight: 500; font-family: inherit; white-space: nowrap; }
+.tab.active { background: #e07b4f; color: #fff; font-weight: 700; }
+.badge { display: inline-block; background: #fff; color: #e07b4f; border-radius: 10px; padding: 0 4px; font-size: 10px; font-weight: 700; margin-left: 2px; }
+.body { max-width: 540px; margin: 0 auto; padding: 0 0 60px; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* 共通 */
+.wrap { padding: 20px; }
+.page-title { font-size: 18px; font-weight: 700; color: #2d2a26; margin-bottom: 4px; }
+.page-sub { font-size: 13px; color: #aaa; margin-bottom: 20px; }
+.field { margin-bottom: 18px; }
+label.lbl { display: block; font-weight: 600; font-size: 14px; color: #2d2a26; margin-bottom: 8px; }
+select, input[type=text], input[type=date], input[type=time], input[type=number], input[type=password], textarea {
+  width: 100%; padding: 12px; border-radius: 10px; border: 1.5px solid #e0d8d0;
+  font-size: 15px; color: #2d2a26; background: #fff; outline: none; font-family: inherit;
+  appearance: none; -webkit-appearance: none;
+}
+textarea { resize: vertical; }
+.btn-primary { width: 100%; padding: 14px; background: #e07b4f; color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.btn-secondary { width: 100%; padding: 12px; background: #fff; color: #888; border: 1.5px solid #e0d8d0; border-radius: 12px; font-size: 14px; cursor: pointer; font-family: inherit; margin-top: 8px; }
+.back-btn { background: none; border: none; color: #e07b4f; font-size: 14px; cursor: pointer; padding: 0 0 16px; font-weight: 600; font-family: inherit; display: block; }
+.card { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid #ede8e2; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.section-title { font-size: 12px; font-weight: 600; color: #aaa; margin-bottom: 10px; letter-spacing: 0.05em; }
+.loading { display: flex; align-items: center; justify-content: center; padding: 60px 20px; color: #aaa; font-size: 14px; }
+.empty { text-align: center; padding: 40px 20px; color: #aaa; font-size: 14px; }
+
+/* フォーム入力 */
+.date-label { font-size: 13px; color: #aaa; margin-bottom: 20px; }
+.weather-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
+.weather-btn { padding: 10px 4px; border-radius: 9px; font-size: 12px; cursor: pointer; border: 2px solid #e0d8d0; background: #f5f0ea; color: #555; font-family: inherit; }
+.weather-btn.selected { background: #e07b4f; color: #fff; border-color: #e07b4f; font-weight: 700; }
+.site-card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px; border: 1.5px solid #e0d8d0; }
+.site-top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.site-input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1.5px solid #e0d8d0; font-size: 14px; }
+.remove-btn { background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 0 4px; }
+.time-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.time-field { display: flex; align-items: center; gap: 5px; flex: 1; }
+.time-label { font-size: 12px; color: #888; white-space: nowrap; }
+.time-input { flex: 1; padding: 8px; border-radius: 7px; border: 1.5px solid #e0d8d0; font-size: 13px; }
+.time-sep { color: #ccc; font-size: 14px; }
+.process-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-bottom: 12px; }
+.proc-btn { padding: 9px 4px; border-radius: 7px; font-size: 13px; cursor: pointer; text-align: center; border: 2px solid #e0d8d0; background: #fff; color: #666; font-family: inherit; }
+.proc-btn.selected { background: #e07b4f; color: #fff; border-color: #e07b4f; font-weight: 700; }
+.material-section { border-top: 1px solid #f0ebe5; padding-top: 10px; }
+.material-title { font-size: 11px; font-weight: 600; color: #bbb; margin-bottom: 8px; }
+.material-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.material-label { font-size: 13px; color: #666; width: 68px; flex-shrink: 0; }
+.material-input { width: 80px !important; padding: 6px 8px !important; text-align: right; }
+.material-unit { font-size: 13px; color: #aaa; }
+.add-btn { background: none; border: 1.5px dashed #e07b4f; color: #e07b4f; border-radius: 9px; padding: 9px 16px; font-size: 13px; cursor: pointer; margin-top: 4px; font-family: inherit; }
+
+/* 完了 */
+.done-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; }
+.done-icon { width: 72px; height: 72px; border-radius: 50%; background: #e07b4f; color: #fff; font-size: 36px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+.done-title { font-size: 22px; font-weight: 700; color: #2d2a26; margin-bottom: 8px; }
+.done-msg { font-size: 14px; color: #aaa; margin-bottom: 32px; }
+
+/* 一覧 */
+.search-box { position: relative; margin-bottom: 12px; }
+.search-input { width: 100%; padding: 11px 36px 11px 40px; border-radius: 10px; border: 1.5px solid #e0d8d0; font-size: 14px; background: #fff; outline: none; font-family: inherit; -webkit-appearance: none; }
+.search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 15px; pointer-events: none; }
+.search-clear { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 0; display: none; font-family: inherit; }
+.filter-row { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; }
+.filter-btn { flex-shrink: 0; padding: 6px 14px; border-radius: 20px; border: 1.5px solid #e0d8d0; background: #fff; color: #888; font-size: 12px; cursor: pointer; font-family: inherit; }
+.filter-btn.active { background: #e07b4f; border-color: #e07b4f; color: #fff; font-weight: 700; }
+.summary-card { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1.5px solid #e0d8d0; }
+.summary-label { font-size: 11px; font-weight: 600; color: #bbb; margin-bottom: 10px; }
+.mat-grid { display: flex; gap: 8px; }
+.mat-cell { flex: 1; background: #faf8f5; border-radius: 9px; padding: 10px 8px; text-align: center; }
+.mat-name { font-size: 11px; color: #aaa; margin-bottom: 4px; }
+.mat-val { font-size: 20px; font-weight: 700; color: #e07b4f; }
+.mat-unit { font-size: 11px; color: #aaa; }
+.report-card { width: 100%; background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid #ede8e2; text-align: left; cursor: default; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.04); display: block; font-family: inherit; }
+.report-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.report-date { font-size: 12px; color: #aaa; }
+.report-name { font-size: 16px; font-weight: 700; color: #2d2a26; margin-bottom: 4px; }
+.report-sites { font-size: 13px; color: #888; padding-right: 40px; }
+.report-arrow { position: absolute; right: 44px; top: 50%; transform: translateY(-50%); color: #ccc; font-size: 22px; }
+.delete-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ddd; font-size: 20px; cursor: pointer; padding: 4px; font-family: inherit; }
+.highlight { background: #fff3cd; border-radius: 2px; }
+.no-result { text-align: center; padding: 40px 20px; color: #aaa; font-size: 14px; }
+
+/* 検索 */
+.search-wrap { position: relative; margin-bottom: 14px; }
+.search-inp { width: 100%; padding: 11px 36px 11px 40px; border-radius: 10px; border: 1.5px solid #e0d8d0; font-size: 14px; color: #2d2a26; background: #fff; outline: none; font-family: inherit; -webkit-appearance: none; }
+.search-ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 15px; pointer-events: none; }
+.search-clr { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 0; display: none; font-family: inherit; }
+.search-result-title { font-size: 12px; font-weight: 600; color: #aaa; margin-bottom: 10px; letter-spacing: 0.05em; }
+.highlight { background: #fff3cd; border-radius: 2px; }
+
+/* 集計 */
+.stats-seg { display: flex; gap: 4px; background: #f5f0ea; border-radius: 10px; padding: 3px; margin-bottom: 20px; }
+.stats-seg-btn { flex: 1; padding: 8px 4px; border-radius: 8px; border: none; background: transparent; color: #888; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 500; }
+.stats-seg-btn.active { background: #fff; color: #e07b4f; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.stats-row { background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; border: 1.5px solid #ede8e2; }
+.stats-row-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.stats-row-label { font-size: 14px; font-weight: 700; color: #2d2a26; }
+.stats-row-count { font-size: 12px; color: #aaa; }
+.stats-mat-row { display: flex; gap: 6px; }
+.stats-mat-chip { flex: 1; background: #faf8f5; border-radius: 7px; padding: 6px 4px; text-align: center; }
+.stats-mat-chip-name { font-size: 10px; color: #aaa; margin-bottom: 2px; }
+.stats-mat-chip-val { font-size: 15px; font-weight: 700; color: #e07b4f; }
+.stats-mat-chip-unit { font-size: 10px; color: #aaa; }
+.month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.month-nav-btn { background: none; border: 1.5px solid #e0d8d0; border-radius: 8px; padding: 6px 14px; font-size: 14px; cursor: pointer; color: #888; font-family: inherit; }
+.month-nav-label { font-size: 16px; font-weight: 700; color: #2d2a26; }
+
+/* 下書き */
+.draft-bar { background: #fff8e6; border: 1.5px solid #f0c040; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+.draft-bar-text { font-size: 13px; color: #b8860b; font-weight: 600; }
+.draft-bar-btns { display: flex; gap: 8px; }
+.draft-load-btn { padding: 6px 12px; background: #f0c040; color: #fff; border: none; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.draft-del-btn { padding: 6px 10px; background: none; border: 1.5px solid #f0c040; color: #b8860b; border-radius: 7px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.btn-draft { width: 100%; padding: 13px; background: #fff; color: #e07b4f; border: 2px solid #e07b4f; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; margin-top: 8px; }
+
+/* 休み申請 */
+.yasumi-card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1.5px solid #ede8e2; }
+.yasumi-badge { display: inline-block; background: #f0e8f8; color: #7b4fb0; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.status-yasumi { background: #f0e8f8; color: #7b4fb0; }
+.btn-yasumi-approve { flex: 1; padding: 10px; background: #f0e8f8; color: #7b4fb0; border: 1.5px solid #ce9ef5; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+/* カレンダー */
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.cal-nav-btn { background: none; border: 1.5px solid #e0d8d0; border-radius: 8px; padding: 6px 14px; font-size: 16px; cursor: pointer; color: #888; font-family: inherit; }
+.cal-nav-label { font-size: 17px; font-weight: 700; color: #2d2a26; }
+.cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 3px; margin-bottom: 16px; }
+.cal-dow { text-align: center; font-size: 11px; font-weight: 600; color: #aaa; padding: 4px 0; }
+.cal-dow.sun { color: #e05a5a; }
+.cal-dow.sat { color: #4a7ccc; }
+.cal-day { border-radius: 8px; padding: 5px 2px; text-align: center; min-height: 52px; cursor: pointer; border: 1.5px solid transparent; background: #fff; transition: all 0.15s; }
+.cal-day:active { background: #fdf0e8; }
+.cal-day.empty { background: transparent; cursor: default; border-color: transparent; }
+.cal-day.today { border-color: #e07b4f; }
+.cal-day.has-report { background: #fdf0e8; }
+.cal-day.selected { background: #e07b4f; border-color: #e07b4f; }
+.cal-day-num { font-size: 13px; font-weight: 600; color: #2d2a26; }
+.cal-day.sun .cal-day-num { color: #e05a5a; }
+.cal-day.sat .cal-day-num { color: #4a7ccc; }
+.cal-day.selected .cal-day-num { color: #fff; }
+.cal-day.selected .cal-dot { background: #fff !important; }
+.cal-dots { display: flex; justify-content: center; gap: 2px; margin-top: 3px; flex-wrap: wrap; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: #e07b4f; }
+.cal-day-reports { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid #ede8e2; }
+.cal-day-title { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 12px; }
+
+/* 予定 */
+.schedule-card { background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; border: 1.5px solid #c5e0f5; position: relative; }
+.schedule-badge { display: inline-block; background: #e8f4fd; color: #2980b9; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.schedule-site { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 4px; }
+.schedule-content { font-size: 13px; color: #666; }
+.schedule-delete { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ddd; font-size: 18px; cursor: pointer; font-family: inherit; }
+.cal-dot-schedule { width: 5px; height: 5px; border-radius: 50%; background: #2980b9; }
+.cal-dot-kyuka { width: 5px; height: 5px; border-radius: 50%; background: #27ae60; }
+.cal-dot-yasumi { width: 5px; height: 5px; border-radius: 50%; background: #7b4fb0; }
+.kyuka-cal-card { background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; border: 1.5px solid #a5d6a7; position: relative; }
+.kyuka-cal-badge { display: inline-block; background: #e8f5e9; color: #388e3c; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; margin-bottom: 6px; }
+.kyuka-cal-name { font-size: 14px; font-weight: 700; color: #2d2a26; }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
+.modal-box { background: #fff; border-radius: 16px 16px 0 0; padding: 24px 20px; width: 100%; max-width: 540px; }
+.modal-title { font-size: 16px; font-weight: 700; color: #2d2a26; margin-bottom: 16px; }
+.modal-btn-row { display: flex; gap: 8px; margin-top: 16px; }
+.modal-cancel { flex: 1; padding: 12px; background: #f5f0ea; color: #888; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; font-family: inherit; }
+.modal-save { flex: 2; padding: 12px; background: #e07b4f; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+.add-schedule-btn { width: 100%; padding: 10px; background: #e8f4fd; color: #2980b9; border: 1.5px dashed #2980b9; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; margin-bottom: 12px; }
+.schedule-form { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1.5px solid #c5e0f5; }
+.schedule-form-title { font-size: 14px; font-weight: 700; color: #2980b9; margin-bottom: 12px; }
+
+/* 詳細 */
+.detail-section { margin-bottom: 20px; }
+.detail-section-label { font-size: 11px; font-weight: 600; color: #bbb; margin-bottom: 8px; letter-spacing: 0.08em; display: block; }
+.weather-tag { background: #fdf0e8; color: #e07b4f; border-radius: 20px; padding: 5px 14px; font-size: 14px; font-weight: 600; display: inline-block; }
+.site-result { background: #faf8f5; border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+.site-result-name { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 6px; }
+.time-result-row { font-size: 13px; color: #888; margin-bottom: 8px; }
+.process-result-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.proc-chip { border-radius: 6px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
+.proc-chip.done { background: #e07b4f; color: #fff; }
+.proc-chip.not-done { background: #f0ede8; color: #ccc; }
+.material-result-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.material-chip { background: #e8f0e8; color: #4a7c4a; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
+.preview-text { font-size: 14px; color: #2d2a26; line-height: 1.8; }
+
+/* 日報編集モーダル */
+#report-edit-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 300; display: none; overflow-y: auto; }
+.report-edit-box { background: #f5f0ea; min-height: 100%; padding: 20px; max-width: 540px; margin: 0 auto; }
+.report-edit-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.report-edit-title { font-size: 18px; font-weight: 700; color: #2d2a26; }
+.report-edit-close { background: none; border: none; color: #888; font-size: 24px; cursor: pointer; font-family: inherit; }
+
+/* 有給 */
+.kyuka-card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1.5px solid #ede8e2; }
+.kyuka-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.kyuka-name { font-size: 16px; font-weight: 700; color: #2d2a26; }
+.kyuka-remain { font-size: 13px; color: #888; }
+.kyuka-bar-bg { background: #f0ede8; border-radius: 6px; height: 8px; margin-bottom: 8px; }
+.kyuka-bar-fill { background: #e07b4f; border-radius: 6px; height: 8px; transition: width 0.3s; }
+.kyuka-stats { display: flex; gap: 8px; }
+.kyuka-stat { flex: 1; background: #faf8f5; border-radius: 8px; padding: 8px; text-align: center; }
+.kyuka-stat-label { font-size: 10px; color: #aaa; margin-bottom: 2px; }
+.kyuka-stat-val { font-size: 16px; font-weight: 700; color: #e07b4f; }
+.kyuka-stat-unit { font-size: 10px; color: #aaa; }
+.apply-card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1.5px solid #ede8e2; }
+.apply-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+.apply-name { font-size: 15px; font-weight: 700; color: #2d2a26; }
+.apply-date { font-size: 13px; color: #888; margin-top: 2px; }
+.apply-reason { font-size: 13px; color: #666; margin-bottom: 10px; }
+.status-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.status-pending { background: #fff8e6; color: #d4a017; }
+.status-approved { background: #e8f5e9; color: #388e3c; }
+.status-rejected { background: #fce8e8; color: #d32f2f; }
+.approve-row { display: flex; gap: 8px; }
+.btn-approve { flex: 1; padding: 10px; background: #e8f5e9; color: #388e3c; border: 1.5px solid #a5d6a7; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.btn-reject { flex: 1; padding: 10px; background: #fce8e8; color: #d32f2f; border: 1.5px solid #ef9a9a; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.btn-cancel-leave { width: 100%; padding: 9px; background: #fff3f3; color: #d32f2f; border: 1.5px solid #ef9a9a; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; margin-top: 8px; }
+.seg-row { display: flex; gap: 4px; background: #f5f0ea; border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+.seg-btn { flex: 1; padding: 8px 4px; border-radius: 8px; border: none; background: transparent; color: #888; font-size: 13px; cursor: pointer; font-family: inherit; }
+.seg-btn.active { background: #fff; color: #e07b4f; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+/* 管理者 */
+.admin-lock { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; }
+.lock-icon { font-size: 48px; margin-bottom: 16px; }
+.lock-title { font-size: 18px; font-weight: 700; color: #2d2a26; margin-bottom: 8px; }
+.lock-sub { font-size: 13px; color: #aaa; margin-bottom: 24px; text-align: center; }
+.admin-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.admin-stat-card { background: #fff; border-radius: 12px; padding: 14px; border: 1.5px solid #ede8e2; }
+.admin-stat-label { font-size: 11px; color: #aaa; margin-bottom: 6px; }
+.admin-stat-name { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 8px; }
+.admin-stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.admin-stat-key { font-size: 12px; color: #888; }
+.admin-stat-val { font-size: 14px; font-weight: 700; color: #e07b4f; }
+.logout-btn { background: none; border: none; color: #aaa; font-size: 13px; cursor: pointer; font-family: inherit; padding: 8px 0; }
+.export-section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1.5px solid #ede8e2; }
+.export-title { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 12px; }
+.export-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.export-label { font-size: 13px; color: #666; width: 60px; flex-shrink: 0; }
+.export-select { flex: 1; padding: 9px 10px; border-radius: 8px; border: 1.5px solid #e0d8d0; font-size: 13px; font-family: inherit; background: #fff; -webkit-appearance: none; }
+.btn-excel { width: 100%; padding: 12px; background: #1d7044; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <span class="logo">📋 日報</span>
+    <div class="tabs">
+      <button class="tab active" id="tab-form" onclick="showView('form')">入力</button>
+      <button class="tab" id="tab-list" onclick="showView('list')">一覧<span class="badge" id="badge">0</span></button>
+      <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
+      <button class="tab" id="tab-kyuka" onclick="showView('kyuka')">有給</button>
+      <button class="tab" id="tab-admin" onclick="showView('admin')">管理</button>
+    </div>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- 入力 -->
+  <div class="view active" id="view-form">
+    <div class="wrap">
+      <div id="draft-bar" style="display:none" class="draft-bar">
+        <span class="draft-bar-text">📝 下書きがあります</span>
+        <div class="draft-bar-btns">
+          <button class="draft-load-btn" onclick="loadDraft()">読み込む</button>
+          <button class="draft-del-btn" onclick="deleteDraft()">削除</button>
+        </div>
+      </div>
+      <div class="date-label" id="today-label"></div>
+      <div class="field">
+        <label class="lbl">氏名</label>
+        <select id="staff-name">
+          <option value="">選択してください</option>
+          <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option><option>外注</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="lbl">天気</label>
+        <div class="weather-grid">
+          <button class="weather-btn" data-value="晴れ" onclick="selectWeather(this)">☀️ 晴れ</button>
+          <button class="weather-btn" data-value="曇り" onclick="selectWeather(this)">⛅ 曇り</button>
+          <button class="weather-btn" data-value="雨" onclick="selectWeather(this)">🌧️ 雨</button>
+          <button class="weather-btn" data-value="晴れのち雨" onclick="selectWeather(this)">🌦️ 晴れのち雨</button>
+          <button class="weather-btn" data-value="雨のち晴れ" onclick="selectWeather(this)">🌤️ 雨のち晴れ</button>
+          <button class="weather-btn" data-value="曇り時々雨" onclick="selectWeather(this)">🌧️ 曇り時々雨</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="lbl">現場名・工程</label>
+        <div id="sites-container"></div>
+        <button class="add-btn" onclick="addSite()">＋ 現場を追加</button>
+      </div>
+      <div class="field">
+        <label class="lbl">明日の予定</label>
+        <textarea id="tomorrow" rows="3" placeholder="明日の現場や作業内容を記入してください"></textarea>
+      </div>
+      <button class="btn-draft" onclick="saveDraft()">📝 下書き保存</button>
+      <button class="btn-primary" onclick="submitReport()">提出する</button>
+      <div style="height:32px"></div>
+    </div>
+  </div>
+
+  <!-- 完了 -->
+  <div class="view" id="view-done">
+    <div class="done-wrap">
+      <div class="done-icon">✓</div>
+      <div class="done-title">提出完了！</div>
+      <div class="done-msg">お疲れ様でした</div>
+      <button class="btn-primary" style="max-width:280px" onclick="resetForm()">新しい日報を書く</button>
+    </div>
+  </div>
+
+  <!-- 一覧 -->
+  <div class="view" id="view-list">
+    <div class="wrap">
+      <div class="search-wrap">
+        <span class="search-ico">🔍</span>
+        <input class="search-inp" type="text" id="list-search-input" placeholder="名前・現場名で検索" oninput="onListSearch(this)">
+        <button class="search-clr" id="list-search-clear" onclick="clearListSearch()">×</button>
+      </div>
+      <div id="list-search-results" style="display:none"></div>
+      <div id="list-calendar-area">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="changeCalMonth(-1)">◀</button>
+        <span class="cal-nav-label" id="cal-month-label"></span>
+        <button class="cal-nav-btn" onclick="changeCalMonth(1)">▶</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div id="cal-day-content"></div>
+      </div><!-- end list-calendar-area -->
+    </div>
+  </div>
+
+  <!-- 集計 -->
+  <div class="view" id="view-stats">
+    <div class="wrap">
+      <div class="stats-seg">
+        <button class="stats-seg-btn active" id="seg-day" onclick="setStatsSeg('day')">日別</button>
+        <button class="stats-seg-btn" id="seg-month" onclick="setStatsSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="seg-person" onclick="setStatsSeg('person')">個人別</button>
+        <button class="stats-seg-btn" id="seg-total" onclick="setStatsSeg('total')">合算</button>
+      </div>
+      <div id="stats-content"></div>
+    </div>
+  </div>
+
+  <!-- 有給 -->
+  <div class="view" id="view-kyuka">
+    <div class="wrap">
+      <div class="page-title">有給休暇</div>
+      <div class="page-sub">申請・残日数の確認</div>
+      <div class="seg-row">
+        <button class="seg-btn active" id="kseg-status" onclick="setKyukaSeg('status')">残日数</button>
+        <button class="seg-btn" id="kseg-apply" onclick="setKyukaSeg('apply')">有給申請</button>
+        <button class="seg-btn" id="kseg-yasumi" onclick="setKyukaSeg('yasumi')">休み申請</button>
+        <button class="seg-btn" id="kseg-history" onclick="setKyukaSeg('history')">申請履歴</button>
+      </div>
+      <div id="kyuka-content"></div>
+    </div>
+  </div>
+
+  <!-- 管理者 -->
+  <div class="view" id="view-admin">
+    <div id="admin-content"></div>
+  </div>
+
+  <!-- 詳細 -->
+  <div class="view" id="view-detail">
+    <div class="wrap" id="detail-content"></div>
+  </div>
+
+</div>
+
+<!-- 日報編集モーダル -->
+<div id="report-edit-modal">
+  <div class="report-edit-box">
+    <div class="report-edit-header">
+      <span class="report-edit-title">✏️ 日報を編集</span>
+      <button class="report-edit-close" onclick="closeReportEdit()">×</button>
+    </div>
+    <div id="report-edit-content"></div>
+  </div>
+</div>
+
+<!-- 編集モーダル（固定DOM） -->
+<div class="modal-overlay" id="edit-modal" style="display:none;" onclick="closeEditModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-title">✏️ 予定を編集</div>
+    <div class="field"><label class="lbl">日付</label><input type="date" id="edit-date"></div>
+    <div class="field"><label class="lbl">現場名</label><input type="text" id="edit-site" placeholder="現場名を入力"></div>
+    <div class="field"><label class="lbl">作業内容</label><input type="text" id="edit-task" placeholder="作業内容を入力"></div>
+    <div class="modal-btn-row">
+      <button class="modal-cancel" onclick="closeEditModal()">キャンセル</button>
+      <button class="modal-save" onclick="saveEditSchedule()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DB = 'https://daily-report-a1193-default-rtdb.firebaseio.com';
+const PROCESSES = ['現調','下地','プライマー','1ply','2ply','トップ'];
+const MATERIALS = [{label:'プライマー',field:'primerKg'},{label:'トップ',field:'topKg'}];
+const SHITAJI = ['湿気なし','湿気あり','バーナー未使用','バーナー小','バーナー大'];
+const KAN_KG = {primerKg:16, topKg:15}; // 1缶あたりのkg
+const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
+const MEMBERS = ['管理','加藤瑞樹','山内浩一','森田義則','富山裕貴'];
+const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
+const ADMIN_PASS = '2431'; // ← 管理者パスワード（変更可）
+let leaveSettings = {}; // スタッフごとの付与日数
+let absences = {}; // 休み申請
+
+let selectedWeather='', siteCount=0, reports={}, leaves={};
+let searchQuery='', filterName='', statsSeg='day', statsMonth=new Date().toISOString().slice(0,7);
+let kyukaSeg='status', adminLoggedIn=false, prevView='form';
+
+document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+addSite();
+checkDraft();
+
+// ── ビュー ───────────────────────
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  const tid = (name==='form'||name==='done')?'form':(name==='detail'||name==='list')?'list':name;
+  const tabEl = document.getElementById('tab-'+tid);
+  if(tabEl) tabEl.classList.add('active');
+  if(name==='form') checkDraft();
+  if(name==='list') loadReports();
+  if(name==='stats') loadStats();
+  if(name==='kyuka') loadKyuka();
+  if(name==='admin') showAdmin();
+  if(name==='detail') prevView='list';
+}
+
+// ── フォーム ─────────────────────
+function selectWeather(btn){document.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');selectedWeather=btn.dataset.value;}
+function addSite(){
+  siteCount++;const id=siteCount;
+  const div=document.createElement('div');div.className='site-card';div.id='site-'+id;
+  div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}"><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
+    <div class="time-row"><div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="time-in-${id}"></div><span class="time-sep">→</span><div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="time-out-${id}"></div></div>
+    <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn" data-proc="${p}" onclick="toggleProc(this)">${p}</button>`).join('')}</div>
+    <div class="material-section" style="border-top:1px solid #f0ebe5;padding-top:10px;margin-bottom:10px">
+        <div class="material-title">下地状況</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <button class="proc-btn" data-shitaji="湿気なし" onclick="toggleShitaji(this)">湿気なし</button>
+          <button class="proc-btn" data-shitaji="湿気あり" onclick="toggleShitaji(this)">湿気あり</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <button class="proc-btn" data-shitaji="バーナー未使用" onclick="toggleShitaji(this)">未使用</button>
+          <button class="proc-btn" data-shitaji="バーナー小" onclick="toggleShitaji(this)">バーナー小</button>
+          <button class="proc-btn" data-shitaji="バーナー大" onclick="toggleShitaji(this)">バーナー大</button>
+        </div>
+        <div style="font-size:12px;color:#e07b4f;font-weight:600;">🔥 バーナー使用時は写真提出</div>
+      </div>
+      <div class="material-section"><div class="material-title">材料使用量</div><div class="material-row" id="mat-primer-${id}" style="display:none"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="primerKg-${id}"><span class="material-unit">kg</span></div><div class="material-row" id="mat-resin-${id}" style="display:none"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="resinKan-${id}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="resinWari-${id}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div><div class="material-row" id="mat-top-${id}" style="display:none"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="topKg-${id}"><span class="material-unit">kg</span></div></div>`;
+  document.getElementById('sites-container').appendChild(div);
+}
+function removeSite(id){const el=document.getElementById('site-'+id);if(el)el.remove();}
+function toggleProc(btn){
+  btn.classList.toggle('selected');
+  const card=btn.closest('[id^="site-"]');
+  const id=card.id.replace('site-','');
+  // プライマー連動
+  const hasPrimer=!!card.querySelector('[data-proc="プライマー"].selected');
+  const primerRow=document.getElementById('mat-primer-'+id);
+  if(primerRow)primerRow.style.display=hasPrimer?'flex':'none';
+  // 1ply・2ply → 樹脂連動
+  const hasResin=!!(card.querySelector('[data-proc="1ply"].selected')||card.querySelector('[data-proc="2ply"].selected'));
+  const resinRow=document.getElementById('mat-resin-'+id);
+  if(resinRow)resinRow.style.display=hasResin?'flex':'none';
+  // トップ連動
+  const hasTop=!!card.querySelector('[data-proc="トップ"].selected');
+  const topRow=document.getElementById('mat-top-'+id);
+  if(topRow)topRow.style.display=hasTop?'flex':'none';
+}
+function toggleShitaji(btn){
+  // 湿気なし・湿気ありは排他選択
+  if(btn.dataset.shitaji==='湿気なし'||btn.dataset.shitaji==='湿気あり'){
+    const card=btn.closest('[id^="site-"]');
+    card.querySelectorAll('[data-shitaji="湿気なし"],[data-shitaji="湿気あり"]').forEach(b=>{
+      if(b!==btn)b.classList.remove('selected');
+    });
+  }
+  // バーナー小・バーナー大は排他選択
+  if(btn.dataset.shitaji==='バーナー未使用'||btn.dataset.shitaji==='バーナー小'||btn.dataset.shitaji==='バーナー大'){
+    const card=btn.closest('[id^="site-"]');
+    card.querySelectorAll('[data-shitaji="バーナー未使用"],[data-shitaji="バーナー小"],[data-shitaji="バーナー大"]').forEach(b=>{
+      if(b!==btn)b.classList.remove('selected');
+    });
+  }
+  btn.classList.toggle('selected');
+}
+
+async function submitReport(){
+  const staffName=document.getElementById('staff-name').value;
+  const tomorrow=document.getElementById('tomorrow').value.trim();
+  if(!staffName||!selectedWeather||!tomorrow){alert('氏名・天気・明日の予定を入力してください');return;}
+  const sites=[];
+  document.querySelectorAll('[id^="site-"]').forEach(div=>{
+    const id=div.id.replace('site-','');
+    const name=document.getElementById('site-name-'+id)?.value.trim();
+    if(!name)return;
+    const processes=[];div.querySelectorAll('.proc-btn.selected').forEach(b=>processes.push(b.dataset.proc));
+    const shitaji=[];
+    div.querySelectorAll('[data-shitaji].selected').forEach(b=>shitaji.push(b.dataset.shitaji));
+    sites.push({name,timeIn:document.getElementById('time-in-'+id)?.value||'',timeOut:document.getElementById('time-out-'+id)?.value||'',processes,shitaji,primerKg:document.getElementById('primerKg-'+id)?.value||'',resinKan:document.getElementById('resinKan-'+id)?.value||'',resinWari:document.getElementById('resinWari-'+id)?.value||'',topKg:document.getElementById('topKg-'+id)?.value||''});
+  });
+  if(!sites.length){alert('現場名を1つ以上入力してください');return;}
+  const report={date:new Date().toISOString().slice(0,10),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
+  try{
+    const res=await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
+    if(!res.ok)throw new Error();localStorage.removeItem('report_draft');showView('done');
+  }catch(e){alert('送信に失敗しました。');}
+}
+function resetForm(){
+  document.getElementById('staff-name').value='';
+  document.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));
+  selectedWeather='';document.getElementById('sites-container').innerHTML='';
+  document.getElementById('tomorrow').value='';siteCount=0;addSite();showView('form');
+}
+
+// ── 下書き ───────────────────────
+function saveDraft(){
+  const staffName=document.getElementById('staff-name').value;
+  const tomorrow=document.getElementById('tomorrow').value;
+  const sites=[];
+  document.querySelectorAll('[id^="site-"]').forEach(div=>{
+    const id=div.id.replace('site-','');
+    const name=document.getElementById('site-name-'+id)?.value||'';
+    const processes=[];
+    div.querySelectorAll('.proc-btn.selected').forEach(b=>processes.push(b.dataset.proc));
+    sites.push({name,timeIn:document.getElementById('time-in-'+id)?.value||'',timeOut:document.getElementById('time-out-'+id)?.value||'',processes,primerKg:document.getElementById('primerKg-'+id)?.value||'',resinKan:document.getElementById('resinKan-'+id)?.value||'',resinWari:document.getElementById('resinWari-'+id)?.value||'',topKg:document.getElementById('topKg-'+id)?.value||''});
+  });
+  const draft={staffName,weather:selectedWeather,sites,tomorrow,savedAt:new Date().toLocaleString('ja-JP')};
+  localStorage.setItem('report_draft',JSON.stringify(draft));
+  document.getElementById('draft-bar').style.display='flex';
+  alert('下書きを保存しました！');
+}
+
+function checkDraft(){
+  const d=localStorage.getItem('report_draft');
+  document.getElementById('draft-bar').style.display=d?'flex':'none';
+}
+
+function loadDraft(){
+  const d=localStorage.getItem('report_draft');
+  if(!d)return;
+  const draft=JSON.parse(d);
+  document.getElementById('staff-name').value=draft.staffName||'';
+  document.querySelectorAll('.weather-btn').forEach(b=>{
+    if(b.dataset.value===draft.weather){b.classList.add('selected');selectedWeather=draft.weather;}
+    else b.classList.remove('selected');
+  });
+  document.getElementById('tomorrow').value=draft.tomorrow||'';
+  document.getElementById('sites-container').innerHTML='';siteCount=0;
+  (draft.sites||[]).forEach(s=>{
+    siteCount++;const id=siteCount;
+    const div=document.createElement('div');div.className='site-card';div.id='site-'+id;
+    div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}" value="${s.name||''}"><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
+      <div class="time-row"><div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="time-in-${id}" value="${s.timeIn||''}"></div><span class="time-sep">→</span><div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="time-out-${id}" value="${s.timeOut||''}"></div></div>
+      <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn ${s.processes?.includes(p)?'selected':''}" data-proc="${p}" onclick="toggleProc(this)">${p}</button>`).join('')}</div>
+      <div class="material-section"><div class="material-title">材料使用量</div>
+        <div class="material-row"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="primerKg-${id}" value="${s.primerKg||''}"><span class="material-unit">kg</span></div>
+        <div class="material-row"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="resinKan-${id}" value="${s.resinKan||''}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="resinWari-${id}" value="${s.resinWari||''}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
+        <div class="material-row"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="topKg-${id}" value="${s.topKg||''}"><span class="material-unit">kg</span></div>
+      </div>`;
+    document.getElementById('sites-container').appendChild(div);
+    // 材料表示制御
+    if(s.processes?.includes('プライマー')){const r=document.getElementById('mat-primer-'+siteCount);if(r)r.style.display='flex';}
+    if(s.processes?.includes('1ply')||s.processes?.includes('2ply')){const r=document.getElementById('mat-resin-'+siteCount);if(r)r.style.display='flex';}
+    if(s.processes?.includes('トップ')){const r=document.getElementById('mat-top-'+siteCount);if(r)r.style.display='flex';}
+  });
+  if(siteCount===0)addSite();
+  alert('下書きを読み込みました！');
+}
+
+function deleteDraft(){
+  if(!confirm('下書きを削除しますか？'))return;
+  localStorage.removeItem('report_draft');
+  document.getElementById('draft-bar').style.display='none';
+}
+
+// ── 一覧（カレンダー） ───────────────
+let calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSelectedDate='';
+let schedules={};
+
+function kgToKanWari(kg, kanKg){
+  if(!kg||kg===0)return '0kg';
+  const total=Math.round(kg/kanKg*10);
+  const kan=Math.floor(total/10);
+  const wari=total%10;
+  if(kan===0)return `${wari}割(${Math.round(kg*10)/10}kg)`;
+  if(wari===0)return `${kan}缶(${Math.round(kg*10)/10}kg)`;
+  return `${kan}缶${wari}割(${Math.round(kg*10)/10}kg)`;
+}
+
+function calcTotals(list){
+  const t={primerKg:0,resinKan:0,resinWari:0,topKg:0};
+  list.forEach(([,r])=>r.sites?.forEach(s=>{
+    MATERIALS.forEach(m=>{const v=parseFloat(s[m.field]);if(!isNaN(v))t[m.field]+=v;});
+    const kan=parseInt(s.resinKan)||0;const wari=parseInt(s.resinWari)||0;
+    t.resinKan+=kan;t.resinWari+=wari;
+  }));
+  // 割を缶に繰り上げ
+  t.resinKan+=Math.floor(t.resinWari/10);t.resinWari=t.resinWari%10;
+  return t;
+}
+function matGridHtml(t){return `<div class="mat-grid">
+  <div class="mat-cell"><div class="mat-name">プライマー</div><div class="mat-val" style="font-size:15px">${kgToKanWari(t.primerKg,KAN_KG.primerKg)}</div></div>
+  <div class="mat-cell"><div class="mat-name">樹脂</div><div class="mat-val" style="font-size:16px">${t.resinKan}缶${t.resinWari}割</div></div>
+  <div class="mat-cell"><div class="mat-name">トップ</div><div class="mat-val" style="font-size:15px">${kgToKanWari(t.topKg,KAN_KG.topKg)}</div></div>
+</div>`;}
+
+async function loadSchedules(){
+  try{const res=await fetch(DB+'/schedules.json');schedules=await res.json()||{};}catch(e){schedules={};}
+}
+
+function onListSearch(input){
+  const q=input.value.trim();
+  document.getElementById('list-search-clear').style.display=q?'block':'none';
+  if(!q){
+    document.getElementById('list-search-results').style.display='none';
+    document.getElementById('list-calendar-area').style.display='block';
+    return;
+  }
+  document.getElementById('list-calendar-area').style.display='none';
+  document.getElementById('list-search-results').style.display='block';
+  renderListSearch(q);
+}
+
+function clearListSearch(){
+  document.getElementById('list-search-input').value='';
+  document.getElementById('list-search-clear').style.display='none';
+  document.getElementById('list-search-results').style.display='none';
+  document.getElementById('list-calendar-area').style.display='block';
+}
+
+function hl(text,q){
+  if(!q||!text)return text||'';
+  const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
+  return String(text).replace(re,'<span class="highlight">$1</span>');
+}
+
+function renderListSearch(q){
+  const el=document.getElementById('list-search-results');
+  const ql=q.toLowerCase();
+  const list=Object.entries(reports).filter(([,r])=>
+    r.staffName?.toLowerCase().includes(ql)||
+    r.sites?.some(s=>s.name?.toLowerCase().includes(ql))||
+    r.dateLabel?.includes(q)||
+    r.date?.includes(q)
+  ).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+
+  if(!list.length){el.innerHTML='<div style="text-align:center;padding:32px;color:#aaa;font-size:14px">🔍 該当する日報がありません</div>';return;}
+
+  el.innerHTML=`<div class="search-result-title">検索結果 ${list.length}件</div>`+
+    list.map(([key,r])=>`
+      <div class="report-card">
+        <div style="cursor:pointer" onclick="showDetail('${key}')">
+          <div class="report-card-top"><span class="report-date">${hl(r.dateLabel||r.date,q)}</span><span>${WEATHERS[r.weather]||''}</span></div>
+          <div class="report-name">${hl(r.staffName,q)}</div>
+          <div class="report-sites" style="padding-right:40px">📍 ${r.sites?.map(s=>hl(s.name,q)).join('　')||''}</div>
+          <span class="report-arrow">›</span>
+        </div>
+        <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
+      </div>`).join('');
+}
+
+async function loadReports(){
+  try{
+    const [rRes,lRes,aRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/absences.json')]);
+    reports=await rRes.json()||{};
+    leaves=await lRes.json()||{};
+    absences=await aRes.json()||{};
+    document.getElementById('badge').textContent=Object.keys(reports).length;
+  }catch(e){}
+  await loadSchedules();
+  renderCalendar();
+}
+
+function changeCalMonth(dir){
+  calMonth+=dir;
+  if(calMonth>11){calMonth=0;calYear++;}
+  if(calMonth<0){calMonth=11;calYear--;}
+  calSelectedDate='';
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const label=`${calYear}年${calMonth+1}月`;
+  document.getElementById('cal-month-label').textContent=label;
+  const today=new Date().toISOString().slice(0,10);
+
+  // 日付ごとの日報数をまとめる
+  const byDate={};
+  Object.entries(reports).forEach(([key,r])=>{
+    if(!r.date)return;
+    const ym=r.date.slice(0,7);
+    if(ym!==`${calYear}-${String(calMonth+1).padStart(2,'0')}`)return;
+    if(!byDate[r.date])byDate[r.date]=[];
+    byDate[r.date].push([key,r]);
+  });
+
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const dows=['日','月','火','水','木','金','土'];
+
+  let html=dows.map((d,i)=>`<div class="cal-dow ${i===0?'sun':i===6?'sat':''}">${d}</div>`).join('');
+  for(let i=0;i<firstDay;i++)html+=`<div class="cal-day empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow=new Date(calYear,calMonth,d).getDay();
+    const hasReport=byDate[dateStr]?.length>0||Object.values(schedules).some(s=>s.date===dateStr)||Object.values(leaves).some(l=>l.date===dateStr&&l.status==='approved')||Object.values(absences).some(a=>a.date===dateStr&&a.status==='approved');
+    const isToday=dateStr===today;
+    const isSelected=dateStr===calSelectedDate;
+    const count=byDate[dateStr]?.length||0;
+    const schedCount=Object.values(schedules).filter(s=>s.date===dateStr).length;
+    const hasSchedule=schedCount>0;
+    const kyukaCount=Object.values(leaves).filter(l=>l.date===dateStr&&l.status==='approved').length;
+    const yasumiCount=Object.values(absences).filter(a=>a.date===dateStr&&a.status==='approved').length;
+    const hasKyuka=kyukaCount>0;const hasYasumi=yasumiCount>0;
+    const dots=(hasReport||hasSchedule||hasKyuka||hasYasumi)?`<div class="cal-dots">${Array.from({length:Math.min(count,3)}).map(()=>'<div class="cal-dot"></div>').join('')}${Array.from({length:Math.min(schedCount,2)}).map(()=>'<div class="cal-dot cal-dot-schedule"></div>').join('')}${Array.from({length:Math.min(kyukaCount,2)}).map(()=>'<div class="cal-dot cal-dot-kyuka"></div>').join('')}${Array.from({length:Math.min(yasumiCount,2)}).map(()=>'<div class="cal-dot cal-dot-yasumi"></div>').join('')}</div>`:'';
+    html+=`<div class="cal-day ${dow===0?'sun':dow===6?'sat':''} ${hasReport?'has-report':''} ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectCalDate('${dateStr}')">
+      <div class="cal-day-num">${d}</div>${dots}
+    </div>`;
+  }
+  document.getElementById('cal-grid').innerHTML=html;
+  if(calSelectedDate)renderDayReports(calSelectedDate);
+  else document.getElementById('cal-day-content').innerHTML='<div style="text-align:center;padding:20px;color:#aaa;font-size:13px">日付をタップすると日報が表示されます</div>';
+}
+
+function selectCalDate(dateStr){
+  calSelectedDate=calSelectedDate===dateStr?'':dateStr;
+  renderCalendar();
+}
+
+function renderDayReports(dateStr){
+  const content=document.getElementById('cal-day-content');
+  const list=Object.entries(reports).filter(([,r])=>r.date===dateStr).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  const schedList=Object.entries(schedules).filter(([,s])=>s.date===dateStr).sort((a,b)=>a[1].createdAt-b[1].createdAt);
+  const kyukaList=Object.entries(leaves).filter(([,l])=>l.date===dateStr&&l.status==='approved');
+  const yasumiList=Object.entries(absences).filter(([,a])=>a.date===dateStr&&a.status==='approved');
+  const [y,m,d]=dateStr.split('-');
+  const label=`${y}年${parseInt(m)}月${parseInt(d)}日`;
+
+  const schedHtml=schedList.map(([key,s])=>`
+    <div class="schedule-card" onclick="openEditSchedule('${key}')" style="cursor:pointer;padding-right:44px;">
+      <div class="schedule-badge">📅 予定</div>
+      <div class="schedule-site">📍 ${s.site}</div>
+      ${s.task?`<div class="schedule-content">🔧 ${s.task}</div>`:''}
+      <div style="font-size:11px;color:#aaa;margin-top:4px;">タップして編集</div>
+      <button class="schedule-delete" onclick="deleteSchedule('${key}',event)">🗑</button>
+    </div>`).join('');
+
+  const kyukaHtml=kyukaList.length?`
+    <div class="section-title" style="margin-top:4px">🏖️ 有給取得（${kyukaList.length}件）</div>
+    ${kyukaList.map(([,l])=>`
+      <div class="kyuka-cal-card">
+        <div class="kyuka-cal-badge">🏖️ 有給</div>
+        <div class="kyuka-cal-name">${l.staffName}</div>
+        ${l.reason?`<div style="font-size:13px;color:#666;margin-top:4px">📝 ${l.reason}</div>`:''}
+      </div>`).join('')}`:'';
+  const yasumiHtml=yasumiList.length?`
+    <div class="section-title" style="margin-top:4px">😴 休み（${yasumiList.length}件）</div>
+    ${yasumiList.map(([,a])=>`
+      <div class="kyuka-cal-card" style="border-color:#ce9ef5">
+        <div class="kyuka-cal-badge" style="background:#f0e8f8;color:#7b4fb0">😴 休み</div>
+        <div class="kyuka-cal-name">${a.staffName}</div>
+        ${a.reason?`<div style="font-size:13px;color:#666;margin-top:4px">📝 ${a.reason}</div>`:''}
+      </div>`).join('')}`:'';
+
+  const reportHtml=list.map(([key,r])=>`
+    <div class="report-card">
+      <div style="cursor:pointer" onclick="showDetail('${key}')">
+        <div class="report-card-top"><span class="report-date">${r.staffName}</span><span>${WEATHERS[r.weather]||''}</span></div>
+        <div class="report-sites" style="padding-right:40px">📍 ${r.sites.map(s=>s.name).join('　')}</div>
+        <span class="report-arrow">›</span>
+      </div>
+      <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
+    </div>`).join('');
+
+  const isEmpty=!schedList.length&&!list.length&&!kyukaList.length&&!yasumiList.length;
+  content.innerHTML=`
+    <div class="cal-day-title" style="margin-bottom:10px">${label}</div>
+    <button class="add-schedule-btn" onclick="toggleScheduleForm('${dateStr}')">＋ 予定を追加</button>
+    <div id="schedule-form-${dateStr}" style="display:none">
+      <div class="schedule-form">
+        <div class="schedule-form-title">📅 予定を入力</div>
+        <div class="field"><label class="lbl">日付</label><input type="date" id="sch-date-${dateStr}" value="${dateStr}"></div>
+        <div class="field"><label class="lbl">現場名</label><input type="text" id="sch-site-${dateStr}" placeholder="現場名を入力"></div>
+        <div class="field"><label class="lbl">作業内容</label><input type="text" id="sch-task-${dateStr}" placeholder="作業内容を入力"></div>
+        <button class="btn-primary" onclick="submitSchedule('${dateStr}')">追加する</button>
+      </div>
+    </div>
+    ${schedHtml}
+    ${kyukaHtml}
+    ${yasumiHtml}
+    ${list.length?`<div class="section-title" style="margin-top:8px">📋 日報（${list.length}件）</div>`:''}
+    ${reportHtml}
+    ${isEmpty?'<div style="color:#aaa;font-size:13px;text-align:center;padding:16px">この日の予定・日報はありません</div>':''}
+  `;
+}
+
+function toggleScheduleForm(dateStr){
+  const el=document.getElementById('schedule-form-'+dateStr);
+  if(el)el.style.display=el.style.display==='none'?'block':'none';
+}
+
+async function submitSchedule(dateStr){
+  const actualDate=document.getElementById('sch-date-'+dateStr)?.value||dateStr;
+  const site=document.getElementById('sch-site-'+dateStr)?.value.trim();
+  const task=document.getElementById('sch-task-'+dateStr)?.value.trim();
+  if(!site){alert('現場名を入力してください');return;}
+  try{
+    await fetch(DB+'/schedules.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:actualDate,site,task,createdAt:Date.now()})});
+    await loadSchedules();
+    calSelectedDate=actualDate;
+    // 別の月の日付に変更された場合はカレンダーの月も移動
+    const [y,m]=actualDate.split('-');
+    calYear=parseInt(y);calMonth=parseInt(m)-1;
+    renderCalendar();
+  }catch(e){alert('追加に失敗しました。');}
+}
+
+async function deleteSchedule(key,e){
+  e.stopPropagation();
+  if(!confirm('この予定を削除しますか？'))return;
+  try{
+    await fetch(DB+'/schedules/'+key+'.json',{method:'DELETE'});
+    delete schedules[key];
+    renderCalendar();
+  }catch(e){alert('削除に失敗しました。');}
+}
+
+let editingKey = '';
+
+function openEditSchedule(key){
+  editingKey = key;
+  const s = schedules[key];
+  if(!s){ alert('予定データが見つかりません'); return; }
+  document.getElementById('edit-date').value = s.date || '';
+  document.getElementById('edit-site').value = s.site || '';
+  document.getElementById('edit-task').value = s.task || '';
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function closeEditModal(){
+  document.getElementById('edit-modal').style.display = 'none';
+  editingKey = '';
+}
+
+async function saveEditSchedule(){
+  const date = document.getElementById('edit-date').value;
+  const site = document.getElementById('edit-site').value.trim();
+  const task = document.getElementById('edit-task').value.trim();
+  if(!site){ alert('現場名を入力してください'); return; }
+  try{
+    await fetch(DB+'/schedules/'+editingKey+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,site,task})});
+    schedules[editingKey] = {...schedules[editingKey], date, site, task};
+    closeEditModal();
+    calSelectedDate = date;
+    const [y,m] = date.split('-');
+    calYear = parseInt(y); calMonth = parseInt(m)-1;
+    renderCalendar();
+  }catch(e){ alert('保存に失敗しました。'); }
+}
+
+async function deleteReport(key,name,e){
+  e.stopPropagation();
+  if(!confirm(name+'の日報を削除しますか？\nこの操作は取り消せません。'))return;
+  try{
+    await fetch(DB+'/reports/'+key+'.json',{method:'DELETE'});
+    delete reports[key];document.getElementById('badge').textContent=Object.keys(reports).length;renderList();
+  }catch(e){alert('削除に失敗しました。');}
+}
+
+// ── 集計 ─────────────────────────
+function setStatsSeg(seg){statsSeg=seg;document.querySelectorAll('.stats-seg-btn').forEach(b=>b.classList.remove('active'));document.getElementById('seg-'+seg).classList.add('active');renderStats();}
+async function loadStats(){
+  document.getElementById('stats-content').innerHTML='<div class="loading">読み込み中...</div>';
+  try{const res=await fetch(DB+'/reports.json');reports=await res.json()||{};renderStats();}
+  catch(e){document.getElementById('stats-content').innerHTML='<div class="loading">読み込みに失敗しました</div>';}
+}
+function statsRowHtml(label,count,totals){
+  return `<div class="stats-row"><div class="stats-row-top"><span class="stats-row-label">${label}</span><span class="stats-row-count">${count}件</span></div><div class="stats-mat-row"><div class="stats-mat-chip"><div class="stats-mat-chip-name">プライマー</div><div class="stats-mat-chip-val" style="font-size:12px">${kgToKanWari(totals.primerKg,KAN_KG.primerKg)}</div></div><div class="stats-mat-chip"><div class="stats-mat-chip-name">樹脂</div><div class="stats-mat-chip-val" style="font-size:12px">${totals.resinKan}缶${totals.resinWari}割</div></div><div class="stats-mat-chip"><div class="stats-mat-chip-name">トップ</div><div class="stats-mat-chip-val" style="font-size:12px">${kgToKanWari(totals.topKg,KAN_KG.topKg)}</div></div></div></div>`;
+}
+function renderStats(){
+  const content=document.getElementById('stats-content');
+  const list=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  if(!list.length){content.innerHTML='<div class="empty">📭 まだデータがありません</div>';return;}
+  if(statsSeg==='day'){
+    const byDay={};list.forEach(([k,r])=>{const d=r.date||'';if(!byDay[d])byDay[d]={label:r.dateLabel||d,list:[]};byDay[d].list.push([k,r]);});
+    content.innerHTML=Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([,v])=>statsRowHtml(v.label,v.list.length,calcTotals(v.list))).join('');
+  }else if(statsSeg==='month'){
+    const byMonth={};list.forEach(([k,r])=>{const m=(r.date||'').slice(0,7);if(!byMonth[m])byMonth[m]=[];byMonth[m].push([k,r]);});
+    const months=Object.keys(byMonth).sort((a,b)=>b.localeCompare(a));
+    if(!months.includes(statsMonth))statsMonth=months[0]||statsMonth;
+    const idx=months.indexOf(statsMonth);
+    const [y,m]=statsMonth.split('-');
+    const monthList=byMonth[statsMonth]||[];
+    const byDay={};monthList.forEach(([k,r])=>{const d=r.date||'';if(!byDay[d])byDay[d]={label:r.dateLabel||d,list:[]};byDay[d].list.push([k,r]);});
+    content.innerHTML=`<div class="month-nav"><button class="month-nav-btn" onclick="changeMonth('${months[idx+1]||''}')" ${!months[idx+1]?'disabled style="opacity:0.3"':''}>◀</button><span class="month-nav-label">${y}年${parseInt(m)}月</span><button class="month-nav-btn" onclick="changeMonth('${months[idx-1]||''}')" ${!months[idx-1]?'disabled style="opacity:0.3"':''}>▶</button></div>
+    <div style="margin-bottom:8px"><div class="section-title">月間合計（${monthList.length}件）</div>${statsRowHtml(`${y}年${parseInt(m)}月`,monthList.length,calcTotals(monthList))}</div>
+    <div><div class="section-title">日別内訳</div>${Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([,v])=>statsRowHtml(v.label,v.list.length,calcTotals(v.list))).join('')||'<div class="empty">データなし</div>'}</div>`;
+  }else if(statsSeg==='person'){
+    renderPersonStats();
+  }else{
+    renderTotalStats();
+  }
+}
+function renderTotalStats(){
+  const content=document.getElementById('stats-content');
+  const from=document.getElementById('total-date-from')?.value||'';
+  const to=document.getElementById('total-date-to')?.value||'';
+  let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  let filtered=from&&to?allList.filter(([,r])=>r.date>=from&&r.date<=to):allList;
+  const t=calcTotals(filtered);
+  const lbl=from&&to?`${from} 〜 ${to}`:`全期間`;
+
+  content.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <input type="date" id="total-date-from" value="${from}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+      <span style="color:#aaa">〜</span>
+      <input type="date" id="total-date-to" value="${to}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+      <button onclick="renderTotalStats()" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
+    </div>
+    <div class="section-title">${lbl}（${filtered.length}件）</div>
+    <div class="stats-row">${matGridHtml(t)}</div>
+    <div style="margin-top:16px">
+      <div class="section-title">個人別 合計</div>
+      ${MEMBERS.filter(m=>filtered.some(([,r])=>r.staffName===m)).map(m=>{
+        const ml=filtered.filter(([,r])=>r.staffName===m);
+        return statsRowHtml(m,ml.length,calcTotals(ml));
+      }).join('')||'<div class="empty">データなし</div>'}
+    </div>`;
+}
+
+function changeMonth(m){if(m){statsMonth=m;renderStats();}}
+
+let personSeg='total', personDateFrom='', personDateTo='';
+
+function setPersonSeg(seg){
+  personSeg=seg;
+  document.querySelectorAll('[id^="pseg-"]').forEach(b=>b.classList.remove('active'));
+  document.getElementById('pseg-'+seg).classList.add('active');
+  document.getElementById('person-date-picker').style.display=(seg==='range')?'flex':'none';
+  if(seg!=='range')renderPersonStats();
+}
+
+function renderPersonStats(){
+  const content=document.getElementById('stats-content');
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  const monthStr=todayStr.slice(0,7);
+  let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  let label='';
+
+  if(personSeg==='day'){
+    // 日別：個人ごとに日別内訳
+    const byP={};MEMBERS.forEach(m=>byP[m]=[]);
+    allList.forEach(([k,r])=>{if(byP[r.staffName])byP[r.staffName].push([k,r]);});
+    content.innerHTML=`
+      <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:16px">
+        <button class="stats-seg-btn active" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
+        <button class="stats-seg-btn" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
+        <button class="stats-seg-btn" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+      </div>
+      <div id="person-date-picker" style="display:none"></div>
+      ${MEMBERS.filter(m=>byP[m]?.length).map(m=>{
+        const byDay={};byP[m].forEach(([k,r])=>{if(!byDay[r.date])byDay[r.date]={label:r.dateLabel||r.date,list:[]};byDay[r.date].list.push([k,r]);});
+        return `<div style="margin-bottom:16px"><div class="section-title" style="font-size:14px;color:#2d2a26;font-weight:700;margin-bottom:8px">${m}</div>
+          ${Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([,v])=>statsRowHtml(v.label,v.list.length,calcTotals(v.list))).join('')}
+        </div>`;
+      }).join('')||'<div class="empty">データなし</div>'}`;
+
+  }else if(personSeg==='month'){
+    // 月別：個人ごとに月別内訳
+    const byP={};MEMBERS.forEach(m=>byP[m]=[]);
+    allList.forEach(([k,r])=>{if(byP[r.staffName])byP[r.staffName].push([k,r]);});
+    content.innerHTML=`
+      <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:16px">
+        <button class="stats-seg-btn" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
+        <button class="stats-seg-btn active" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
+        <button class="stats-seg-btn" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+      </div>
+      <div id="person-date-picker" style="display:none"></div>
+      ${MEMBERS.filter(m=>byP[m]?.length).map(m=>{
+        const byMonth={};byP[m].forEach(([k,r])=>{const mn=(r.date||'').slice(0,7);if(!byMonth[mn])byMonth[mn]=[];byMonth[mn].push([k,r]);});
+        return `<div style="margin-bottom:16px"><div class="section-title" style="font-size:14px;color:#2d2a26;font-weight:700;margin-bottom:8px">${m}</div>
+          ${Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mn,l])=>{const[y,mo]=mn.split('-');return statsRowHtml(`${y}年${parseInt(mo)}月`,l.length,calcTotals(l));}).join('')}
+        </div>`;
+      }).join('')||'<div class="empty">データなし</div>'}`;
+
+  }else if(personSeg==='range'){
+    const from=document.getElementById('person-from')?.value||'';
+    const to=document.getElementById('person-to')?.value||'';
+    const filtered=from&&to?allList.filter(([,r])=>r.date>=from&&r.date<=to):allList;
+    const byP={};MEMBERS.forEach(m=>byP[m]=[]);
+    filtered.forEach(([k,r])=>{if(byP[r.staffName])byP[r.staffName].push([k,r]);});
+    const lbl=from&&to?`${from} 〜 ${to}`:'全期間';
+    content.innerHTML=`
+      <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:16px">
+        <button class="stats-seg-btn" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
+        <button class="stats-seg-btn" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
+        <button class="stats-seg-btn active" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+      </div>
+      <div id="person-date-picker" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <input type="date" id="person-from" value="${from}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+        <span style="color:#aaa">〜</span>
+        <input type="date" id="person-to" value="${to}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+        <button onclick="renderPersonStats()" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
+      </div>
+      <div class="section-title">${lbl}</div>
+      ${MEMBERS.filter(m=>byP[m]?.length).map(m=>statsRowHtml(m,byP[m].length,calcTotals(byP[m]))).join('')||'<div class="empty">データなし</div>'}`;
+
+  }else{
+    // 合計
+    const byP={};MEMBERS.forEach(m=>byP[m]=[]);
+    allList.forEach(([k,r])=>{if(byP[r.staffName])byP[r.staffName].push([k,r]);});
+    content.innerHTML=`
+      <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:16px">
+        <button class="stats-seg-btn" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
+        <button class="stats-seg-btn" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
+        <button class="stats-seg-btn active" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
+        <button class="stats-seg-btn" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+      </div>
+      <div id="person-date-picker" style="display:none"></div>
+      <div class="section-title">個人別 合計</div>
+      ${MEMBERS.filter(m=>byP[m]?.length).map(m=>statsRowHtml(m,byP[m].length,calcTotals(byP[m]))).join('')||'<div class="empty">データなし</div>'}`;
+  }
+}
+
+// ── 有給 ─────────────────────────
+function setKyukaSeg(seg){kyukaSeg=seg;document.querySelectorAll('#view-kyuka .seg-btn').forEach(b=>b.classList.remove('active'));document.getElementById('kseg-'+seg).classList.add('active');renderKyuka();}
+async function loadKyuka(){
+  try{
+    const [lRes,sRes,aRes]=await Promise.all([fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json')]);
+    leaves=await lRes.json()||{};
+    leaveSettings=await sRes.json()||{};
+    absences=await aRes.json()||{};
+  }catch(e){leaves={};leaveSettings={};absences={};}
+  renderKyuka();
+}
+function getKyukaDays(name){ return leaveSettings[name]||0; }
+function getLeaveStats(name){
+  const all=Object.values(leaves).filter(l=>l.staffName===name);
+  const approved=all.filter(l=>l.status==='approved').length;
+  const pending=all.filter(l=>l.status==='pending').length;
+  const total=getKyukaDays(name);
+  return{used:approved,pending,remain:total-approved,total};
+}
+function renderKyuka(){
+  const content=document.getElementById('kyuka-content');
+  if(kyukaSeg==='status'){
+    content.innerHTML=STAFF.map(name=>{
+      const s=getLeaveStats(name);
+      const total=s.total||0;
+      const pct=total>0?Math.round((s.used/total)*100):0;
+      return `<div class="kyuka-card">
+        <div class="kyuka-header"><span class="kyuka-name">${name}</span><span class="kyuka-remain">残 ${s.remain}日</span></div>
+        <div class="kyuka-bar-bg"><div class="kyuka-bar-fill" style="width:${pct}%"></div></div>
+        <div class="kyuka-stats">
+          <div class="kyuka-stat"><div class="kyuka-stat-label">付与</div><div class="kyuka-stat-val">${total}</div><div class="kyuka-stat-unit">日</div></div>
+          <div class="kyuka-stat"><div class="kyuka-stat-label">取得済</div><div class="kyuka-stat-val">${s.used}</div><div class="kyuka-stat-unit">日</div></div>
+          <div class="kyuka-stat"><div class="kyuka-stat-label">申請中</div><div class="kyuka-stat-val">${s.pending}</div><div class="kyuka-stat-unit">件</div></div>
+          <div class="kyuka-stat"><div class="kyuka-stat-label">残日数</div><div class="kyuka-stat-val">${s.remain}</div><div class="kyuka-stat-unit">日</div></div>
+        </div>
+      </div>`;
+    }).join('');
+  }else if(kyukaSeg==='apply'){
+    content.innerHTML=`
+      <div class="card">
+        <div class="field"><label class="lbl">氏名</label>
+          <select id="leave-name"><option value="">選択してください</option>${STAFF.map(m=>`<option>${m}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label class="lbl">取得日</label><input type="date" id="leave-date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label class="lbl">理由（任意）</label><textarea id="leave-reason" rows="2" placeholder="私用のため など"></textarea></div>
+        <button class="btn-primary" onclick="submitLeave()">申請する</button>
+      </div>`;
+  }else if(kyukaSeg==='yasumi'){
+    content.innerHTML=`
+      <div class="card">
+        <div class="field"><label class="lbl">氏名</label>
+          <select id="yasumi-name"><option value="">選択してください</option>${STAFF.map(m=>`<option>${m}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label class="lbl">休み日</label><input type="date" id="yasumi-date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label class="lbl">理由（任意）</label><textarea id="yasumi-reason" rows="2" placeholder="私用のため など"></textarea></div>
+        <button class="btn-primary" onclick="submitYasumi()">申請する</button>
+      </div>
+      <div style="margin-top:16px">
+        <div class="section-title">休み申請 履歴</div>
+        ${Object.entries(absences).sort((a,b)=>b[1].createdAt-a[1].createdAt).map(([key,a])=>`
+          <div class="yasumi-card">
+            <div class="apply-top">
+              <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
+              <span class="status-badge ${a.status==='approved'?'status-approved':a.status==='rejected'?'status-rejected':a.status==='cancelled'?'status-rejected':'status-pending'}">${a.status==='approved'?'承認済':a.status==='rejected'?'却下':a.status==='cancelled'?'取消済':'申請中'}</span>
+            </div>
+            ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
+            ${a.status==='approved'?`<button class="btn-cancel-leave" onclick="cancelAbsence('${key}')">✗ 取り消す</button>`:''}
+          </div>`).join('')||'<div class="empty">申請履歴がありません</div>'}
+      </div>`;
+  }else{
+    const list=Object.entries(leaves).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+    if(!list.length){content.innerHTML='<div class="empty">📭 申請履歴がありません</div>';return;}
+    content.innerHTML=list.map(([key,l])=>`
+      <div class="apply-card">
+        <div class="apply-top">
+          <div><div class="apply-name">${l.staffName}</div><div class="apply-date">📅 ${l.date}</div></div>
+          <span class="status-badge ${l.status==='approved'?'status-approved':l.status==='rejected'?'status-rejected':l.status==='cancelled'?'status-rejected':'status-pending'}">${l.status==='approved'?'承認済':l.status==='rejected'?'却下':l.status==='cancelled'?'取消済':'申請中'}</span>
+        </div>
+        ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
+      </div>`).join('');
+  }
+}
+async function submitLeave(){
+  const staffName=document.getElementById('leave-name').value;
+  const date=document.getElementById('leave-date').value;
+  const reason=document.getElementById('leave-reason').value.trim();
+  if(!staffName||!date){alert('氏名と取得日を入力してください');return;}
+  const s=getLeaveStats(staffName);
+  if(getKyukaDays(staffName)===0){alert('付与日数が設定されていません。管理者にお問い合わせください。');return;}
+  if(s.remain<=0){alert('有給残日数がありません');return;}
+  try{
+    await fetch(DB+'/leaves.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffName,date,reason,status:'pending',createdAt:Date.now()})});
+    alert('申請しました！管理者の承認をお待ちください。');
+    await loadKyuka();setKyukaSeg('history');
+  }catch(e){alert('申請に失敗しました。');}
+}
+
+// ── 管理者 ───────────────────────
+function showAdmin(){
+  const content=document.getElementById('admin-content');
+  if(!adminLoggedIn){
+    content.innerHTML=`<div class="admin-lock">
+      <div class="lock-icon">🔐</div>
+      <div class="lock-title">管理者ページ</div>
+      <div class="lock-sub">パスワードを入力してください</div>
+      <div style="width:100%;max-width:300px">
+        <input type="password" id="admin-pass" placeholder="パスワード" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')checkPass()">
+        <button class="btn-primary" onclick="checkPass()">ログイン</button>
+      </div>
+    </div>`;return;
+  }
+  renderAdminContent();
+}
+function checkPass(){
+  const p=document.getElementById('admin-pass').value;
+  if(p===ADMIN_PASS){adminLoggedIn=true;renderAdminContent();}
+  else{alert('パスワードが違います');}
+}
+async function renderAdminContent(){
+  const content=document.getElementById('admin-content');
+  content.innerHTML='<div class="loading">読み込み中...</div>';
+  try{
+    const [rRes,lRes,sRes,aRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json')]);
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};
+  }catch(e){}
+
+  // 作業時間・日数集計（全期間）
+  window._allReports=reports;
+  calcWorkStats('day');
+  // 日付ピッカーの初期値を今日に設定
+  const _td=new Date().toISOString().slice(0,10);
+  const _mth=new Date().toISOString().slice(0,7);
+  setTimeout(()=>{
+    const df=document.getElementById('wseg-date-from');
+    const dt=document.getElementById('wseg-date-to');
+    const dm=document.getElementById('wseg-month-val');
+    if(df)df.value=_td;if(dt)dt.value=_td;if(dm)dm.value=_mth;
+  },0);
+
+  // 有給申請（承認待ち）
+  const pendingLeaves=Object.entries(leaves).filter(([,l])=>l.status==='pending');
+  const approvedLeaves=Object.entries(leaves).filter(([,l])=>l.status==='approved').sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  const pendingAbsences=Object.entries(absences).filter(([,a])=>a.status==='pending');
+
+  content.innerHTML=`
+    <div class="wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="page-title">👤 管理者ページ</div>
+        <button class="logout-btn" onclick="adminLogout()">ログアウト</button>
+      </div>
+      <div class="page-sub">作業状況・有給承認</div>
+
+      <div class="export-section">
+        <div class="export-title">📊 Excelで出力</div>
+        <div class="export-row">
+          <span class="export-label">対象月</span>
+          <select class="export-select" id="export-month">${
+            Array.from({length:12},(_,i)=>{
+              const d=new Date();d.setMonth(d.getMonth()-i);
+              const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');
+              return `<option value="${y}-${m}">${y}年${parseInt(m)}月</option>`;
+            }).join('')
+          }</select>
+        </div>
+        <button class="btn-excel" onclick="exportExcel()">📥 Excelをダウンロード</button>
+      </div>
+
+      <div class="section-title">作業時間・作業日数</div>
+      <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:14px">
+        <button class="stats-seg-btn active" id="wseg-day" onclick="switchWorkSeg('day')">日付指定</button>
+        <button class="stats-seg-btn" id="wseg-month" onclick="switchWorkSeg('month')">月</button>
+      </div>
+      <div id="work-seg-day-picker" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="date" id="wseg-date-from" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <span style="color:#aaa">〜</span>
+          <input type="date" id="wseg-date-to" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <button onclick="calcWorkStats('day')" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
+        </div>
+      </div>
+      <div id="work-seg-month-picker" style="display:none;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="month" id="wseg-month-val" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <button onclick="calcWorkStats('month')" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
+        </div>
+      </div>
+      <div id="work-stats-label" style="font-size:12px;color:#aaa;margin-bottom:10px;font-weight:600"></div>
+      <div class="admin-stats-grid" id="work-stats-grid"></div>
+
+      <div class="section-title" style="margin-top:8px">有給 付与日数設定</div>
+      <div class="card" style="margin-bottom:16px">
+        ${STAFF.map(m=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:14px;font-weight:600;color:#2d2a26;">${m}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="number" min="0" max="99" value="${leaveSettings[m]||0}" id="ls-${m.replace(/\s/g,'_')}" style="width:60px;padding:6px 8px;border-radius:7px;border:1.5px solid #e0d8d0;font-size:14px;text-align:center;font-family:inherit;">
+              <span style="font-size:13px;color:#aaa;">日</span>
+              <button onclick="saveLeaveSettings('${m}')" style="padding:6px 12px;background:#e07b4f;color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;">保存</button>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <div class="section-title" style="margin-top:8px">有給申請 承認待ち（${pendingLeaves.length}件）</div>
+      ${pendingLeaves.length?pendingLeaves.map(([key,l])=>`
+        <div class="apply-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${l.staffName}</div><div class="apply-date">📅 ${l.date}</div></div>
+            <span class="status-badge status-pending">申請中</span>
+          </div>
+          ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
+          <div class="approve-row">
+            <button class="btn-approve" onclick="approveLeave('${key}','approved')">✓ 承認</button>
+            <button class="btn-reject" onclick="approveLeave('${key}','rejected')">✗ 却下</button>
+          </div>
+        </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
+
+      <div class="section-title" style="margin-top:16px">休み申請 承認待ち（${pendingAbsences.length}件）</div>
+      ${pendingAbsences.length?pendingAbsences.map(([key,a])=>`
+        <div class="yasumi-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
+            <span class="status-badge status-pending">申請中</span>
+          </div>
+          ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
+          <div class="approve-row">
+            <button class="btn-yasumi-approve" onclick="approveAbsence('${key}','approved')">✓ 承認</button>
+            <button class="btn-reject" onclick="approveAbsence('${key}','rejected')">✗ 却下</button>
+          </div>
+        </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
+
+      ${approvedLeaves.length?`
+      <div class="section-title" style="margin-top:16px">承認済み（取り消し可能）</div>
+      ${approvedLeaves.map(([key,l])=>`
+        <div class="apply-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${l.staffName}</div><div class="apply-date">📅 ${l.date}</div></div>
+            <span class="status-badge status-approved">承認済</span>
+          </div>
+          ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
+          <button class="btn-cancel-leave" onclick="cancelLeave('${key}')">✗ 取り消す</button>
+        </div>`).join('')}`:''}
+    </div>`;
+}
+async function saveLeaveSettings(name){
+  const id='ls-'+name.replace(/ /g,'_');
+  const val=parseInt(document.getElementById(id)?.value)||0;
+  try{
+    await fetch(DB+'/leaveSettings/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});
+    leaveSettings[name]=val;
+    alert(name+'の付与日数を'+val+'日に設定しました');
+  }catch(e){alert('保存に失敗しました。');}
+}
+
+async function approveAbsence(key,status){
+  try{
+    await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    absences[key]={...absences[key],status};
+    alert(status==='approved'?'承認しました':'却下しました');
+    renderAdminContent();
+  }catch(e){alert('処理に失敗しました。');}
+}
+
+async function approveLeave(key,status){
+  try{
+    await fetch(DB+'/leaves/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    alert(status==='approved'?'承認しました':'却下しました');
+    renderAdminContent();
+  }catch(e){alert('処理に失敗しました。');}
+}
+function exportExcel(){
+  const month=document.getElementById('export-month')?.value;
+  if(!month){alert('対象月を選択してください');return;}
+  const [y,m]=month.split('-');
+  const label=`${y}年${parseInt(m)}月`;
+
+  // 対象月の日報を絞り込み
+  const monthReports=Object.values(reports).filter(r=>r.date?.startsWith(month));
+
+  // ── シート1: 勤怠（作業日数・作業時間） ──
+  const kintaiData=[['氏名','作業日数','作業時間（分）','作業時間（時間）']];
+  STAFF.forEach(name=>{
+    const rList=monthReports.filter(r=>r.staffName===name);
+    const days=new Set(rList.map(r=>r.date)).size;
+    let mins=0;
+    rList.forEach(r=>r.sites?.forEach(s=>{
+      if(s.timeIn&&s.timeOut){
+        const [ih,im]=s.timeIn.split(':').map(Number);
+        const [oh,om]=s.timeOut.split(':').map(Number);
+        const d=(oh*60+om)-(ih*60+im);if(d>0)mins+=d;
+      }
+    }));
+    kintaiData.push([name,days,mins,Math.round(mins/60*10)/10]);
+  });
+
+  // ── シート2: 材料使用量 ──
+  const materialData=[['日付','氏名','現場名','プライマー(kg)','樹脂(缶割)','トップ(kg)']];
+  monthReports.sort((a,b)=>a.date?.localeCompare(b.date)).forEach(r=>{
+    r.sites?.forEach(s=>{
+      if(s.primerKg||s.resinKg||s.topKg){
+        materialData.push([r.date,r.staffName,s.name,parseFloat(s.primerKg)||0,`${parseInt(s.resinKan)||0}缶${parseInt(s.resinWari)||0}割`,parseFloat(s.topKg)||0]);
+      }
+    });
+  });
+
+  // ── シート3: 現場・工程 ──
+  const genbaData=[['日付','氏名','現場名','入場','退場','下地状況','現調','下地','プライマー','1ply','2ply','トップ']];
+  monthReports.sort((a,b)=>a.date?.localeCompare(b.date)).forEach(r=>{
+    r.sites?.forEach(s=>{
+      genbaData.push([
+        r.date,r.staffName,s.name,s.timeIn||'',s.timeOut||'',
+        ...PROCESSES.map(p=>s.processes?.includes(p)?'✓':'')
+      ]);
+    });
+  });
+
+  // ── シート4: 有給取得履歴 ──
+  const kyukaData=[['氏名','取得日','理由','ステータス']];
+  Object.values(leaves).filter(l=>l.date?.startsWith(month)).sort((a,b)=>a.date?.localeCompare(b.date)).forEach(l=>{
+    kyukaData.push([l.staffName,l.date,l.reason||'',l.status==='approved'?'承認済':l.status==='rejected'?'却下':'申請中']);
+  });
+
+  // Excelブック作成
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(kintaiData),'勤怠');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(materialData),'材料使用量');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(genbaData),'現場・工程');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(kyukaData),'有給履歴');
+  XLSX.writeFile(wb,`日報_${label}.xlsx`);
+}
+
+async function submitYasumi(){
+  const staffName=document.getElementById('yasumi-name').value;
+  const date=document.getElementById('yasumi-date').value;
+  const reason=document.getElementById('yasumi-reason').value.trim();
+  if(!staffName||!date){alert('氏名と休み日を入力してください');return;}
+  try{
+    await fetch(DB+'/absences.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffName,date,reason,status:'pending',createdAt:Date.now()})});
+    alert('申請しました！管理者の承認をお待ちください。');
+    await loadKyuka();setKyukaSeg('yasumi');
+  }catch(e){alert('申請に失敗しました。');}
+}
+
+async function cancelAbsence(key){
+  if(!confirm('この休み申請を取り消しますか？'))return;
+  try{
+    await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
+    absences[key]={...absences[key],status:'cancelled'};
+    alert('取り消しました');
+    await loadKyuka();setKyukaSeg('yasumi');
+  }catch(e){alert('取り消しに失敗しました。');}
+}
+
+async function cancelLeave(key){
+  if(!confirm('この有給を取り消しますか？取り消すと残日数に戻ります。'))return;
+  try{
+    await fetch(DB+'/leaves/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
+    leaves[key]={...leaves[key],status:'cancelled'};
+    alert('有給を取り消しました');
+    await loadKyuka();
+    if(adminLoggedIn)renderAdminContent();
+  }catch(e){alert('取り消しに失敗しました。');}
+}
+
+// ── 日報編集 ─────────────────────
+function openReportEdit(key){
+  const r=reports[key];if(!r)return;
+  const modal=document.getElementById('report-edit-modal');
+  const editContent=document.getElementById('report-edit-content');
+
+  // 天気ボタン
+  const weatherBtns=Object.entries(WEATHERS).map(([val,emoji])=>`
+    <button class="weather-btn ${r.weather===val?'selected':''}" data-value="${val}"
+      onclick="this.parentNode.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));this.classList.add('selected')"
+      style="font-size:12px">${emoji} ${val}</button>`).join('');
+
+  // 現場カード
+  const sitesHtml=r.sites.map((s,i)=>{
+    const procBtns=PROCESSES.map(p=>`<button class="proc-btn ${s.processes?.includes(p)?'selected':''}" data-proc="${p}"
+      onclick="toggleProc(this)">${p}</button>`).join('');
+    return `<div class="site-card" id="edit-site-${i}">
+      <div class="site-top-row">
+        <input class="site-input" type="text" placeholder="現場名" id="edit-site-name-${i}" value="${s.name||''}">
+      </div>
+      <div class="time-row">
+        <div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="edit-time-in-${i}" value="${s.timeIn||''}"></div>
+        <span class="time-sep">→</span>
+        <div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="edit-time-out-${i}" value="${s.timeOut||''}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+        ${['湿気なし','湿気あり'].map(sh=>`<button class="proc-btn ${s.shitaji?.includes(sh)?'selected':''}" data-shitaji="${sh}" onclick="toggleShitaji(this)">${sh}</button>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
+        ${['バーナー未使用','バーナー小','バーナー大'].map(sh=>`<button class="proc-btn ${s.shitaji?.includes(sh)?'selected':''}" data-shitaji="${sh}" onclick="toggleShitaji(this)">${sh === 'バーナー未使用' ? '未使用' : sh}</button>`).join('')}
+      </div>
+      <div class="process-grid">${procBtns}</div>
+      <div class="material-section">
+        <div class="material-title">材料使用量</div>
+        <div class="material-row"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-primerKg-${i}" value="${s.primerKg||''}"><span class="material-unit">kg</span></div>
+        <div class="material-row"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="edit-resinKan-${i}" value="${s.resinKan||''}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="edit-resinWari-${i}" value="${s.resinWari||''}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
+        <div class="material-row"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-topKg-${i}" value="${s.topKg||''}"><span class="material-unit">kg</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  editContent.innerHTML=`
+    <div class="field"><label class="lbl">氏名</label>
+      <select id="edit-staff-name">
+        ${MEMBERS.map(m=>`<option ${r.staffName===m?'selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label class="lbl">日付</label>
+      <input type="date" id="edit-report-date" value="${r.date||''}">
+    </div>
+    <div class="field"><label class="lbl">天気</label>
+      <div class="weather-grid">${weatherBtns}</div>
+    </div>
+    <div class="field"><label class="lbl">現場名・工程</label>${sitesHtml}</div>
+    <div class="field"><label class="lbl">明日の予定</label>
+      <textarea id="edit-tomorrow" rows="3">${r.tomorrow||''}</textarea>
+    </div>
+    <button class="btn-primary" onclick="saveReportEdit('${key}')">保存する</button>
+    <div style="height:32px"></div>
+  `;
+  modal.style.display='block';
+  document.body.style.overflow='hidden';
+}
+
+function closeReportEdit(){
+  document.getElementById('report-edit-modal').style.display='none';
+  document.body.style.overflow='';
+}
+
+async function saveReportEdit(key){
+  const r=reports[key];if(!r)return;
+  const staffName=document.getElementById('edit-staff-name').value;
+  const date=document.getElementById('edit-report-date').value;
+  const tomorrow=document.getElementById('edit-tomorrow').value.trim();
+  const weatherBtn=document.querySelector('#report-edit-modal .weather-btn.selected');
+  const weather=weatherBtn?weatherBtn.dataset.value:r.weather;
+
+  // 現場情報を収集
+  const sites=[];
+  r.sites.forEach((_,i)=>{
+    const name=document.getElementById('edit-site-name-'+i)?.value.trim();
+    if(!name)return;
+    const processes=[];
+    document.querySelectorAll(`#edit-site-${i} .proc-btn.selected`).forEach(b=>processes.push(b.dataset.proc));
+    sites.push({
+      name,
+      timeIn:document.getElementById('edit-time-in-'+i)?.value||'',
+      timeOut:document.getElementById('edit-time-out-'+i)?.value||'',
+      processes,
+      shitaji:Array.from(document.querySelectorAll(`#edit-site-${i} [data-shitaji].selected`)).map(b=>b.dataset.shitaji),
+      primerKg:document.getElementById('edit-primerKg-'+i)?.value||'',
+      resinKan:document.getElementById('edit-resinKan-'+i)?.value||'',
+      resinWari:document.getElementById('edit-resinWari-'+i)?.value||'',
+      topKg:document.getElementById('edit-topKg-'+i)?.value||''
+    });
+  });
+
+  const dateLabel=date?new Date(date+'T00:00:00').toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}):r.dateLabel;
+  const updated={...r,staffName,date,dateLabel,weather,sites,tomorrow};
+
+  try{
+    await fetch(DB+'/reports/'+key+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(updated)});
+    reports[key]=updated;
+    document.getElementById('badge').textContent=Object.keys(reports).length;
+    closeReportEdit();
+    showDetail(key);
+    if(calSelectedDate)renderCalendar();
+    alert('保存しました！');
+  }catch(e){alert('保存に失敗しました。');}
+}
+
+let currentWorkSeg='day';
+
+function switchWorkSeg(seg){
+  currentWorkSeg=seg;
+  document.querySelectorAll('[id^="wseg-day"],[id^="wseg-month"]').forEach(b=>{if(b.tagName==='BUTTON')b.classList.remove('active');});
+  document.getElementById('wseg-'+seg).classList.add('active');
+  document.getElementById('work-seg-day-picker').style.display=seg==='day'?'block':'none';
+  document.getElementById('work-seg-month-picker').style.display=seg==='month'?'block':'none';
+  document.getElementById('work-stats-grid').innerHTML='';
+  document.getElementById('work-stats-label').textContent='';
+}
+
+function calcWorkStats(seg){
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  let dateFrom='',dateTo='',label='';
+  if(seg==='day'){
+    dateFrom=document.getElementById('wseg-date-from')?.value||todayStr;
+    dateTo=document.getElementById('wseg-date-to')?.value||todayStr;
+    if(dateFrom>dateTo){alert('終了日は開始日以降にしてください');return;}
+    const f=new Date(dateFrom),t=new Date(dateTo);
+    label=`${f.getMonth()+1}月${f.getDate()}日 〜 ${t.getMonth()+1}月${t.getDate()}日`;
+  }else{
+    const mv=document.getElementById('wseg-month-val')?.value||todayStr.slice(0,7);
+    dateFrom=mv+'-01';
+    const last=new Date(parseInt(mv.slice(0,4)),parseInt(mv.slice(5,7)),0);
+    dateTo=mv+'-'+String(last.getDate()).padStart(2,'0');
+    label=`${mv.slice(0,4)}年${parseInt(mv.slice(5,7))}月`;
+  }
+  const workStats={};
+  STAFF.forEach(m=>workStats[m]={days:new Set(),minutes:0});
+  Object.values(window._allReports||reports).forEach(r=>{
+    if(!workStats[r.staffName])return;
+    if(!r.date||r.date<dateFrom||r.date>dateTo)return;
+    workStats[r.staffName].days.add(r.date);
+    r.sites?.forEach(s=>{
+      if(s.timeIn&&s.timeOut){
+        const [ih,im]=s.timeIn.split(':').map(Number);
+        const [oh,om]=s.timeOut.split(':').map(Number);
+        const diff=(oh*60+om)-(ih*60+im);
+        if(diff>0)workStats[r.staffName].minutes+=diff;
+      }
+    });
+  });
+  const labelEl=document.getElementById('work-stats-label');
+  const gridEl=document.getElementById('work-stats-grid');
+  if(labelEl)labelEl.textContent=label;
+  // 月表示のみ：有給・休み日数＋日曜除く稼働可能日数を追加
+  let kyukaByPerson={},yasumiByPerson={},possibleDays=0;
+  if(seg==='month'){
+    STAFF.forEach(m=>{kyukaByPerson[m]=0;yasumiByPerson[m]=0;});
+    Object.values(leaves).forEach(l=>{
+      if(l.status==='approved'&&l.date>=dateFrom&&l.date<=dateTo&&kyukaByPerson[l.staffName]!==undefined)
+        kyukaByPerson[l.staffName]++;
+    });
+    Object.values(absences).forEach(a=>{
+      if(a.status==='approved'&&a.date>=dateFrom&&a.date<=dateTo&&yasumiByPerson[a.staffName]!==undefined)
+        yasumiByPerson[a.staffName]++;
+    });
+    // 日曜除く稼働可能日数を計算
+    const cur=new Date(dateFrom);
+    const end=new Date(dateTo);
+    while(cur<=end){
+      if(cur.getDay()!==0)possibleDays++;
+      cur.setDate(cur.getDate()+1);
+    }
+  }
+
+  if(gridEl)gridEl.innerHTML=STAFF.map(m=>{
+    const s=workStats[m];
+    const h=Math.floor(s.minutes/60);const min=s.minutes%60;
+    const kyuka=kyukaByPerson[m]||0;
+    const yasumi=yasumiByPerson[m]||0;
+    return `<div class="admin-stat-card">
+      <div class="admin-stat-name">${m}</div>
+      <div class="admin-stat-row"><span class="admin-stat-key">作業日数</span><span class="admin-stat-val">${s.days.size}日${seg==='month'?` / ${possibleDays}日`+`<span style="font-size:10px;color:#aaa">（日曜除く）</span>`:''}</span></div>
+      <div class="admin-stat-row"><span class="admin-stat-key">作業時間</span><span class="admin-stat-val">${h}h${min}m</span></div>
+      ${seg==='month'?`
+      <div class="admin-stat-row"><span class="admin-stat-key">🏖️ 有給</span><span class="admin-stat-val" style="color:#388e3c">${kyuka}日</span></div>
+      <div class="admin-stat-row"><span class="admin-stat-key">😴 休み</span><span class="admin-stat-val" style="color:#7b4fb0">${yasumi}日</span></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function adminLogout(){adminLoggedIn=false;showAdmin();}
+
+// ── 詳細 ─────────────────────────
+function showDetail(key){
+  const r=reports[key];if(!r)return;
+  const w=(WEATHERS[r.weather]||'')+' '+r.weather;
+  document.getElementById('detail-content').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <button class="back-btn" style="padding:0" onclick="showView('list')">← 一覧へ戻る</button>
+      <button onclick="openReportEdit('${key}')" style="background:#e07b4f;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✏️ 編集</button>
+    </div>
+    <div style="font-size:13px;color:#aaa;margin-bottom:4px">${r.dateLabel||r.date}</div>
+    <div style="font-size:22px;font-weight:700;color:#2d2a26;margin-bottom:20px">${r.staffName}</div>
+    <div class="detail-section"><span class="detail-section-label">天気</span><span class="weather-tag">${w}</span></div>
+    <div class="detail-section"><span class="detail-section-label">現場・工程・材料</span>
+      ${r.sites.map(s=>`<div class="site-result">
+        <div class="site-result-name">📍 ${s.name}</div>
+        ${(s.timeIn||s.timeOut)?`<div class="time-result-row">🕐 入場 ${s.timeIn||'−'} → 退場 ${s.timeOut||'−'}</div>`:''}
+        ${s.shitaji?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">${s.shitaji.map(sh=>`<span style="background:#e8f0e8;color:#2d6a2d;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:600">🌡 ${sh}</span>`).join('')}</div>`:''}
+        <div class="process-result-row">${PROCESSES.map(p=>`<span class="proc-chip ${s.processes.includes(p)?'done':'not-done'}">${p}</span>`).join('')}</div>
+        ${(MATERIALS.some(m=>s[m.field])||s.resinKan||s.resinWari)?`<div class="material-result-row">${MATERIALS.filter(m=>s[m.field]).map(m=>`<span class="material-chip">${m.label} ${s[m.field]}kg</span>`).join('')}${(s.resinKan||s.resinWari)?`<span class="material-chip">樹脂 ${s.resinKan||0}缶${s.resinWari||0}割</span>`:''}</div>`:''}
+      </div>`).join('')}
+    </div>
+    <div class="detail-section"><span class="detail-section-label">明日の予定</span><div class="preview-text">${r.tomorrow}</div></div>`;
+  showView('detail');
+}
+</script>
+</body>
+</html>
