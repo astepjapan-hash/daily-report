@@ -421,6 +421,7 @@ const PROCESSES = ['現調','下地','プライマー','1ply','2ply','トップ'
 const MATERIALS = [{label:'プライマー',field:'primerKg'},{label:'トップ',field:'topKg'}];
 const SHITAJI = ['湿気なし','湿気あり','バーナー未使用','バーナー小','バーナー大'];
 const KAN_KG = {primerKg:16, topKg:15}; // 1缶あたりのkg
+const RESIN_KG_PER_KAN = 18; // 樹脂1缶あたりkg
 const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
 const MEMBERS = ['管理','加藤瑞樹','山内浩一','森田義則','富山裕貴'];
 const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
@@ -628,7 +629,7 @@ function calcTotals(list){
 }
 function matGridHtml(t){return `<div class="mat-grid">
   <div class="mat-cell"><div class="mat-name">プライマー</div><div class="mat-val" style="font-size:15px">${kgToKanWari(t.primerKg,KAN_KG.primerKg)}</div></div>
-  <div class="mat-cell"><div class="mat-name">樹脂</div><div class="mat-val" style="font-size:16px">${t.resinKan}缶${t.resinWari}割</div></div>
+  <div class="mat-cell"><div class="mat-name">樹脂</div><div class="mat-val" style="font-size:14px">${t.resinKan}缶${t.resinWari}割<br><span style="font-size:11px;color:#aaa">${Math.round((t.resinKan*10+t.resinWari)*RESIN_KG_PER_KAN/10*10)/10}kg</span></div></div>
   <div class="mat-cell"><div class="mat-name">トップ</div><div class="mat-val" style="font-size:15px">${kgToKanWari(t.topKg,KAN_KG.topKg)}</div></div>
 </div>`;}
 
@@ -903,7 +904,7 @@ async function loadStats(){
   catch(e){document.getElementById('stats-content').innerHTML='<div class="loading">読み込みに失敗しました</div>';}
 }
 function statsRowHtml(label,count,totals){
-  return `<div class="stats-row"><div class="stats-row-top"><span class="stats-row-label">${label}</span><span class="stats-row-count">${count}件</span></div><div class="stats-mat-row"><div class="stats-mat-chip"><div class="stats-mat-chip-name">プライマー</div><div class="stats-mat-chip-val" style="font-size:12px">${kgToKanWari(totals.primerKg,KAN_KG.primerKg)}</div></div><div class="stats-mat-chip"><div class="stats-mat-chip-name">樹脂</div><div class="stats-mat-chip-val" style="font-size:12px">${totals.resinKan}缶${totals.resinWari}割</div></div><div class="stats-mat-chip"><div class="stats-mat-chip-name">トップ</div><div class="stats-mat-chip-val" style="font-size:12px">${kgToKanWari(totals.topKg,KAN_KG.topKg)}</div></div></div></div>`;
+  return `<div class="stats-row"><div class="stats-row-top"><span class="stats-row-label">${label}</span><span class="stats-row-count">${count}件</span></div><div class="stats-mat-row"><div class="stats-mat-chip"><div class="stats-mat-chip-name">プライマー</div><div class="stats-mat-chip-val" style="font-size:12px">${kgToKanWari(totals.primerKg,KAN_KG.primerKg)}</div></div><div class="stats-mat-chip"><div class="stats-mat-chip-name">樹脂</div><div class="stats-mat-chip-val" style="font-size:12px">${totals.resinKan}缶${totals.resinWari}割<div style="font-size:10px;color:#aaa">${Math.round((totals.resinKan*10+totals.resinWari)*RESIN_KG_PER_KAN/10*10)/10}kg</div></div></div><div class="stats-mat-chip"><div class="stats-mat-chip-name">トップ</div><div class="stats-mat-chip-val" style="font-size:12px">${kgToKanWari(totals.topKg,KAN_KG.topKg)}</div></div></div></div>`;
 }
 function renderStats(){
   const content=document.getElementById('stats-content');
