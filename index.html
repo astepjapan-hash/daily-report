@@ -607,13 +607,15 @@ let calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSelecte
 let schedules={};
 
 function kgToKanWari(kg, kanKg){
-  if(!kg||kg===0)return '0kg';
+  if(!kg||kg===0)return '0';
   const total=Math.round(kg/kanKg*10);
   const kan=Math.floor(total/10);
   const wari=total%10;
-  if(kan===0)return `${wari}割(${Math.round(kg*10)/10}kg)`;
-  if(wari===0)return `${kan}缶(${Math.round(kg*10)/10}kg)`;
-  return `${kan}缶${wari}割(${Math.round(kg*10)/10}kg)`;
+  let kanStr='';
+  if(kan===0)kanStr=`${wari}割`;
+  else if(wari===0)kanStr=`${kan}缶`;
+  else kanStr=`${kan}缶${wari}割`;
+  return `${kanStr}<br><span style="font-size:11px;color:#aaa">${Math.round(kg*10)/10}kg</span>`;
 }
 
 function calcTotals(list){
@@ -1629,7 +1631,7 @@ function showDetail(key){
         ${(s.timeIn||s.timeOut)?`<div class="time-result-row">🕐 入場 ${s.timeIn||'−'} → 退場 ${s.timeOut||'−'}</div>`:''}
         ${s.shitaji?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">${s.shitaji.map(sh=>`<span style="background:#e8f0e8;color:#2d6a2d;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:600">🌡 ${sh}</span>`).join('')}</div>`:''}
         <div class="process-result-row">${PROCESSES.map(p=>`<span class="proc-chip ${s.processes.includes(p)?'done':'not-done'}">${p}</span>`).join('')}</div>
-        ${(MATERIALS.some(m=>s[m.field])||s.resinKan||s.resinWari)?`<div class="material-result-row">${MATERIALS.filter(m=>s[m.field]).map(m=>`<span class="material-chip">${m.label} ${s[m.field]}kg</span>`).join('')}${(s.resinKan||s.resinWari)?`<span class="material-chip">樹脂 ${s.resinKan||0}缶${s.resinWari||0}割</span>`:''}</div>`:''}
+        ${(s.primerKg||s.resinKan||s.resinWari||s.topKg)?`<div class="material-result-row">${s.primerKg?`<span class="material-chip">プライマー ${s.primerKg}kg</span>`:''} ${(s.resinKan||s.resinWari)?`<span class="material-chip">樹脂 ${s.resinKan||0}缶${s.resinWari||0}割</span>`:''} ${s.topKg?`<span class="material-chip">トップ ${s.topKg}kg</span>`:''}</div>`:''}
       </div>`).join('')}
     </div>
     <div class="detail-section"><span class="detail-section-label">明日の予定</span><div class="preview-text">${r.tomorrow}</div></div>`;
