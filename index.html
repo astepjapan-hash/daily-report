@@ -964,8 +964,7 @@ function setPersonSeg(seg){
   personSeg=seg;
   document.querySelectorAll('[id^="pseg-"]').forEach(b=>b.classList.remove('active'));
   document.getElementById('pseg-'+seg).classList.add('active');
-  document.getElementById('person-date-picker').style.display=(seg==='range')?'flex':'none';
-  if(seg!=='range')renderPersonStats();
+  renderPersonStats();
 }
 
 function renderPersonStats(){
@@ -985,9 +984,8 @@ function renderPersonStats(){
         <button class="stats-seg-btn active" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
         <button class="stats-seg-btn" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
         <button class="stats-seg-btn" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
-        <button class="stats-seg-btn" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+        
       </div>
-      <div id="person-date-picker" style="display:none"></div>
       ${MEMBERS.filter(m=>byP[m]?.length).map(m=>{
         const byDay={};byP[m].forEach(([k,r])=>{if(!byDay[r.date])byDay[r.date]={label:r.dateLabel||r.date,list:[]};byDay[r.date].list.push([k,r]);});
         return `<div style="margin-bottom:16px"><div class="section-title" style="font-size:14px;color:#2d2a26;font-weight:700;margin-bottom:8px">${m}</div>
@@ -1004,9 +1002,8 @@ function renderPersonStats(){
         <button class="stats-seg-btn" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
         <button class="stats-seg-btn active" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
         <button class="stats-seg-btn" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
-        <button class="stats-seg-btn" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+        
       </div>
-      <div id="person-date-picker" style="display:none"></div>
       ${MEMBERS.filter(m=>byP[m]?.length).map(m=>{
         const byMonth={};byP[m].forEach(([k,r])=>{const mn=(r.date||'').slice(0,7);if(!byMonth[mn])byMonth[mn]=[];byMonth[mn].push([k,r]);});
         return `<div style="margin-bottom:16px"><div class="section-title" style="font-size:14px;color:#2d2a26;font-weight:700;margin-bottom:8px">${m}</div>
@@ -1026,7 +1023,7 @@ function renderPersonStats(){
         <button class="stats-seg-btn" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
         <button class="stats-seg-btn" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
         <button class="stats-seg-btn" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
-        <button class="stats-seg-btn active" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+        
       </div>
       <div id="person-date-picker" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <input type="date" id="person-from" value="${from}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
@@ -1046,9 +1043,8 @@ function renderPersonStats(){
         <button class="stats-seg-btn" id="pseg-day" onclick="setPersonSeg('day')">日別</button>
         <button class="stats-seg-btn" id="pseg-month" onclick="setPersonSeg('month')">月別</button>
         <button class="stats-seg-btn active" id="pseg-total" onclick="setPersonSeg('total')">合計</button>
-        <button class="stats-seg-btn" id="pseg-range" onclick="setPersonSeg('range')">期間</button>
+        
       </div>
-      <div id="person-date-picker" style="display:none"></div>
       <div class="section-title">個人別 合計</div>
       ${MEMBERS.filter(m=>byP[m]?.length).map(m=>statsRowHtml(m,byP[m].length,calcTotals(byP[m]))).join('')||'<div class="empty">データなし</div>'}`;
   }
