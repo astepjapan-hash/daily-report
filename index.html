@@ -286,11 +286,7 @@ textarea { resize: vertical; }
   <div class="view active" id="view-form">
     <div class="wrap">
       <div id="draft-bar" style="display:none" class="draft-bar">
-        <span class="draft-bar-text">📝 下書きがあります</span>
-        <div class="draft-bar-btns">
-          <button class="draft-load-btn" onclick="loadDraft()">読み込む</button>
-          <button class="draft-del-btn" onclick="deleteDraft()">削除</button>
-        </div>
+        <span class="draft-bar-text">📝 下書き保存済み（一覧から編集できます）</span>
       </div>
       <div class="date-label" id="today-label"></div>
       <div class="field">
@@ -538,7 +534,7 @@ async function submitReport(){
   const report={date:new Date().toISOString().slice(0,10),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
   try{
     const res=await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
-    if(!res.ok)throw new Error();localStorage.removeItem('report_draft');showView('done');
+    if(!res.ok)throw new Error();localStorage.removeItem('report_draft');window._editingDraftKey=null;showView('done');
   }catch(e){alert('送信に失敗しました。');}
 }
 function resetForm(){
@@ -580,20 +576,15 @@ async function saveDraft(){
       await fetch(DB+'/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
     }
     localStorage.setItem('report_draft',JSON.stringify(draftData));
-    document.getElementById('draft-bar').style.display='flex';
     showView('list');
     alert('下書きを保存しました！');
   }catch(e){
     localStorage.setItem('report_draft',JSON.stringify(draftData));
-    document.getElementById('draft-bar').style.display='flex';
     alert('下書きをローカルに保存しました。');
   }
 }
 
-function checkDraft(){
-  const d=localStorage.getItem('report_draft');
-  document.getElementById('draft-bar').style.display=d?'flex':'none';
-}
+function checkDraft(){} // 一覧で管理
 
 function loadDraft(){
   const d=localStorage.getItem('report_draft');
@@ -913,7 +904,6 @@ async function editDraft(key){
   if(siteCount===0)addSite();
   // 編集中の下書きキーを保存（保存時に上書き）
   window._editingDraftKey=key;
-  document.getElementById('draft-bar').style.display='flex';
   showView('form');
 }
 
