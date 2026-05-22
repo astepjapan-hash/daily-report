@@ -1003,30 +1003,32 @@ function openEditSchedule(key){
 }
 
 function addEditSite(){
-  const r=reports[editingKey];if(!r)return;
-  const container=document.querySelector('#report-edit-modal .field label.lbl');
-  // 現在の現場数を取得
-  const currentSites=document.querySelectorAll('#report-edit-modal [id^="edit-site-name-"]').length;
-  const i=currentSites;
-  const newSiteHtml=`<div class="site-card" id="edit-site-card-${i}">
+  // 現在の現場数を取得して新しいインデックスを決定
+  const currentCount=document.querySelectorAll('#report-edit-modal [id^="edit-site-name-"]').length;
+  const i=currentCount;
+  const newSiteHtml=`<div class="site-card" id="edit-site-${i}">
       <div class="site-top-row">
-        <input style="flex:1;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px" placeholder="現場名 ${i+1}" id="edit-site-name-${i}">
-        <button class="remove-btn" onclick="this.closest('[id^=edit-site-card]').remove()">×</button>
+        <input class="site-input" placeholder="現場名 ${i+1}" id="edit-site-name-${i}">
+        <button class="remove-btn" onclick="document.getElementById('edit-site-${i}').remove()">×</button>
       </div>
       <div class="time-row">
         <div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="edit-time-in-${i}"></div>
         <span class="time-sep">→</span>
         <div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="edit-time-out-${i}"></div>
       </div>
-      <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn" data-proc="${p}" onclick="toggleProc(this)">${p}</button>`).join('')}</div>
+      <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn" data-proc="${p}" onclick="this.classList.toggle('selected')">${p}</button>`).join('')}</div>
       <div class="material-section">
         <div class="material-title">材料使用量</div>
-        <div class="material-row" id="edit-mat-primer-${i}" style="display:none"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-primerKg-${i}"><span class="material-unit">kg</span></div>
-        <div class="material-row" id="edit-mat-resin-${i}" style="display:none"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="edit-resinKan-${i}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="edit-resinWari-${i}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
-        <div class="material-row" id="edit-mat-top-${i}" style="display:none"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-topKg-${i}"><span class="material-unit">kg</span></div>
-      </div></div>`;
-  const addBtn=document.querySelector('#report-edit-modal .add-btn');
-  if(addBtn)addBtn.insertAdjacentHTML('beforebegin',newSiteHtml);
+        <div class="material-row"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-primerKg-${i}"><span class="material-unit">kg</span></div>
+        <div class="material-row"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="edit-resinKan-${i}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="edit-resinWari-${i}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
+        <div class="material-row"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-topKg-${i}"><span class="material-unit">kg</span></div>
+      </div>
+    </div>`;
+  // ＋現場を追加ボタンの直前に挿入
+  const addBtn=document.querySelector('#report-edit-content .add-btn');
+  if(addBtn){
+    addBtn.insertAdjacentHTML('beforebegin',newSiteHtml);
+  }
 }
 
 function closeEditModal(){
@@ -1580,6 +1582,7 @@ async function cancelLeave(key){
 // ── 日報編集 ─────────────────────
 function openReportEdit(key){
   const r=reports[key];if(!r)return;
+  window._reportEditKey=key;
   const modal=document.getElementById('report-edit-modal');
   const editContent=document.getElementById('report-edit-content');
 
