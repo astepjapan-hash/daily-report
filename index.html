@@ -568,16 +568,22 @@ async function saveDraft(){
   try{
     const editKey=window._editingDraftKey;
     if(editKey){
-      // 既存の下書きを上書き
       await fetch(DB+'/drafts/'+editKey+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
       drafts[editKey]=draftData;
       window._editingDraftKey=null;
     }else{
       await fetch(DB+'/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
     }
-    localStorage.setItem('report_draft',JSON.stringify(draftData));
+    localStorage.removeItem('report_draft');
+    // フォームをリセットしてから一覧へ
+    document.getElementById('staff-name').value='';
+    document.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));
+    selectedWeather='';
+    document.getElementById('sites-container').innerHTML='';
+    document.getElementById('tomorrow').value='';
+    siteCount=0;addSite();
     showView('list');
-    alert('下書きを保存しました！');
+    alert('下書きを保存しました！一覧から編集・提出できます。');
   }catch(e){
     localStorage.setItem('report_draft',JSON.stringify(draftData));
     alert('下書きをローカルに保存しました。');
@@ -611,8 +617,12 @@ function loadDraft(){
     // 工程チェック復元
     const card=document.getElementById('site-'+id);
     card.querySelectorAll('.proc-btn').forEach(b=>{
-      if(s.processes?.includes(b.dataset.proc)){b.classList.add('selected');toggleProc(b);}
+      if(s.processes?.includes(b.dataset.proc)) b.classList.add('selected');
     });
+    // 材料表示制御
+    if(s.processes?.includes('プライマー')){const r=document.getElementById('mat-primer-'+id);if(r)r.style.display='flex';}
+    if(s.processes?.includes('1ply')||s.processes?.includes('2ply')){const r=document.getElementById('mat-resin-'+id);if(r)r.style.display='flex';}
+    if(s.processes?.includes('トップ')){const r=document.getElementById('mat-top-'+id);if(r)r.style.display='flex';}
     // 下地状況復元
     card.querySelectorAll('[data-shitaji]').forEach(b=>{
       if(s.shitaji?.includes(b.dataset.shitaji))b.classList.add('selected');
