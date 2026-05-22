@@ -521,7 +521,7 @@ async function submitReport(){
   const tomorrow=document.getElementById('tomorrow').value.trim();
   if(!staffName||!selectedWeather||!tomorrow){alert('氏名・天気・明日の予定を入力してください');return;}
   const sites=[];
-  document.querySelectorAll('[id^="site-"]').forEach(div=>{
+  document.getElementById('sites-container').querySelectorAll('[id^="site-"]').forEach(div=>{
     const id=div.id.replace('site-','');
     const name=document.getElementById('site-name-'+id)?.value.trim();
     if(!name)return;
@@ -546,11 +546,13 @@ function resetForm(){
 
 // ── 下書き ───────────────────────
 async function saveDraft(){
+  if(window._savingDraft)return;
+  window._savingDraft=true;
   const staffName=document.getElementById('staff-name').value;
   const tomorrow=document.getElementById('tomorrow').value;
   if(!staffName){alert('氏名を選択してください');return;}
   const sites=[];
-  document.querySelectorAll('[id^="site-"]').forEach(div=>{
+  document.getElementById('sites-container').querySelectorAll('[id^="site-"]').forEach(div=>{
     const id=div.id.replace('site-','');
     const name=document.getElementById('site-name-'+id)?.value||'';
     const processes=[];
@@ -574,6 +576,7 @@ async function saveDraft(){
     }else{
       await fetch(DB+'/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
     }
+    window._savingDraft=false;
     localStorage.removeItem('report_draft');
     // フォームをリセットしてから一覧へ
     document.getElementById('staff-name').value='';
@@ -585,6 +588,7 @@ async function saveDraft(){
     showView('list');
     alert('下書きを保存しました！一覧から編集・提出できます。');
   }catch(e){
+    window._savingDraft=false;
     localStorage.setItem('report_draft',JSON.stringify(draftData));
     alert('下書きをローカルに保存しました。');
   }
