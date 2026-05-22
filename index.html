@@ -1621,7 +1621,7 @@ function openReportEdit(key){
   editContent.innerHTML=`
     <div class="field"><label class="lbl">氏名</label>
       <select id="edit-staff-name">
-        ${['管理','加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'].map(m=>`<option ${r.staffName===m?'selected':''}>${m}</option>`).join('')}
+        ${['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'].map(m=>`<option ${r.staffName===m?'selected':''}>${m}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label class="lbl">日付</label>
