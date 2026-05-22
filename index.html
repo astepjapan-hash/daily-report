@@ -1798,7 +1798,7 @@ function showDetail(key){
         ${(s.primerKg||s.resinKan||s.resinWari||s.topKg)?`<div class="material-result-row">${s.primerKg?`<span class="material-chip">プライマー ${s.primerKg}kg</span>`:''} ${(s.resinKan||s.resinWari)?`<span class="material-chip">樹脂 ${s.resinKan||0}缶${s.resinWari||0}割</span>`:''} ${s.topKg?`<span class="material-chip">トップ ${s.topKg}kg</span>`:''}</div>`:''}
       </div>`).join('')}
     </div>
-    <div class="detail-section"><span class="detail-section-label">明日の予定</span><div class="preview-text">${r.tomorrow}</div></div>`;
+    <div class="detail-section"><span class="detail-section-label">次の予定・明日の予定</span><div class="preview-text">${r.tomorrow}</div></div>`;
   showView('detail');
 }
 </script>
