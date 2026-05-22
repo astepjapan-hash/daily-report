@@ -1725,7 +1725,7 @@ function calcWorkStats(seg){
     label=`${mv.slice(0,4)}年${parseInt(mv.slice(5,7))}月`;
   }
   const workStats={};
-  STAFF.forEach(m=>workStats[m]={days:new Set(),minutes:0});
+  STAFF_LEAVE.forEach(m=>workStats[m]={days:new Set(),minutes:0});
   Object.values(window._allReports||reports).forEach(r=>{
     if(!workStats[r.staffName])return;
     if(!r.date||r.date<dateFrom||r.date>dateTo)return;
@@ -1763,7 +1763,7 @@ function calcWorkStats(seg){
     }
   }
 
-  if(gridEl)gridEl.innerHTML=STAFF.map(m=>{
+  if(gridEl)gridEl.innerHTML=STAFF_LEAVE.map(m=>{
     const s=workStats[m];
     const h=Math.floor(s.minutes/60);const min=s.minutes%60;
     const kyuka=kyukaByPerson[m]||0;
