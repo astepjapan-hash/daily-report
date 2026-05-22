@@ -1239,7 +1239,7 @@ function getLeaveStats(name){
 function renderKyuka(){
   const content=document.getElementById('kyuka-content');
   if(kyukaSeg==='status'){
-    content.innerHTML=STAFF.map(name=>{
+    content.innerHTML=STAFF_LEAVE.map(name=>{
       const s=getLeaveStats(name);
       const total=s.total||0;
       const pct=total>0?Math.round((s.used/total)*100):0;
@@ -1408,7 +1408,7 @@ async function renderAdminContent(){
 
       <div class="section-title" style="margin-top:8px">有給 付与日数設定</div>
       <div class="card" style="margin-bottom:16px">
-        ${STAFF.map(m=>`
+        ${STAFF_LEAVE.map(m=>`
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <span style="font-size:14px;font-weight:600;color:#2d2a26;">${m}</span>
             <div style="display:flex;align-items:center;gap:8px;">
@@ -1745,7 +1745,7 @@ function calcWorkStats(seg){
   // 月表示のみ：有給・休み日数＋日曜除く稼働可能日数を追加
   let kyukaByPerson={},yasumiByPerson={},possibleDays=0;
   if(seg==='month'){
-    STAFF.forEach(m=>{kyukaByPerson[m]=0;yasumiByPerson[m]=0;});
+    STAFF_LEAVE.forEach(m=>{kyukaByPerson[m]=0;yasumiByPerson[m]=0;});
     Object.values(leaves).forEach(l=>{
       if(l.status==='approved'&&l.date>=dateFrom&&l.date<=dateTo&&kyukaByPerson[l.staffName]!==undefined)
         kyukaByPerson[l.staffName]++;
