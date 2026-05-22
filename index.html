@@ -1497,7 +1497,7 @@ function exportExcel(){
 
   // ── シート1: 勤怠（作業日数・作業時間） ──
   const kintaiData=[['氏名','作業日数','作業時間（分）','作業時間（時間）']];
-  STAFF.forEach(name=>{
+  STAFF_LEAVE.forEach(name=>{
     const rList=monthReports.filter(r=>r.staffName===name);
     const days=new Set(rList.map(r=>r.date)).size;
     let mins=0;
