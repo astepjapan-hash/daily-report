@@ -427,6 +427,7 @@ const RESIN_KG_PER_KAN = 18; // 樹脂1缶あたりkg
 const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
 const MEMBERS = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
 const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
+const STAFF_LEAVE = ['加藤瑞樹','山内浩一','森田義則','富山裕貴']; // 有給・休み対象（外注除く）
 const ADMIN_PASS = '2431'; // ← 管理者パスワード（変更可）
 let leaveSettings = {}; // スタッフごとの付与日数
 let absences = {}; // 休み申請
@@ -1257,7 +1258,7 @@ function renderKyuka(){
     content.innerHTML=`
       <div class="card">
         <div class="field"><label class="lbl">氏名</label>
-          <select id="leave-name"><option value="">選択してください</option>${STAFF.map(m=>`<option>${m}</option>`).join('')}</select>
+          <select id="leave-name"><option value="">選択してください</option>${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}</select>
         </div>
         <div class="field"><label class="lbl">取得日</label><input type="date" id="leave-date" value="${new Date().toISOString().slice(0,10)}"></div>
         <div class="field"><label class="lbl">理由（任意）</label><textarea id="leave-reason" rows="2" placeholder="私用のため など"></textarea></div>
@@ -1267,7 +1268,7 @@ function renderKyuka(){
     content.innerHTML=`
       <div class="card">
         <div class="field"><label class="lbl">氏名</label>
-          <select id="yasumi-name"><option value="">選択してください</option>${STAFF.map(m=>`<option>${m}</option>`).join('')}</select>
+          <select id="yasumi-name"><option value="">選択してください</option>${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}</select>
         </div>
         <div class="field"><label class="lbl">休み日</label><input type="date" id="yasumi-date" value="${new Date().toISOString().slice(0,10)}"></div>
         <div class="field"><label class="lbl">理由（任意）</label><textarea id="yasumi-reason" rows="2" placeholder="私用のため など"></textarea></div>
