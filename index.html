@@ -570,12 +570,20 @@ async function saveDraft(){
     createdAt:Date.now()
   };
   try{
-    await fetch(DB+'/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
+    const editKey=window._editingDraftKey;
+    if(editKey){
+      // 既存の下書きを上書き
+      await fetch(DB+'/drafts/'+editKey+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
+      drafts[editKey]=draftData;
+      window._editingDraftKey=null;
+    }else{
+      await fetch(DB+'/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
+    }
     localStorage.setItem('report_draft',JSON.stringify(draftData));
     document.getElementById('draft-bar').style.display='flex';
-    alert('下書きを保存しました！一覧で全員が確認できます。');
+    showView('list');
+    alert('下書きを保存しました！');
   }catch(e){
-    // Firebase失敗時はローカルだけ保存
     localStorage.setItem('report_draft',JSON.stringify(draftData));
     document.getElementById('draft-bar').style.display='flex';
     alert('下書きをローカルに保存しました。');
@@ -845,8 +853,9 @@ function renderDayReports(dateStr){
       <div class="draft-report-card">
         <span class="draft-label">📝 下書き</span>
         <div style="font-size:15px;font-weight:700;color:#2d2a26;margin-bottom:4px">${d.staffName}</div>
-        <div style="font-size:13px;color:#888">📍 ${d.sites?.map(s=>s.name).filter(Boolean).join('　')||'現場未入力'}</div>
+        <div style="font-size:13px;color:#888;margin-bottom:10px">📍 ${d.sites?.map(s=>s.name).filter(Boolean).join('　')||'現場未入力'}</div>
         <button class="draft-submit-btn" onclick="submitDraft('${key}')">✓ 提出する</button>
+        <button style="width:100%;padding:9px;background:#fdf0e8;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px" onclick="editDraft('${key}')">✏️ 編集する</button>
         <button class="draft-delete-btn" onclick="deleteDraftById('${key}')">🗑 削除</button>
       </div>`).join('')}`:'';
 
@@ -871,6 +880,41 @@ function renderDayReports(dateStr){
     ${reportHtml}
     ${isEmpty?'<div style="color:#aaa;font-size:13px;text-align:center;padding:16px">この日の予定・日報はありません</div>':''}
   `;
+}
+
+async function editDraft(key){
+  const d=drafts[key];if(!d)return;
+  // フォームに下書きデータを読み込む
+  document.getElementById('staff-name').value=d.staffName||'';
+  document.querySelectorAll('.weather-btn').forEach(b=>{
+    if(b.dataset.value===d.weather){b.classList.add('selected');selectedWeather=d.weather;}
+    else b.classList.remove('selected');
+  });
+  document.getElementById('tomorrow').value=d.tomorrow||'';
+  document.getElementById('sites-container').innerHTML='';siteCount=0;
+  (d.sites||[]).forEach(s=>{
+    addSite();
+    const id=siteCount;
+    const nameEl=document.getElementById('site-name-'+id);if(nameEl)nameEl.value=s.name||'';
+    const timeInEl=document.getElementById('time-in-'+id);if(timeInEl)timeInEl.value=s.timeIn||'';
+    const timeOutEl=document.getElementById('time-out-'+id);if(timeOutEl)timeOutEl.value=s.timeOut||'';
+    const card=document.getElementById('site-'+id);
+    card.querySelectorAll('.proc-btn').forEach(b=>{
+      if(s.processes?.includes(b.dataset.proc)){b.classList.add('selected');toggleProc(b);}
+    });
+    card.querySelectorAll('[data-shitaji]').forEach(b=>{
+      if(s.shitaji?.includes(b.dataset.shitaji))b.classList.add('selected');
+    });
+    const primerEl=document.getElementById('primerKg-'+id);if(primerEl)primerEl.value=s.primerKg||'';
+    const resinKanEl=document.getElementById('resinKan-'+id);if(resinKanEl)resinKanEl.value=s.resinKan||'';
+    const resinWariEl=document.getElementById('resinWari-'+id);if(resinWariEl)resinWariEl.value=s.resinWari||'';
+    const topKgEl=document.getElementById('topKg-'+id);if(topKgEl)topKgEl.value=s.topKg||'';
+  });
+  if(siteCount===0)addSite();
+  // 編集中の下書きキーを保存（保存時に上書き）
+  window._editingDraftKey=key;
+  document.getElementById('draft-bar').style.display='flex';
+  showView('form');
 }
 
 async function submitDraft(key){
