@@ -885,34 +885,46 @@ function renderDayReports(dateStr){
 
 async function editDraft(key){
   const d=drafts[key];if(!d)return;
-  // フォームに下書きデータを読み込む
   document.getElementById('staff-name').value=d.staffName||'';
   document.querySelectorAll('.weather-btn').forEach(b=>{
     if(b.dataset.value===d.weather){b.classList.add('selected');selectedWeather=d.weather;}
     else b.classList.remove('selected');
   });
   document.getElementById('tomorrow').value=d.tomorrow||'';
-  document.getElementById('sites-container').innerHTML='';siteCount=0;
-  (d.sites||[]).forEach(s=>{
-    addSite();
+  // サイトコンテナをリセット
+  document.getElementById('sites-container').innerHTML='';
+  siteCount=0;
+  const sitesToLoad=(d.sites||[]).filter(s=>s);
+  sitesToLoad.forEach(s=>{
+    siteCount++;
     const id=siteCount;
-    const nameEl=document.getElementById('site-name-'+id);if(nameEl)nameEl.value=s.name||'';
-    const timeInEl=document.getElementById('time-in-'+id);if(timeInEl)timeInEl.value=s.timeIn||'';
-    const timeOutEl=document.getElementById('time-out-'+id);if(timeOutEl)timeOutEl.value=s.timeOut||'';
-    const card=document.getElementById('site-'+id);
-    card.querySelectorAll('.proc-btn').forEach(b=>{
-      if(s.processes?.includes(b.dataset.proc)){b.classList.add('selected');toggleProc(b);}
-    });
-    card.querySelectorAll('[data-shitaji]').forEach(b=>{
-      if(s.shitaji?.includes(b.dataset.shitaji))b.classList.add('selected');
-    });
-    const primerEl=document.getElementById('primerKg-'+id);if(primerEl)primerEl.value=s.primerKg||'';
-    const resinKanEl=document.getElementById('resinKan-'+id);if(resinKanEl)resinKanEl.value=s.resinKan||'';
-    const resinWariEl=document.getElementById('resinWari-'+id);if(resinWariEl)resinWariEl.value=s.resinWari||'';
-    const topKgEl=document.getElementById('topKg-'+id);if(topKgEl)topKgEl.value=s.topKg||'';
+    const div=document.createElement('div');
+    div.className='site-card';div.id='site-'+id;
+    // addSiteと同じHTMLを生成（toggleProc呼び出しなし）
+    div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}" value="${(s.name||'').replace(/"/g,'&quot;')}"><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
+      <div class="time-row"><div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="time-in-${id}" value="${s.timeIn||''}"></div><span class="time-sep">→</span><div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="time-out-${id}" value="${s.timeOut||''}"></div></div>
+      <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn ${s.processes?.includes(p)?'selected':''}" data-proc="${p}" onclick="toggleProc(this)">${p}</button>`).join('')}</div>
+      <div class="material-section" style="border-top:1px solid #f0ebe5;padding-top:10px;margin-bottom:10px">
+        <div class="material-title">下地状況</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <button class="proc-btn ${s.shitaji?.includes('湿気なし')?'selected':''}" data-shitaji="湿気なし" onclick="toggleShitaji(this)">湿気なし</button>
+          <button class="proc-btn ${s.shitaji?.includes('湿気あり')?'selected':''}" data-shitaji="湿気あり" onclick="toggleShitaji(this)">湿気あり</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <button class="proc-btn ${s.shitaji?.includes('バーナー未使用')?'selected':''}" data-shitaji="バーナー未使用" onclick="toggleShitaji(this)">未使用</button>
+          <button class="proc-btn ${s.shitaji?.includes('バーナー小')?'selected':''}" data-shitaji="バーナー小" onclick="toggleShitaji(this)">バーナー小</button>
+          <button class="proc-btn ${s.shitaji?.includes('バーナー大')?'selected':''}" data-shitaji="バーナー大" onclick="toggleShitaji(this)">バーナー大</button>
+        </div>
+        <div style="font-size:12px;color:#e07b4f;font-weight:600;">🔥 バーナー使用時は写真提出</div>
+      </div>
+      <div class="material-section"><div class="material-title">材料使用量</div>
+        <div class="material-row" id="mat-primer-${id}" style="display:${s.processes?.includes('プライマー')?'flex':'none'}"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="primerKg-${id}" value="${s.primerKg||''}"><span class="material-unit">kg</span></div>
+        <div class="material-row" id="mat-resin-${id}" style="display:${(s.processes?.includes('1ply')||s.processes?.includes('2ply'))?'flex':'none'}"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="resinKan-${id}" value="${s.resinKan||''}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="resinWari-${id}" value="${s.resinWari||''}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
+        <div class="material-row" id="mat-top-${id}" style="display:${s.processes?.includes('トップ')?'flex':'none'}"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="topKg-${id}" value="${s.topKg||''}"><span class="material-unit">kg</span></div>
+      </div>`;
+    document.getElementById('sites-container').appendChild(div);
   });
   if(siteCount===0)addSite();
-  // 編集中の下書きキーを保存（保存時に上書き）
   window._editingDraftKey=key;
   showView('form');
 }
@@ -925,8 +937,6 @@ async function submitDraft(key){
     await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
     await fetch(DB+'/drafts/'+key+'.json',{method:'DELETE'});
     delete drafts[key];
-    reports[key+'_submitted']=report;
-    document.getElementById('badge').textContent=Object.keys(reports).length;
     await loadReports();
     alert('提出しました！');
   }catch(e){alert('提出に失敗しました。');}
@@ -1746,7 +1756,7 @@ function showDetail(key){
         <div class="site-result-name">📍 ${s.name}</div>
         ${(s.timeIn||s.timeOut)?`<div class="time-result-row">🕐 入場 ${s.timeIn||'−'} → 退場 ${s.timeOut||'−'}</div>`:''}
         ${s.shitaji?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">${s.shitaji.map(sh=>`<span style="background:#e8f0e8;color:#2d6a2d;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:600">🌡 ${sh}</span>`).join('')}</div>`:''}
-        <div class="process-result-row">${PROCESSES.map(p=>`<span class="proc-chip ${s.processes.includes(p)?'done':'not-done'}">${p}</span>`).join('')}</div>
+        <div class="process-result-row">${PROCESSES.map(p=>`<span class="proc-chip ${s.processes?.includes(p)?'done':'not-done'}">${p}</span>`).join('')}</div>
         ${(s.primerKg||s.resinKan||s.resinWari||s.topKg)?`<div class="material-result-row">${s.primerKg?`<span class="material-chip">プライマー ${s.primerKg}kg</span>`:''} ${(s.resinKan||s.resinWari)?`<span class="material-chip">樹脂 ${s.resinKan||0}缶${s.resinWari||0}割</span>`:''} ${s.topKg?`<span class="material-chip">トップ ${s.topKg}kg</span>`:''}</div>`:''}
       </div>`).join('')}
     </div>
