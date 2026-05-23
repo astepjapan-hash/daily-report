@@ -348,6 +348,13 @@ textarea { resize: vertical; }
         <button class="search-clr" id="list-search-clear" onclick="clearListSearch()">×</button>
       </div>
       <div id="list-search-results" style="display:none"></div>
+
+      <!-- お知らせ -->
+      <div class="notice-section" id="notice-section">
+        <div class="notice-title">📢 お知らせ</div>
+        <div id="notice-list"><div class="notice-empty">お知らせはありません</div></div>
+      </div>
+
       <div id="list-calendar-area">
       <div class="cal-nav">
         <button class="cal-nav-btn" onclick="changeCalMonth(-1)">◀</button>
@@ -357,12 +364,6 @@ textarea { resize: vertical; }
       <div class="cal-grid" id="cal-grid"></div>
       <div id="cal-day-content"></div>
       </div><!-- end list-calendar-area -->
-
-      <!-- お知らせ -->
-      <div class="notice-section" id="notice-section">
-        <div class="notice-title">📢 お知らせ</div>
-        <div id="notice-list"><div class="notice-empty">お知らせはありません</div></div>
-      </div>
 
     </div>
   </div>
