@@ -515,16 +515,16 @@ function toggleProc(btn){
   if(topRow)topRow.style.display=hasTop?'flex':'none';
 }
 function toggleShitaji(btn){
+  const card=btn.closest('.site-card');
+  if(!card){btn.classList.toggle('selected');return;}
   // 湿気なし・湿気ありは排他選択
   if(btn.dataset.shitaji==='湿気なし'||btn.dataset.shitaji==='湿気あり'){
-    const card=btn.closest('[id^="site-"]');
     card.querySelectorAll('[data-shitaji="湿気なし"],[data-shitaji="湿気あり"]').forEach(b=>{
       if(b!==btn)b.classList.remove('selected');
     });
   }
-  // バーナー小・バーナー大は排他選択
+  // バーナー系は排他選択
   if(btn.dataset.shitaji==='バーナー未使用'||btn.dataset.shitaji==='バーナー小'||btn.dataset.shitaji==='バーナー大'){
-    const card=btn.closest('[id^="site-"]');
     card.querySelectorAll('[data-shitaji="バーナー未使用"],[data-shitaji="バーナー小"],[data-shitaji="バーナー大"]').forEach(b=>{
       if(b!==btn)b.classList.remove('selected');
     });
@@ -1050,6 +1050,15 @@ function addEditSite(){
         <div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="edit-time-in-${i}"></div>
         <span class="time-sep">→</span>
         <div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="edit-time-out-${i}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+        <button class="proc-btn" data-shitaji="湿気なし" onclick="toggleShitaji(this)">湿気なし</button>
+        <button class="proc-btn" data-shitaji="湿気あり" onclick="toggleShitaji(this)">湿気あり</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
+        <button class="proc-btn" data-shitaji="バーナー未使用" onclick="toggleShitaji(this)">未使用</button>
+        <button class="proc-btn" data-shitaji="バーナー小" onclick="toggleShitaji(this)">バーナー小</button>
+        <button class="proc-btn" data-shitaji="バーナー大" onclick="toggleShitaji(this)">バーナー大</button>
       </div>
       <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn" data-proc="${p}" onclick="this.classList.toggle('selected')">${p}</button>`).join('')}</div>
       <div class="material-section">
