@@ -283,7 +283,7 @@ textarea { resize: vertical; }
       <button class="tab" id="tab-list" onclick="showView('list')">一覧<span class="badge" id="badge">0</span></button>
       <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
       <button class="tab" id="tab-kyuka" onclick="showView('kyuka')">有給</button>
-      <button class="tab" id="tab-admin" onclick="showView('admin')">管理</button>
+      <button class="tab" id="tab-admin" onclick="showView('admin')">管理<span id="admin-badge" style="display:none;background:#e07b4f;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:3px;vertical-align:middle"></span></button>
     </div>
   </div>
 </div>
@@ -789,6 +789,7 @@ async function loadReports(){
   await loadSchedules();
   renderCalendar();
   renderNotices();
+  updateAdminBadge();
 }
 
 function changeCalMonth(dir){
@@ -1265,6 +1266,15 @@ function renderPersonStats(){
 
 // ── 有給 ─────────────────────────
 function setKyukaSeg(seg){kyukaSeg=seg;document.querySelectorAll('#view-kyuka .seg-btn').forEach(b=>b.classList.remove('active'));document.getElementById('kseg-'+seg).classList.add('active');renderKyuka();}
+function updateAdminBadge(){
+  const pending=Object.values(leaves).filter(l=>l.status==='pending').length
+    + Object.values(absences).filter(a=>a.status==='pending').length;
+  const el=document.getElementById('admin-badge');
+  if(!el)return;
+  if(pending>0){el.textContent=pending;el.style.display='inline';}
+  else el.style.display='none';
+}
+
 async function loadKyuka(){
   try{
     const [lRes,sRes,aRes]=await Promise.all([fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json')]);
@@ -1273,6 +1283,7 @@ async function loadKyuka(){
     absences=await aRes.json()||{};
   }catch(e){leaves={};leaveSettings={};absences={};}
   renderKyuka();
+  updateAdminBadge();
 }
 function getKyukaDays(name){ return leaveSettings[name]||0; }
 function getLeaveStats(name){
@@ -1567,6 +1578,7 @@ async function approveAbsence(key,status){
     await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
     absences[key]={...absences[key],status};
     alert(status==='approved'?'承認しました':'却下しました');
+    updateAdminBadge();
     renderAdminContent();
   }catch(e){alert('処理に失敗しました。');}
 }
