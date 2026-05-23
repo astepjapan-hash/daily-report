@@ -534,6 +534,7 @@ function toggleShitaji(btn){
 
 async function submitReport(){
   const staffName=document.getElementById('staff-name').value;
+  if(!staffName){alert('氏名を選択してください');return;}
   const tomorrow=document.getElementById('tomorrow').value.trim();
   if(!staffName||!selectedWeather||!tomorrow){alert('氏名・天気・明日の予定を入力してください');return;}
   const sites=[];
@@ -781,7 +782,9 @@ async function loadReports(){
     absences=await aRes.json()||{};
     drafts=await dRes.json()||{};
     notices=await nRes.json()||{};
-    document.getElementById('badge').textContent=Object.keys(reports).length;
+    const todayStr=new Date().toISOString().slice(0,10);
+    const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
+    document.getElementById('badge').textContent=todayCount||'';
   }catch(e){}
   await loadSchedules();
   renderCalendar();
