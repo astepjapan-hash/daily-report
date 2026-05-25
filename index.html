@@ -291,7 +291,7 @@ textarea { resize: vertical; }
 <div class="body">
 
   <!-- 入力 -->
-  <div class="view active" id="view-form">
+  <div class="view" id="view-form">
     <div class="wrap">
       <div id="draft-bar" style="display:none" class="draft-bar">
         <span class="draft-bar-text">📝 下書き保存済み（一覧から編集できます）</span>
@@ -340,7 +340,7 @@ textarea { resize: vertical; }
   </div>
 
   <!-- 一覧 -->
-  <div class="view" id="view-list">
+  <div class="view active" id="view-list">
     <div class="wrap">
       <div class="search-wrap">
         <span class="search-ico">🔍</span>
@@ -455,6 +455,14 @@ let kyukaSeg='status', adminLoggedIn=false, prevView='form';
 document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
 addSite();
 checkDraft();
+showView('list');
+
+// 日付変わり自動リロード
+const _startDate = new Date().toISOString().slice(0,10);
+setInterval(()=>{
+  const now = new Date().toISOString().slice(0,10);
+  if(now !== _startDate) location.reload();
+}, 60000); // 1分ごとにチェック
 
 // ── ビュー ───────────────────────
 function showView(name) {
