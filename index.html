@@ -458,9 +458,9 @@ checkDraft();
 showView('list');
 
 // 日付変わり自動リロード
-const _startDate = new Date().toISOString().slice(0,10);
+const _startDate = new Date().toLocaleDateString('sv');
 setInterval(()=>{
-  const now = new Date().toISOString().slice(0,10);
+  const now = new Date().toLocaleDateString('sv');
   if(now !== _startDate) location.reload();
 }, 60000); // 1分ごとにチェック
 
@@ -556,7 +556,7 @@ async function submitReport(){
     sites.push({name,timeIn:document.getElementById('time-in-'+id)?.value||'',timeOut:document.getElementById('time-out-'+id)?.value||'',processes,shitaji,primerKg:document.getElementById('primerKg-'+id)?.value||'',resinKan:document.getElementById('resinKan-'+id)?.value||'',resinWari:document.getElementById('resinWari-'+id)?.value||'',topKg:document.getElementById('topKg-'+id)?.value||''});
   });
   if(!sites.length){alert('現場名を1つ以上入力してください');return;}
-  const report={date:new Date().toISOString().slice(0,10),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
+  const report={date:new Date().toLocaleDateString('sv'),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
   try{
     const res=await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
     if(!res.ok)throw new Error();localStorage.removeItem('report_draft');window._editingDraftKey=null;showView('done');
@@ -790,7 +790,7 @@ async function loadReports(){
     absences=await aRes.json()||{};
     drafts=await dRes.json()||{};
     notices=await nRes.json()||{};
-    const todayStr=new Date().toISOString().slice(0,10);
+    const todayStr=new Date().toLocaleDateString('sv');
     const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
     document.getElementById('badge').textContent=todayCount||'';
   }catch(e){}
