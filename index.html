@@ -435,6 +435,12 @@ textarea { resize: vertical; }
 
 <script>
 const DB = 'https://daily-report-a1193-default-rtdb.firebaseio.com';
+function getLocalDateStr(d=new Date()){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 const PROCESSES = ['現調','下地','プライマー','1ply','2ply','トップ'];
 const MATERIALS = [{label:'プライマー',field:'primerKg'},{label:'トップ',field:'topKg'}];
 const SHITAJI = ['湿気なし','湿気あり','バーナー未使用','バーナー小','バーナー大'];
@@ -449,7 +455,7 @@ let leaveSettings = {}; // スタッフごとの付与日数
 let absences = {}; // 休み申請
 
 let selectedWeather='', siteCount=0, reports={}, leaves={};
-let searchQuery='', filterName='', statsSeg='day', statsMonth=new Date().toISOString().slice(0,7);
+let searchQuery='', filterName='', statsSeg='day', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
 let kyukaSeg='status', adminLoggedIn=false, prevView='form';
 
 document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -458,9 +464,9 @@ checkDraft();
 showView('list');
 
 // 日付変わり自動リロード
-const _startDate = new Date().toLocaleDateString('sv');
+const _startDate = getLocalDateStr();
 setInterval(()=>{
-  const now = new Date().toLocaleDateString('sv');
+  const now = getLocalDateStr();
   if(now !== _startDate) location.reload();
 }, 60000); // 1分ごとにチェック
 
@@ -556,7 +562,7 @@ async function submitReport(){
     sites.push({name,timeIn:document.getElementById('time-in-'+id)?.value||'',timeOut:document.getElementById('time-out-'+id)?.value||'',processes,shitaji,primerKg:document.getElementById('primerKg-'+id)?.value||'',resinKan:document.getElementById('resinKan-'+id)?.value||'',resinWari:document.getElementById('resinWari-'+id)?.value||'',topKg:document.getElementById('topKg-'+id)?.value||''});
   });
   if(!sites.length){alert('現場名を1つ以上入力してください');return;}
-  const report={date:new Date().toLocaleDateString('sv'),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
+  const report={date:getLocalDateStr(),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
   try{
     const res=await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
     if(!res.ok)throw new Error();localStorage.removeItem('report_draft');window._editingDraftKey=null;showView('done');
@@ -593,7 +599,7 @@ async function saveDraft(){
   });
   const draftData={
     staffName,weather:selectedWeather,sites,tomorrow,
-    date:new Date().toISOString().slice(0,10),
+    date:new Date().toLocaleDateString('sv'),
     dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),
     createdAt:Date.now()
   };
@@ -811,7 +817,7 @@ function changeCalMonth(dir){
 function renderCalendar(){
   const label=`${calYear}年${calMonth+1}月`;
   document.getElementById('cal-month-label').textContent=label;
-  const today=new Date().toISOString().slice(0,10);
+  const today=new Date().toLocaleDateString('sv');
 
   // 日付ごとの日報数をまとめる
   const byDate={};
@@ -1191,7 +1197,7 @@ function setPersonSeg(seg){
 function renderPersonStats(){
   const content=document.getElementById('stats-content');
   const now=new Date();
-  const todayStr=now.toISOString().slice(0,10);
+  const todayStr=now.toLocaleDateString('sv');
   const monthStr=todayStr.slice(0,7);
   let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let label='';
@@ -1324,7 +1330,7 @@ function renderKyuka(){
         <div class="field"><label class="lbl">氏名</label>
           <select id="leave-name"><option value="">選択してください</option>${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}</select>
         </div>
-        <div class="field"><label class="lbl">取得日</label><input type="date" id="leave-date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label class="lbl">取得日</label><input type="date" id="leave-date" value="${new Date().toLocaleDateString('sv')}"></div>
         <div class="field"><label class="lbl">理由（任意）</label><textarea id="leave-reason" rows="2" placeholder="私用のため など"></textarea></div>
         <button class="btn-primary" onclick="submitLeave()">申請する</button>
       </div>`;
@@ -1334,7 +1340,7 @@ function renderKyuka(){
         <div class="field"><label class="lbl">氏名</label>
           <select id="yasumi-name"><option value="">選択してください</option>${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}</select>
         </div>
-        <div class="field"><label class="lbl">休み日</label><input type="date" id="yasumi-date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label class="lbl">休み日</label><input type="date" id="yasumi-date" value="${new Date().toLocaleDateString('sv')}"></div>
         <div class="field"><label class="lbl">理由（任意）</label><textarea id="yasumi-reason" rows="2" placeholder="私用のため など"></textarea></div>
         <button class="btn-primary" onclick="submitYasumi()">申請する</button>
       </div>
@@ -1411,8 +1417,8 @@ async function renderAdminContent(){
   window._allReports=reports;
   calcWorkStats('day');
   // 日付ピッカーの初期値を今日に設定
-  const _td=new Date().toISOString().slice(0,10);
-  const _mth=new Date().toISOString().slice(0,7);
+  const _td=new Date().toLocaleDateString('sv');
+  const _mth=new Date().toLocaleDateString('sv').slice(0,7);
   setTimeout(()=>{
     const df=document.getElementById('wseg-date-from');
     const dt=document.getElementById('wseg-date-to');
@@ -1556,7 +1562,7 @@ async function postNotice(){
   const now=new Date();
   const data={
     body,
-    date:now.toISOString().slice(0,10),
+    date:now.toLocaleDateString('sv'),
     dateLabel:now.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'}),
     createdAt:Date.now()
   };
@@ -1820,7 +1826,7 @@ function switchWorkSeg(seg){
 
 function calcWorkStats(seg){
   const now=new Date();
-  const todayStr=now.toISOString().slice(0,10);
+  const todayStr=now.toLocaleDateString('sv');
   let dateFrom='',dateTo='',label='';
   if(seg==='day'){
     dateFrom=document.getElementById('wseg-date-from')?.value||todayStr;
