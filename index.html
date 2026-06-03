@@ -1430,6 +1430,7 @@ async function renderAdminContent(){
   const pendingLeaves=Object.entries(leaves).filter(([,l])=>l.status==='pending');
   const approvedLeaves=Object.entries(leaves).filter(([,l])=>l.status==='approved').sort((a,b)=>b[1].createdAt-a[1].createdAt);
   const pendingAbsences=Object.entries(absences).filter(([,a])=>a.status==='pending');
+  const approvedAbsences=Object.entries(absences).filter(([,a])=>a.status==='approved').sort((a,b)=>b[1].createdAt-a[1].createdAt);
 
   content.innerHTML=`
     <div class="wrap">
@@ -1543,6 +1544,18 @@ async function renderAdminContent(){
           </div>
           ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
           <button class="btn-cancel-leave" onclick="cancelLeave('${key}')">✗ 取り消す</button>
+        </div>`).join('')}`:''}
+
+      ${approvedAbsences.length?`
+      <div class="section-title" style="margin-top:16px">休み申請 承認済み（取り消し可能）</div>
+      ${approvedAbsences.map(([key,a])=>`
+        <div class="yasumi-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
+            <span class="status-badge status-approved">承認済</span>
+          </div>
+          ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
+          <button class="btn-cancel-leave" onclick="cancelAbsence('${key}')">✗ 取り消す</button>
         </div>`).join('')}`:''}
     </div>`;
 }
@@ -1681,10 +1694,13 @@ async function submitYasumi(){
 async function cancelAbsence(key){
   if(!confirm('この休み申請を取り消しますか？'))return;
   try{
-    await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
+    const res=await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
+    if(!res.ok)throw new Error();
     absences[key]={...absences[key],status:'cancelled'};
+    updateAdminBadge();
     alert('取り消しました');
-    await loadKyuka();setKyukaSeg('yasumi');
+    if(adminLoggedIn)await renderAdminContent();
+    else{await loadKyuka();setKyukaSeg('yasumi');}
   }catch(e){alert('取り消しに失敗しました。');}
 }
 
