@@ -1587,13 +1587,15 @@ async function deleteNotice(key){
 }
 
 async function approveAbsence(key,status){
+  if(!confirm(status==='approved'?'この休み申請を承認しますか？':'この休み申請を却下しますか？'))return;
   try{
-    await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    const res=await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    if(!res.ok)throw new Error();
     absences[key]={...absences[key],status};
-    alert(status==='approved'?'承認しました':'却下しました');
     updateAdminBadge();
-    renderAdminContent();
-  }catch(e){alert('処理に失敗しました。');}
+    alert(status==='approved'?'承認しました！':'却下しました！');
+    await renderAdminContent();
+  }catch(e){alert('処理に失敗しました。もう一度お試しください。');}
 }
 
 async function approveLeave(key,status){
