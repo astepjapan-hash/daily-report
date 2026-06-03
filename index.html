@@ -1353,7 +1353,7 @@ function renderKyuka(){
               <span class="status-badge ${a.status==='approved'?'status-approved':a.status==='rejected'?'status-rejected':a.status==='cancelled'?'status-rejected':'status-pending'}">${a.status==='approved'?'承認済':a.status==='rejected'?'却下':a.status==='cancelled'?'取消済':'申請中'}</span>
             </div>
             ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
-
+            ${a.status==='approved'?`<button class="btn-cancel-leave" onclick="cancelAbsence('${key}')">✗ 取り消す</button>`:''}
           </div>`).join('')||'<div class="empty">申請履歴がありません</div>'}
       </div>`;
   }else{
