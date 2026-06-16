@@ -425,6 +425,7 @@ textarea { resize: vertical; }
     <div class="modal-title">✏️ 予定を編集</div>
     <div class="field"><label class="lbl">日付</label><input type="date" id="edit-date"></div>
     <div class="field"><label class="lbl">現場名</label><input type="text" id="edit-site" placeholder="現場名を入力"></div>
+    <div class="field"><label class="lbl">住所</label><input type="text" id="edit-address" placeholder="住所を入力（タップでマップ表示）"></div>
     <div class="field"><label class="lbl">作業内容</label><input type="text" id="edit-task" placeholder="作業内容を入力"></div>
     <div class="modal-btn-row">
       <button class="modal-cancel" onclick="closeEditModal()">キャンセル</button>
@@ -877,6 +878,7 @@ function renderDayReports(dateStr){
     <div class="schedule-card" onclick="openEditSchedule('${key}')" style="cursor:pointer;padding-right:44px;">
       <div class="schedule-badge">📅 予定</div>
       <div class="schedule-site">📍 ${s.site}</div>
+      ${s.address?`<div class="schedule-content"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" onclick="event.stopPropagation()" style="color:#2980b9;text-decoration:underline">🗺️ ${s.address}</a></div>`:''}
       ${s.task?`<div class="schedule-content">🔧 ${s.task}</div>`:''}
       <div style="font-size:11px;color:#aaa;margin-top:4px;">タップして編集</div>
       <button class="schedule-delete" onclick="deleteSchedule('${key}',event)">🗑</button>
@@ -930,6 +932,7 @@ function renderDayReports(dateStr){
         <div class="schedule-form-title">📅 予定を入力</div>
         <div class="field"><label class="lbl">日付</label><input type="date" id="sch-date-${dateStr}" value="${dateStr}"></div>
         <div class="field"><label class="lbl">現場名</label><input type="text" id="sch-site-${dateStr}" placeholder="現場名を入力"></div>
+        <div class="field"><label class="lbl">住所</label><input type="text" id="sch-address-${dateStr}" placeholder="住所を入力（タップでマップ表示）"></div>
         <div class="field"><label class="lbl">作業内容</label><input type="text" id="sch-task-${dateStr}" placeholder="作業内容を入力"></div>
         <button class="btn-primary" onclick="submitSchedule('${dateStr}')">追加する</button>
       </div>
@@ -1019,10 +1022,11 @@ function toggleScheduleForm(dateStr){
 async function submitSchedule(dateStr){
   const actualDate=document.getElementById('sch-date-'+dateStr)?.value||dateStr;
   const site=document.getElementById('sch-site-'+dateStr)?.value.trim();
+  const address=document.getElementById('sch-address-'+dateStr)?.value.trim()||'';
   const task=document.getElementById('sch-task-'+dateStr)?.value.trim();
   if(!site){alert('現場名を入力してください');return;}
   try{
-    await fetch(DB+'/schedules.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:actualDate,site,task,createdAt:Date.now()})});
+    await fetch(DB+'/schedules.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:actualDate,site,address,task,createdAt:Date.now()})});
     await loadSchedules();
     calSelectedDate=actualDate;
     // 別の月の日付に変更された場合はカレンダーの月も移動
@@ -1050,6 +1054,7 @@ function openEditSchedule(key){
   if(!s){ alert('予定データが見つかりません'); return; }
   document.getElementById('edit-date').value = s.date || '';
   document.getElementById('edit-site').value = s.site || '';
+  document.getElementById('edit-address').value = s.address || '';
   document.getElementById('edit-task').value = s.task || '';
   document.getElementById('edit-modal').style.display = 'flex';
 }
@@ -1100,11 +1105,12 @@ function closeEditModal(){
 async function saveEditSchedule(){
   const date = document.getElementById('edit-date').value;
   const site = document.getElementById('edit-site').value.trim();
+  const address = document.getElementById('edit-address').value.trim();
   const task = document.getElementById('edit-task').value.trim();
   if(!site){ alert('現場名を入力してください'); return; }
   try{
-    await fetch(DB+'/schedules/'+editingKey+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,site,task})});
-    schedules[editingKey] = {...schedules[editingKey], date, site, task};
+    await fetch(DB+'/schedules/'+editingKey+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,address,site,task})});
+    schedules[editingKey] = {...schedules[editingKey], date, site, address, task};
     closeEditModal();
     calSelectedDate = date;
     const [y,m] = date.split('-');
