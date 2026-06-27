@@ -508,7 +508,8 @@ function addSite(){
         </div>
         <div style="font-size:12px;color:#e07b4f;font-weight:600;">🔥 バーナー使用時は写真提出</div>
       </div>
-      <div class="material-section"><div class="material-title">材料使用量</div><div class="material-row" id="mat-primer-${id}" style="display:none"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="primerKg-${id}"><span class="material-unit">kg</span></div><div class="material-row" id="mat-resin-${id}" style="display:none"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="resinKan-${id}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="resinWari-${id}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div><div class="material-row" id="mat-top-${id}" style="display:none"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="topKg-${id}"><span class="material-unit">kg</span></div></div>`;
+      <div class="material-section"><div class="material-title">材料使用量</div><div class="material-row" id="mat-primer-${id}" style="display:none"><span class="material-label">プライマー</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="primerKg-${id}"><span class="material-unit">kg</span></div><div class="material-row" id="mat-resin-${id}" style="display:none"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="resinKan-${id}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="resinWari-${id}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div><div class="material-row" id="mat-top-${id}" style="display:none"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="topKg-${id}"><span class="material-unit">kg</span></div></div>
+    <div class="field" style="margin-top:10px"><label class="lbl">備考</label><textarea id="note-${id}" rows="2" placeholder="一言メモ（任意）" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;resize:vertical"></textarea></div>`;
   document.getElementById('sites-container').appendChild(div);
 }
 function removeSite(id){const el=document.getElementById('site-'+id);if(el)el.remove();}
@@ -560,7 +561,7 @@ async function submitReport(){
     const processes=[];div.querySelectorAll('.proc-btn.selected').forEach(b=>processes.push(b.dataset.proc));
     const shitaji=[];
     div.querySelectorAll('[data-shitaji].selected').forEach(b=>shitaji.push(b.dataset.shitaji));
-    sites.push({name,timeIn:document.getElementById('time-in-'+id)?.value||'',timeOut:document.getElementById('time-out-'+id)?.value||'',processes,shitaji,primerKg:document.getElementById('primerKg-'+id)?.value||'',resinKan:document.getElementById('resinKan-'+id)?.value||'',resinWari:document.getElementById('resinWari-'+id)?.value||'',topKg:document.getElementById('topKg-'+id)?.value||''});
+    sites.push({name,timeIn:document.getElementById('time-in-'+id)?.value||'',timeOut:document.getElementById('time-out-'+id)?.value||'',processes,shitaji,primerKg:document.getElementById('primerKg-'+id)?.value||'',resinKan:document.getElementById('resinKan-'+id)?.value||'',resinWari:document.getElementById('resinWari-'+id)?.value||'',topKg:document.getElementById('topKg-'+id)?.value||'',note:document.getElementById('note-'+id)?.value.trim()||''});
   });
   if(!sites.length){alert('現場名を1つ以上入力してください');return;}
   const report={date:getLocalDateStr(),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
@@ -1089,6 +1090,7 @@ function addEditSite(){
         <div class="material-row"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="edit-resinKan-${i}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="edit-resinWari-${i}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
         <div class="material-row"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-topKg-${i}"><span class="material-unit">kg</span></div>
       </div>
+      <div class="field" style="margin-top:10px"><label class="lbl">備考</label><textarea id="edit-note-${i}" rows="2" placeholder="一言メモ（任意）" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;resize:vertical"></textarea></div>
     </div>`;
   // ＋現場を追加ボタンの直前に挿入
   const addBtn=document.querySelector('#report-edit-content .add-btn');
@@ -1760,6 +1762,7 @@ function openReportEdit(key){
         <div class="material-row"><span class="material-label">樹脂</span><input type="number" min="0" step="1" placeholder="0" class="material-input" id="edit-resinKan-${i}" value="${s.resinKan||''}" style="width:60px!important"><span class="material-unit">缶</span><input type="number" min="0" max="9" step="1" placeholder="0" class="material-input" id="edit-resinWari-${i}" value="${s.resinWari||''}" style="width:60px!important;margin-left:6px"><span class="material-unit">割</span></div>
         <div class="material-row"><span class="material-label">トップ</span><input type="number" min="0" step="0.1" placeholder="0.0" class="material-input" id="edit-topKg-${i}" value="${s.topKg||''}"><span class="material-unit">kg</span></div>
       </div>
+      <div class="field" style="margin-top:10px"><label class="lbl">備考</label><textarea id="edit-note-${i}" rows="2" placeholder="一言メモ（任意）" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;resize:vertical">${s.note||''}</textarea></div>
     </div>`;
   }).join('');
 
@@ -1818,7 +1821,8 @@ async function saveReportEdit(key){
       primerKg:document.getElementById('edit-primerKg-'+i)?.value||'',
       resinKan:document.getElementById('edit-resinKan-'+i)?.value||'',
       resinWari:document.getElementById('edit-resinWari-'+i)?.value||'',
-      topKg:document.getElementById('edit-topKg-'+i)?.value||''
+      topKg:document.getElementById('edit-topKg-'+i)?.value||'',
+      note:document.getElementById('edit-note-'+i)?.value.trim()||''
     });
   }
 
