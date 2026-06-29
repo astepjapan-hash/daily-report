@@ -1016,8 +1016,20 @@ function checkAdminPass() {
   } else { alert('パスワードが違います'); }
 }
 
+let adminCatFilter = 'all';
+let adminShowZero = false;
+
 function renderAdminContent() {
   const el = document.getElementById('admin-content');
+  const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
+  const catLabels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
+
+  const filteredItems = ITEMS_MASTER.filter(item => {
+    if (adminCatFilter !== 'all' && item.category !== adminCatFilter) return false;
+    if (!adminShowZero && getQty(item.id) === 0) return false;
+    return true;
+  });
+
   el.innerHTML = `<div class="wrap">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div class="page-title">⚙️ 在庫管理</div>
@@ -1025,20 +1037,39 @@ function renderAdminContent() {
     </div>
     <div class="page-sub">現在庫を直接設定・初期設定</div>
 
-    <div class="section-title">在庫数を設定</div>
-    ${ITEMS_MASTER.map(item => `
+    <div class="filter-row" style="margin-bottom:8px">
+      ${cats.map(c => `<button class="filter-btn ${adminCatFilter === c ? 'active' : ''}" onclick="setAdminCatFilter('${c}')">${catLabels[c]}</button>`).join('')}
+    </div>
+    <div style="margin-bottom:12px">
+      <button onclick="toggleAdminZero()" style="padding:6px 14px;border-radius:20px;border:1.5px solid #e0d8d0;background:${adminShowZero ? '#e07b4f' : '#fff'};color:${adminShowZero ? '#fff' : '#888'};font-size:12px;cursor:pointer;font-family:inherit;font-weight:${adminShowZero ? '700' : '500'}">
+        ０も表示
+      </button>
+    </div>
+
+    <div class="section-title">在庫数を設定（${filteredItems.length}品目）</div>
+    ${filteredItems.length ? filteredItems.map(item => `
       <div class="item-edit-row">
         <div class="item-edit-name">${item.name} <span class="cat-badge ${CAT_COLORS[item.category]}">${CAT_LABELS[item.category]}</span></div>
         <div class="item-edit-fields">
           <input type="number" min="0" step="0.1" value="${getQty(item.id)}" id="admin-qty-${item.id}" placeholder="0">
           <span>${item.unit}</span>
         </div>
-      </div>`).join('')}
+      </div>`).join('') : '<div class="empty">該当する品目がありません</div>'}
 
     <div style="margin-top:20px">
       <button class="btn-primary" onclick="saveAllQty()">一括保存</button>
     </div>
   </div>`;
+}
+
+function setAdminCatFilter(cat) {
+  adminCatFilter = cat;
+  renderAdminContent();
+}
+
+function toggleAdminZero() {
+  adminShowZero = !adminShowZero;
+  renderAdminContent();
 }
 
 async function saveItemQty(itemId) {
