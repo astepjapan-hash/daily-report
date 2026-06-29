@@ -1028,30 +1028,32 @@ function renderAdminContent() {
     return true;
   });
 
-  el.innerHTML = `<div class="wrap">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <div class="page-title">⚙️ 在庫管理</div>
-      <button class="logout-btn" onclick="adminLogout()">ログアウト</button>
-    </div>
-    <div class="page-sub">現在庫を直接設定・初期設定</div>
+  const itemsHtml = filteredItems.map(item => {
+    const qty = getQty(item.id);
+    const catColor = CAT_COLORS[item.category] || 'cat-other';
+    const catLabel = CAT_LABELS[item.category] || item.category;
+    return '<div class="item-edit-row">' +
+      '<div class="item-edit-name">' + item.name + ' <span class="cat-badge ' + catColor + '">' + catLabel + '</span></div>' +
+      '<div class="item-edit-fields">' +
+      '<input type="number" min="0" step="0.1" value="' + qty + '" id="admin-qty-' + item.id + '" placeholder="0">' +
+      '<span>' + item.unit + '</span>' +
+      '</div></div>';
+  }).join('');
 
-    <div class="filter-row" style="margin-bottom:8px">
-      ${cats.map(c => `<button class="filter-btn ${adminCatFilter === c ? 'active' : ''}" onclick="setAdminCatFilter('${c}')">${catLabels[c]}</button>`).join('')}
-    </div>
-    <div class="section-title">在庫数を設定（${filteredItems.length}品目）</div>
-    ${filteredItems.length ? filteredItems.map(item => `
-      <div class="item-edit-row">
-        <div class="item-edit-name">${item.name} <span class="cat-badge ${CAT_COLORS[item.category]}">${CAT_LABELS[item.category]}</span></div>
-        <div class="item-edit-fields">
-          <input type="number" min="0" step="0.1" value="${getQty(item.id)}" id="admin-qty-${item.id}" placeholder="0">
-          <span>${item.unit}</span>
-        </div>
-      </div>`).join('') : '<div class="empty">該当する品目がありません</div>'}
+  const filterHtml = cats.map(c =>
+    '<button class="filter-btn ' + (adminCatFilter === c ? 'active' : '') + '" onclick="setAdminCatFilter(\'' + c + '\')">' + catLabels[c] + '</button>'
+  ).join('');
 
-    <div style="margin-top:20px">
-      <button class="btn-primary" onclick="saveAllQty()">一括保存</button>
-    </div>
-  </div>`;
+  el.innerHTML = '<div class="wrap">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+    '<div class="page-title">⚙️ 在庫管理</div>' +
+    '<button class="logout-btn" onclick="adminLogout()">ログアウト</button></div>' +
+    '<div class="page-sub">現在庫を直接設定・初期設定</div>' +
+    '<div class="filter-row" style="margin-bottom:8px">' + filterHtml + '</div>' +
+    '<div class="section-title">在庫数を設定（' + filteredItems.length + '品目）</div>' +
+    (filteredItems.length ? itemsHtml : '<div class="empty">該当する品目がありません</div>') +
+    '<div style="margin-top:20px"><button class="btn-primary" onclick="saveAllQty()">一括保存</button></div>' +
+    '</div>';
 }
 
 function setAdminCatFilter(cat) {
