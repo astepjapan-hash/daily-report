@@ -417,6 +417,16 @@ async function init() {
   const moveDateEl = document.getElementById('move-date-top');
   if (moveDateEl) moveDateEl.value = getToday();
   await loadAll();
+  // デモ用：在庫が空の場合は全品目を10に初期化
+  const hasAny = ITEMS_MASTER.some(item => (inventory[item.id] || 0) > 0);
+  if (!hasAny) {
+    const updates = {};
+    ITEMS_MASTER.forEach(item => { updates[item.id] = 10; });
+    try {
+      await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+      ITEMS_MASTER.forEach(item => { inventory[item.id] = 10; });
+    } catch(e) {}
+  }
   buildItemSelect();
   renderStock();
   renderMoveList();
