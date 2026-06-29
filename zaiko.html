@@ -665,7 +665,8 @@ function renderMoveList() {
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <input type="number" min="0" step="1" placeholder="0"
               id="out-qty-${item.id}"
-              oninput="onOutQtyInput()"
+              value="${outQtyMap[item.id] || ''}"
+              oninput="onOutQtyInput('${item.id}', this.value)"
               style="width:64px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;text-align:center;font-family:inherit;background:#fff">
             <span style="font-size:12px;color:#aaa">${item.unit}</span>
           </div>
@@ -702,23 +703,32 @@ function renderMoveList() {
 }
 
 let confirmEntries = []; // {itemId, itemName, unit, qty}
+let outQtyMap = {}; // {itemId: qty} フィルター切替時も値を保持
 
-function onOutQtyInput() {
-  const hasAny = ITEMS_MASTER.some(item => {
-    const el = document.getElementById('out-qty-' + item.id);
-    return el && parseFloat(el.value) > 0;
-  });
+function onOutQtyInput(itemId, val) {
+  const qty = parseFloat(val) || 0;
+  if (qty > 0) outQtyMap[itemId] = qty;
+  else delete outQtyMap[itemId];
+  const hasAny = Object.keys(outQtyMap).length > 0;
   const btn = document.querySelector('#move-bulk-submit-bar .btn-primary');
   if (btn) btn.style.opacity = hasAny ? '1' : '0.5';
 }
 
 function goToConfirm() {
-  // 入力値をconfirmEntriesに収集
+  // outQtyMapから収集
   confirmEntries = [];
+  // 現在表示中の入力欄の値をまずoutQtyMapに保存
   ITEMS_MASTER.forEach(item => {
     const el = document.getElementById('out-qty-' + item.id);
-    const val = parseFloat(el?.value);
-    if (val && val > 0) confirmEntries.push({ itemId: item.id, itemName: item.name, unit: item.unit, qty: val });
+    if (el) {
+      const val = parseFloat(el.value) || 0;
+      if (val > 0) outQtyMap[item.id] = val;
+      else delete outQtyMap[item.id];
+    }
+  });
+  Object.entries(outQtyMap).forEach(([itemId, qty]) => {
+    const item = ITEMS_MASTER.find(i => i.id === itemId);
+    if (item) confirmEntries.push({ itemId: item.id, itemName: item.name, unit: item.unit, qty });
   });
   if (!confirmEntries.length) { alert('持ち出し数量を1つ以上入力してください'); return; }
 
@@ -846,6 +856,7 @@ async function submitBulkOut() {
     await Promise.all(promises);
     showToast('📤 ' + confirmEntries.length + '品目を登録しました！');
     confirmEntries = [];
+    outQtyMap = {};
     backToStep1();
   } catch(e) { alert('登録に失敗しました。'); }
 }
