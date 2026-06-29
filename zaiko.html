@@ -209,6 +209,9 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
         </div>
         <div class="filter-row" id="move-cat-filter-row"></div>
         <div id="move-item-list"></div>
+        <div id="move-bulk-submit-bar" style="display:none;position:sticky;bottom:8px;margin-top:12px">
+          <button class="btn-primary" onclick="submitBulkOut()">📤 一括登録する</button>
+        </div>
       </div>
 
     </div>
@@ -613,34 +616,103 @@ function renderMoveList() {
     grouped[item.category].push(item);
   });
 
-  const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
-  const typeColor = moveType === 'out' ? '#e07b4f' : '#388e3c';
+  // 一括登録バーの表示制御
+  const bulkBar = document.getElementById('move-bulk-submit-bar');
+  if (bulkBar) bulkBar.style.display = moveType === 'out' ? 'block' : 'none';
 
   let html = '';
-  Object.entries(grouped).forEach(([cat, list]) => {
-    html += `<div class="section-title" style="margin-top:12px">${CAT_LABELS[cat] || cat}</div>`;
-    list.forEach(item => {
-      const qty = getQty(item.id);
-      const isLow = qty > 0 && qty <= item.alert;
-      const isEmpty = qty <= 0;
-      const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
-      const icon = isEmpty ? '❌' : isLow ? '⚠️' : getItemIcon(item.category);
-      html += `<div class="stock-item ${cls}" onclick="openItemMoveModal('${item.id}')" style="cursor:pointer">
-        <div class="stock-icon ${cls}">${icon}</div>
-        <div class="stock-info">
-          <div class="stock-name">${item.name}</div>
-          <div class="stock-cat">${CAT_LABELS[item.category]}</div>
-        </div>
-        <div class="stock-qty">
-          <div class="stock-num ${cls}">${qty % 1 === 0 ? qty : qty.toFixed(1)}</div>
-          <div class="stock-unit">${item.unit}</div>
-          ${isEmpty ? '<div class="stock-alert out">在庫切れ</div>' : isLow ? '<div class="stock-alert">残少</div>' : ''}
-        </div>
-        <div style="color:${typeColor};font-size:20px;padding-left:4px;flex-shrink:0">›</div>
-      </div>`;
+  if (moveType === 'out') {
+    // 持ち出し：数量入力欄付き一覧
+    Object.entries(grouped).forEach(([cat, list]) => {
+      html += `<div class="section-title" style="margin-top:12px">${CAT_LABELS[cat] || cat}</div>`;
+      list.forEach(item => {
+        const qty = getQty(item.id);
+        const isLow = qty > 0 && qty <= item.alert;
+        const isEmpty = qty <= 0;
+        const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
+        html += `<div class="stock-item ${cls}" style="padding:10px 12px">
+          <div class="stock-info">
+            <div class="stock-name">${item.name}</div>
+            <div class="stock-cat">在庫: ${qty % 1 === 0 ? qty : qty.toFixed(1)}${item.unit}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <input type="number" min="0" step="1" placeholder="0"
+              id="out-qty-${item.id}"
+              oninput="onOutQtyInput()"
+              style="width:64px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;text-align:center;font-family:inherit;background:#fff">
+            <span style="font-size:12px;color:#aaa">${item.unit}</span>
+          </div>
+        </div>`;
+      });
     });
-  });
+  } else {
+    // 入庫：品目タップ→モーダル
+    Object.entries(grouped).forEach(([cat, list]) => {
+      html += `<div class="section-title" style="margin-top:12px">${CAT_LABELS[cat] || cat}</div>`;
+      list.forEach(item => {
+        const qty = getQty(item.id);
+        const isLow = qty > 0 && qty <= item.alert;
+        const isEmpty = qty <= 0;
+        const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
+        const icon = isEmpty ? '❌' : isLow ? '⚠️' : getItemIcon(item.category);
+        html += `<div class="stock-item ${cls}" onclick="openItemMoveModal('${item.id}')" style="cursor:pointer">
+          <div class="stock-icon ${cls}">${icon}</div>
+          <div class="stock-info">
+            <div class="stock-name">${item.name}</div>
+            <div class="stock-cat">${CAT_LABELS[item.category]}</div>
+          </div>
+          <div class="stock-qty">
+            <div class="stock-num ${cls}">${qty % 1 === 0 ? qty : qty.toFixed(1)}</div>
+            <div class="stock-unit">${item.unit}</div>
+            ${isEmpty ? '<div class="stock-alert out">在庫切れ</div>' : isLow ? '<div class="stock-alert">残少</div>' : ''}
+          </div>
+          <div style="color:#388e3c;font-size:20px;padding-left:4px;flex-shrink:0">›</div>
+        </div>`;
+      });
+    });
+  }
   el.innerHTML = html || '<div class="empty">品目がありません</div>';
+}
+
+function onOutQtyInput() {
+  // 1つでも入力があれば一括登録ボタンを強調
+  const hasAny = ITEMS_MASTER.some(item => {
+    const el = document.getElementById('out-qty-' + item.id);
+    return el && parseFloat(el.value) > 0;
+  });
+  const btn = document.querySelector('#move-bulk-submit-bar .btn-primary');
+  if (btn) btn.style.opacity = hasAny ? '1' : '0.5';
+}
+
+async function submitBulkOut() {
+  const staff = document.getElementById('move-staff-top').value;
+  const date = document.getElementById('move-date-top').value;
+  if (!staff || !date) { alert('スタッフと日付を確認してください'); return; }
+
+  const entries = [];
+  ITEMS_MASTER.forEach(item => {
+    const el = document.getElementById('out-qty-' + item.id);
+    const val = parseFloat(el?.value);
+    if (val && val > 0) entries.push({ item, qty: val });
+  });
+
+  if (!entries.length) { alert('持ち出し数量を1つ以上入力してください'); return; }
+
+  const promises = [];
+  entries.forEach(({ item, qty }) => {
+    const currentQty = getQty(item.id);
+    const newQty = Math.max(0, currentQty - qty);
+    const movement = { type: 'out', itemId: item.id, itemName: item.name, unit: item.unit, qty, staff, date, note: '', createdAt: Date.now() };
+    inventory[item.id] = newQty;
+    promises.push(fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) }));
+    promises.push(fetch(DB + '/inventory/' + item.id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newQty) }));
+  });
+
+  try {
+    await Promise.all(promises);
+    showToast(`📤 ${entries.length}品目を登録しました！`);
+    backToStep1();
+  } catch(e) { alert('登録に失敗しました。'); }
 }
 
 function openItemMoveModal(itemId) {
