@@ -902,15 +902,18 @@ function renderDayReports(dateStr){
         ${a.reason?`<div style="font-size:13px;color:#666;margin-top:4px">📝 ${a.reason}</div>`:''}
       </div>`).join('')}`:'';
 
-  const reportHtml=list.map(([key,r])=>`
+  const reportHtml=list.map(([key,r])=>{
+    const hasNote=(r.sites||[]).some(s=>s.note&&s.note.trim());
+    return `
     <div class="report-card">
       <div style="cursor:pointer" onclick="showDetail('${key}')">
-        <div class="report-card-top"><span class="report-date">${r.staffName}</span><span>${WEATHERS[r.weather]||''}</span></div>
+        <div class="report-card-top"><span class="report-date">${r.staffName}${hasNote?'<span style="margin-left:6px;background:#fff0d8;color:#c97a1f;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">📝 備考あり</span>':''}</span><span>${WEATHERS[r.weather]||''}</span></div>
         <div class="report-sites" style="padding-right:40px">📍 ${r.sites.map(s=>s.name).join('　')}</div>
         <span class="report-arrow">›</span>
       </div>
       <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const draftHtml=draftList.length?`
     <div class="section-title" style="margin-top:4px">📝 下書き（${draftList.length}件）</div>
