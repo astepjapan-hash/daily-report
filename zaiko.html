@@ -1017,7 +1017,6 @@ function checkAdminPass() {
 }
 
 let adminCatFilter = 'all';
-let adminShowZero = false;
 
 function renderAdminContent() {
   const el = document.getElementById('admin-content');
@@ -1026,7 +1025,6 @@ function renderAdminContent() {
 
   const filteredItems = ITEMS_MASTER.filter(item => {
     if (adminCatFilter !== 'all' && item.category !== adminCatFilter) return false;
-    if (!adminShowZero && getQty(item.id) === 0) return false;
     return true;
   });
 
@@ -1061,10 +1059,7 @@ function setAdminCatFilter(cat) {
   renderAdminContent();
 }
 
-function toggleAdminZero() {
-  adminShowZero = !adminShowZero;
-  renderAdminContent();
-}
+
 
 async function saveItemQty(itemId) {
   const qty = parseFloat(document.getElementById('admin-qty-' + itemId)?.value) || 0;
