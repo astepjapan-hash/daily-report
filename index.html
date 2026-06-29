@@ -1945,6 +1945,7 @@ function showDetail(key){
         ${s.shitaji?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">${s.shitaji.map(sh=>`<span style="background:#e8f0e8;color:#2d6a2d;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:600">🌡 ${sh}</span>`).join('')}</div>`:''}
         <div class="process-result-row">${PROCESSES.map(p=>`<span class="proc-chip ${s.processes?.includes(p)?'done':'not-done'}">${p}</span>`).join('')}</div>
         ${(s.primerKg||s.resinKan||s.resinWari||s.topKg)?`<div class="material-result-row">${s.primerKg?`<span class="material-chip">プライマー ${s.primerKg}kg</span>`:''} ${(s.resinKan||s.resinWari)?`<span class="material-chip">樹脂 ${s.resinKan||0}缶${s.resinWari||0}割</span>`:''} ${s.topKg?`<span class="material-chip">トップ ${s.topKg}kg</span>`:''}</div>`:''}
+        ${s.note?`<div style="margin-top:8px;padding:8px 10px;background:#fff8ee;border-radius:8px;font-size:13px;color:#7a6a55">📝 ${s.note}</div>`:''}
       </div>`).join('')}
     </div>
     <div class="detail-section"><span class="detail-section-label">次の予定・明日の予定</span><div class="preview-text">${r.tomorrow}</div></div>`;
