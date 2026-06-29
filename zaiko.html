@@ -1040,12 +1040,6 @@ function renderAdminContent() {
     <div class="filter-row" style="margin-bottom:8px">
       ${cats.map(c => `<button class="filter-btn ${adminCatFilter === c ? 'active' : ''}" onclick="setAdminCatFilter('${c}')">${catLabels[c]}</button>`).join('')}
     </div>
-    <div style="margin-bottom:12px">
-      <button onclick="toggleAdminZero()" style="padding:6px 14px;border-radius:20px;border:1.5px solid #e0d8d0;background:${adminShowZero ? '#e07b4f' : '#fff'};color:${adminShowZero ? '#fff' : '#888'};font-size:12px;cursor:pointer;font-family:inherit;font-weight:${adminShowZero ? '700' : '500'}">
-        ０も表示
-      </button>
-    </div>
-
     <div class="section-title">在庫数を設定（${filteredItems.length}品目）</div>
     ${filteredItems.length ? filteredItems.map(item => `
       <div class="item-edit-row">
