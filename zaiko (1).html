@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="材料管理">
+<title>材料管理</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Hiragino Kaku Gothic ProN', sans-serif; background: #f5f0ea; min-height: 100vh; }
+
+.header { background: #fff; border-bottom: 1px solid #ede8e2; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.header-inner { max-width: 540px; margin: 0 auto; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.logo { font-size: 16px; font-weight: 700; color: #2d2a26; white-space: nowrap; }
+.tabs { display: flex; gap: 2px; background: #f5f0ea; border-radius: 10px; padding: 3px; }
+.tab { padding: 6px 10px; border-radius: 7px; border: none; background: transparent; color: #888; font-size: 12px; cursor: pointer; font-weight: 500; font-family: inherit; white-space: nowrap; }
+.tab.active { background: #e07b4f; color: #fff; font-weight: 700; }
+
+.body { max-width: 540px; margin: 0 auto; padding: 0 0 60px; }
+.view { display: none; }
+.view.active { display: block; }
+.wrap { padding: 16px; }
+
+/* 共通 */
+label.lbl { display: block; font-weight: 600; font-size: 14px; color: #2d2a26; margin-bottom: 8px; }
+.field { margin-bottom: 16px; }
+select, input[type=text], input[type=date], input[type=number], input[type=password] {
+  width: 100%; padding: 12px; border-radius: 10px; border: 1.5px solid #e0d8d0;
+  font-size: 15px; color: #2d2a26; background: #fff; outline: none; font-family: inherit;
+  appearance: none; -webkit-appearance: none;
+}
+.btn-primary { width: 100%; padding: 14px; background: #e07b4f; color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.btn-secondary { width: 100%; padding: 12px; background: #fff; color: #888; border: 1.5px solid #e0d8d0; border-radius: 12px; font-size: 14px; cursor: pointer; font-family: inherit; margin-top: 8px; }
+.card { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid #ede8e2; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.section-title { font-size: 12px; font-weight: 600; color: #aaa; margin-bottom: 10px; letter-spacing: 0.05em; }
+.loading { display: flex; align-items: center; justify-content: center; padding: 60px 20px; color: #aaa; font-size: 14px; }
+.empty { text-align: center; padding: 40px 20px; color: #aaa; font-size: 14px; }
+.page-title { font-size: 18px; font-weight: 700; color: #2d2a26; margin-bottom: 4px; }
+.page-sub { font-size: 13px; color: #aaa; margin-bottom: 20px; }
+
+/* 在庫一覧 */
+.stock-item { background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; border: 1.5px solid #ede8e2; display: flex; align-items: center; gap: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.stock-item.low { border-color: #f0c040; background: #fffbf0; }
+.stock-item.empty-stock { border-color: #ef9a9a; background: #fff5f5; }
+.stock-icon { width: 40px; height: 40px; border-radius: 10px; background: #fdf0e8; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.stock-icon.low { background: #fff8e6; }
+.stock-icon.empty-stock { background: #fce8e8; }
+.stock-info { flex: 1; min-width: 0; }
+.stock-name { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stock-cat { font-size: 11px; color: #aaa; }
+.stock-qty { text-align: right; flex-shrink: 0; }
+.stock-num { font-size: 22px; font-weight: 700; color: #e07b4f; line-height: 1; }
+.stock-num.low { color: #d4a017; }
+.stock-num.empty-stock { color: #d32f2f; }
+.stock-unit { font-size: 11px; color: #aaa; margin-top: 2px; }
+.stock-alert { font-size: 10px; color: #d4a017; font-weight: 700; margin-top: 2px; }
+.stock-alert.out { color: #d32f2f; }
+
+/* フィルターバー */
+.filter-row { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+.filter-btn { flex-shrink: 0; padding: 6px 14px; border-radius: 20px; border: 1.5px solid #e0d8d0; background: #fff; color: #888; font-size: 12px; cursor: pointer; font-family: inherit; }
+.filter-btn.active { background: #e07b4f; border-color: #e07b4f; color: #fff; font-weight: 700; }
+
+/* 入出庫フォーム */
+.type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 18px; }
+.type-btn { padding: 14px; border-radius: 12px; border: 2px solid #e0d8d0; background: #fff; color: #888; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; text-align: center; transition: all 0.15s; }
+.type-btn.in.selected { background: #e8f5e9; border-color: #388e3c; color: #388e3c; }
+.type-btn.out.selected { background: #fdf0e8; border-color: #e07b4f; color: #e07b4f; }
+.qty-row { display: flex; gap: 8px; align-items: flex-end; }
+.qty-input { flex: 1; }
+.qty-unit-label { font-size: 14px; color: #888; padding-bottom: 14px; white-space: nowrap; }
+
+/* 履歴 */
+.history-item { background: #fff; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; border: 1.5px solid #ede8e2; display: flex; align-items: center; gap: 10px; }
+.hist-badge { flex-shrink: 0; width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+.hist-badge.in { background: #e8f5e9; color: #388e3c; }
+.hist-badge.out { background: #fdf0e8; color: #e07b4f; }
+.hist-info { flex: 1; min-width: 0; }
+.hist-name { font-size: 14px; font-weight: 700; color: #2d2a26; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-meta { font-size: 12px; color: #aaa; margin-top: 2px; }
+.hist-qty { text-align: right; flex-shrink: 0; }
+.hist-qty-num { font-size: 18px; font-weight: 700; }
+.hist-qty-num.in { color: #388e3c; }
+.hist-qty-num.out { color: #e07b4f; }
+.hist-qty-unit { font-size: 11px; color: #aaa; }
+
+/* 管理 */
+.admin-lock { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; }
+.lock-icon { font-size: 48px; margin-bottom: 16px; }
+.lock-title { font-size: 18px; font-weight: 700; color: #2d2a26; margin-bottom: 8px; }
+.lock-sub { font-size: 13px; color: #aaa; margin-bottom: 24px; text-align: center; }
+.logout-btn { background: none; border: none; color: #aaa; font-size: 13px; cursor: pointer; font-family: inherit; padding: 8px 0; }
+
+.item-edit-row { background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; border: 1.5px solid #ede8e2; }
+.item-edit-name { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 8px; }
+.item-edit-fields { display: flex; gap: 8px; align-items: center; }
+.item-edit-fields input { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1.5px solid #e0d8d0; font-size: 13px; font-family: inherit; }
+.item-edit-fields span { font-size: 12px; color: #aaa; white-space: nowrap; }
+.save-item-btn { padding: 7px 12px; background: #e07b4f; color: #fff; border: none; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
+
+/* 集計 */
+.stats-seg { display: flex; gap: 4px; background: #f5f0ea; border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+.stats-seg-btn { flex: 1; padding: 8px 4px; border-radius: 8px; border: none; background: transparent; color: #888; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 500; }
+.stats-seg-btn.active { background: #fff; color: #e07b4f; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.month-nav-btn { background: none; border: 1.5px solid #e0d8d0; border-radius: 8px; padding: 6px 14px; font-size: 14px; cursor: pointer; color: #888; font-family: inherit; }
+.month-nav-label { font-size: 16px; font-weight: 700; color: #2d2a26; }
+.stats-row { background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; border: 1.5px solid #ede8e2; display: flex; align-items: center; justify-content: space-between; }
+.stats-label { font-size: 14px; font-weight: 600; color: #2d2a26; }
+.stats-sub { font-size: 11px; color: #aaa; margin-top: 2px; }
+.stats-vals { text-align: right; }
+.stats-in { font-size: 13px; color: #388e3c; font-weight: 700; }
+.stats-out { font-size: 13px; color: #e07b4f; font-weight: 700; }
+
+/* 削除ボタン */
+.delete-btn { background: none; border: none; color: #ddd; font-size: 18px; cursor: pointer; padding: 4px; font-family: inherit; }
+
+/* サマリーバー */
+.summary-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.summary-cell { background: #fff; border-radius: 10px; padding: 10px 8px; text-align: center; border: 1.5px solid #ede8e2; }
+.summary-cell-label { font-size: 10px; color: #aaa; margin-bottom: 4px; }
+.summary-cell-val { font-size: 20px; font-weight: 700; color: #2d2a26; }
+.summary-cell-val.warn { color: #d4a017; }
+.summary-cell-val.danger { color: #d32f2f; }
+
+/* モーダル */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
+.modal-box { background: #fff; border-radius: 16px 16px 0 0; padding: 24px 20px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-size: 16px; font-weight: 700; color: #2d2a26; margin-bottom: 16px; }
+.modal-btn-row { display: flex; gap: 8px; margin-top: 16px; }
+.modal-cancel { flex: 1; padding: 12px; background: #f5f0ea; color: #888; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; font-family: inherit; }
+.modal-save { flex: 2; padding: 12px; background: #e07b4f; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+/* 完了トースト */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #2d2a26; color: #fff; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+.toast.show { opacity: 1; }
+
+/* カテゴリバッジ */
+.cat-badge { display: inline-block; border-radius: 6px; padding: 2px 7px; font-size: 10px; font-weight: 700; margin-left: 6px; }
+.cat-frp { background: #e8f0fd; color: #2858b0; }
+.cat-tool { background: #f0e8fd; color: #6b2eb0; }
+.cat-consume { background: #e8fdf0; color: #1a7a42; }
+.cat-drain { background: #fdf4e8; color: #a05010; }
+.cat-other { background: #f0ede8; color: #666; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <span class="logo">📦 材料管理</span>
+    <div class="tabs">
+      <button class="tab active" id="tab-move" onclick="showView('move')">入出庫</button>
+      <button class="tab" id="tab-stock" onclick="showView('stock')">在庫</button>
+      <button class="tab" id="tab-history" onclick="showView('history')">履歴</button>
+      <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
+      <button class="tab" id="tab-admin" onclick="showView('admin')">管理</button>
+    </div>
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- 在庫一覧 -->
+  <div class="view" id="view-stock">
+    <div class="wrap">
+      <div id="stock-summary" class="summary-bar"></div>
+      <div class="filter-row" id="cat-filter-row"></div>
+      <div id="stock-list"><div class="loading">読み込み中...</div></div>
+    </div>
+  </div>
+
+  <!-- 入出庫 -->
+  <div class="view active" id="view-move">
+    <div class="wrap">
+
+      <!-- STEP1: 名前・日付 -->
+      <div id="move-step1">
+        <div class="page-title">入出庫登録</div>
+        <div class="page-sub" style="margin-bottom:16px">まず名前と日付を入力してください</div>
+        <div class="field">
+          <label class="lbl">スタッフ</label>
+          <select id="move-staff-top">
+            <option value="">選択してください</option>
+            <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option><option>外注</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lbl">日付</label>
+          <input type="date" id="move-date-top">
+        </div>
+        <div class="type-toggle" style="margin-top:4px">
+          <button class="type-btn out selected" id="type-out" onclick="goToMoveList('out')">📤 持ち出し</button>
+          <button class="type-btn in" id="type-in" onclick="goToMoveList('in')">📥 入庫</button>
+        </div>
+        <button class="btn-secondary" style="margin-top:8px" onclick="showBulkModal()">📋 一括持ち出し（表から入力）</button>
+      </div>
+
+      <!-- STEP2: 品目リスト -->
+      <div id="move-step2" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <button onclick="backToStep1()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:#2d2a26" id="move-step2-label"></div>
+            <div style="font-size:11px;color:#aaa" id="move-step2-sub"></div>
+          </div>
+        </div>
+        <div id="move-cat-filter-row" style="position:sticky;top:56px;z-index:50;background:#f5f0ea;padding:6px 0 4px;margin:0 -16px;padding-left:16px;overflow-x:auto;display:flex;gap:6px;-webkit-overflow-scrolling:touch"></div>
+        <div id="move-item-list" style="margin-top:4px"></div>
+        <div id="move-bulk-submit-bar" style="display:none;position:sticky;bottom:8px;margin-top:12px">
+          <button class="btn-primary" onclick="goToConfirm()">確認画面へ →</button>
+        </div>
+      </div>
+
+      <!-- STEP3: 確認画面 -->
+      <div id="move-step3" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <button onclick="backToStep2()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:700;color:#2d2a26">📋 持ち出し確認</div>
+            <div style="font-size:11px;color:#aaa" id="move-step3-sub"></div>
+          </div>
+        </div>
+        <div id="confirm-list"></div>
+        <div style="margin-top:12px;background:#fff;border-radius:12px;padding:12px;border:1.5px dashed #e0d8d0">
+          <div style="font-size:12px;font-weight:600;color:#aaa;margin-bottom:8px">＋ 品目を追加</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="confirm-add-item" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;background:#fff">
+              <option value="">品目を選択</option>
+            </select>
+            <input type="number" min="0" step="1" placeholder="0" id="confirm-add-qty"
+              style="width:64px;padding:10px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:15px;text-align:center;font-family:inherit">
+            <span id="confirm-add-unit" style="font-size:12px;color:#aaa;white-space:nowrap">―</span>
+            <button onclick="confirmAddItem()" style="padding:10px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">追加</button>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <button class="btn-primary" onclick="submitBulkOut()">📤 登録する</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 履歴 -->
+  <div class="view" id="view-history">
+    <div class="wrap">
+      <div class="search-wrap" style="margin-bottom:10px">
+        <span class="search-ico">🔍</span>
+        <input class="search-inp" type="text" id="hist-search-input" placeholder="品目名・メモで検索" oninput="onHistSearch(this.value)">
+        <button class="search-clr" id="hist-search-clear" onclick="clearHistSearch()">×</button>
+      </div>
+
+      <div class="filter-row" id="hist-type-filter-row" style="margin-bottom:8px">
+        <button class="filter-btn active" data-filter="all" onclick="setHistTypeFilter('all',this)">すべて</button>
+        <button class="filter-btn" data-filter="out" onclick="setHistTypeFilter('out',this)">📤 持ち出し</button>
+        <button class="filter-btn" data-filter="in" onclick="setHistTypeFilter('in',this)">📥 入庫</button>
+      </div>
+
+      <div class="filter-row" id="hist-cat-filter-row" style="margin-bottom:8px"></div>
+
+      <div class="filter-row" id="hist-staff-filter-row" style="margin-bottom:12px">
+        <button class="filter-btn active" data-filter="all" onclick="setHistStaffFilter('all',this)">全員</button>
+        <button class="filter-btn" data-filter="加藤瑞樹" onclick="setHistStaffFilter('加藤瑞樹',this)">加藤</button>
+        <button class="filter-btn" data-filter="山内浩一" onclick="setHistStaffFilter('山内浩一',this)">山内</button>
+        <button class="filter-btn" data-filter="森田義則" onclick="setHistStaffFilter('森田義則',this)">森田</button>
+        <button class="filter-btn" data-filter="富山裕貴" onclick="setHistStaffFilter('富山裕貴',this)">富山</button>
+        <button class="filter-btn" data-filter="外注" onclick="setHistStaffFilter('外注',this)">外注</button>
+      </div>
+
+      <div id="history-list"><div class="loading">読み込み中...</div></div>
+    </div>
+  </div>
+
+  <!-- 集計 -->
+  <div class="view" id="view-stats">
+    <div class="wrap">
+      <div class="stats-seg">
+        <button class="stats-seg-btn active" id="sseg-month" onclick="setStatsSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="sseg-item" onclick="setStatsSeg('item')">品目別</button>
+        <button class="stats-seg-btn" id="sseg-staff" onclick="setStatsSeg('staff')">個人別</button>
+      </div>
+      <div id="stats-content"><div class="loading">読み込み中...</div></div>
+    </div>
+  </div>
+
+  <!-- 管理 -->
+  <div class="view" id="view-admin">
+    <div id="admin-content"></div>
+  </div>
+
+</div>
+
+<!-- 品目タップモーダル -->
+<div class="modal-overlay" id="item-move-modal" style="display:none" onclick="closeItemMoveModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-title" id="item-move-title">持ち出し登録</div>
+    <div style="background:#f5f0ea;border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#2d2a26" id="item-move-name"></div>
+        <div style="font-size:12px;color:#aaa;margin-top:2px">現在庫: <span id="item-move-current"></span></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:24px;font-weight:700;color:#e07b4f" id="item-move-qty-display">0</div>
+        <div style="font-size:12px;color:#aaa" id="item-move-unit-disp"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label class="lbl">数量</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="changeQty(-1)" style="width:44px;height:44px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;font-size:22px;cursor:pointer;font-family:inherit;flex-shrink:0">−</button>
+        <input type="number" id="item-move-qty" min="0" step="1" placeholder="0"
+          style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #e0d8d0;font-size:20px;text-align:center;font-family:inherit"
+          oninput="document.getElementById('item-move-qty-display').textContent=this.value||0">
+        <button onclick="changeQty(1)" style="width:44px;height:44px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;font-size:22px;cursor:pointer;font-family:inherit;flex-shrink:0">＋</button>
+        <span style="font-size:14px;color:#888;white-space:nowrap" id="item-move-unit-label2"></span>
+      </div>
+    </div>
+    <div class="field">
+      <label class="lbl">メモ（任意）</label>
+      <input type="text" id="item-move-note" placeholder="例：〇〇現場用">
+    </div>
+    <div class="modal-btn-row">
+      <button class="modal-cancel" onclick="closeItemMoveModal()">キャンセル</button>
+      <button class="modal-save" id="item-move-submit" onclick="submitItemMove()">登録する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 一括持ち出しモーダル -->
+<div class="modal-overlay" id="bulk-modal" style="display:none" onclick="closeBulkModal()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-title">📋 一括持ち出し</div>
+    <div class="field">
+      <label class="lbl">スタッフ</label>
+      <select id="bulk-staff">
+        <option value="">選択してください</option>
+        <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option><option>外注</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="lbl">日付</label>
+      <input type="date" id="bulk-date">
+    </div>
+    <div id="bulk-items-list" style="max-height:40vh;overflow-y:auto;margin-bottom:8px"></div>
+    <div class="modal-btn-row">
+      <button class="modal-cancel" onclick="closeBulkModal()">キャンセル</button>
+      <button class="modal-save" onclick="submitBulk()">一括登録</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+const DB = 'https://daily-report-a1193-default-rtdb.firebaseio.com';
+const ADMIN_PASS = '2431';
+
+// 持ち出し記録表の品目マスタ（カテゴリ付き）
+const ITEMS_MASTER = [
+  // FRP防水材料
+  {id:'primer',      name:'プライマーＳ-１',   unit:'缶',    category:'frp',     alert:3},
+  {id:'primer_r',    name:'プライマーＳ-１Ｒ', unit:'缶',    category:'frp',     alert:3},
+  {id:'primer_x',    name:'プライマーＳ-１Ｘ', unit:'缶',    category:'frp',     alert:3},
+  {id:'resin',       name:'ポリルーフ樹脂',  unit:'缶',    category:'frp',     alert:3},
+  {id:'top',         name:'ポリルーフトップ', unit:'缶',   category:'frp',     alert:3},
+  {id:'primer3',     name:'三井プライマー',  unit:'缶',    category:'frp',     alert:3},
+  {id:'resin3',      name:'三井樹脂',        unit:'缶',    category:'frp',     alert:3},
+  {id:'gray3',       name:'三井グレー',      unit:'缶',    category:'frp',     alert:2},
+  {id:'ivory3',      name:'三井トップ高耐候', unit:'缶',   category:'frp',     alert:2},
+  {id:'parmec',      name:'パーメック',      unit:'本',    category:'frp',     alert:2},
+  {id:'acetone',     name:'アセトン',        unit:'缶',    category:'frp',     alert:2},
+  {id:'paste',       name:'ポリエステルパテ', unit:'個',   category:'frp',     alert:2},
+  {id:'caulk',       name:'コーキング',      unit:'本',    category:'frp',     alert:3},
+  {id:'remaster',    name:'リマスターパテ',  unit:'個',    category:'frp',     alert:2},
+  // 副資材
+  {id:'mat',         name:'ガラスマット',    unit:'本',    category:'sub',     alert:5},
+  {id:'mat450',      name:'ガラスマット450', unit:'本',    category:'sub',     alert:5},
+  {id:'mat_red',     name:'ガラスマット赤',  unit:'本',    category:'sub',     alert:3},
+  {id:'mat_green',   name:'ガラスマット緑',  unit:'本',    category:'sub',     alert:3},
+  {id:'mat_blue',    name:'ガラスマット青',  unit:'本',    category:'sub',     alert:3},
+  {id:'avs_sheet',   name:'AVSシート',       unit:'枚',    category:'sub',     alert:2},
+  {id:'a07tape',     name:'A07テープ',       unit:'巻',    category:'sub',     alert:2},
+  {id:'g_tape',      name:'Ｇテープ',        unit:'巻',    category:'sub',     alert:2},
+  {id:'r_mat',       name:'Ｒマット',        unit:'枚',    category:'sub',     alert:2},
+  {id:'r_bond',      name:'Ｒボンド',        unit:'缶',    category:'sub',     alert:2},
+  {id:'r_tape',      name:'Ｒテープ',        unit:'巻',    category:'sub',     alert:2},
+  {id:'big_coat',    name:'ビックサンコート', unit:'缶',   category:'sub',     alert:2},
+  {id:'big_powder',  name:'ビックサンパウダー', unit:'袋', category:'sub',     alert:2},
+  // ドレン・排水
+  {id:'drain_tate',  name:'縦ドレン',        unit:'個',    category:'drain',   alert:2},
+  {id:'strain_tate', name:'縦ストレーナー',  unit:'個',    category:'drain',   alert:2},
+  {id:'drain_yoko',  name:'横ドレン',        unit:'個',    category:'drain',   alert:2},
+  {id:'strain_yoko', name:'横ストレーナー',  unit:'個',    category:'drain',   alert:2},
+  {id:'vp25',        name:'VP25',            unit:'個',    category:'drain',   alert:2},
+  {id:'vj50',        name:'VU50',            unit:'本',    category:'drain',   alert:2},
+  {id:'drain_tate75',  name:'縦ドレン75',          unit:'個',    category:'drain',   alert:2},
+  {id:'drain_yoko75',  name:'横ドレン75',          unit:'個',    category:'drain',   alert:2},
+  {id:'drain_yoko75p', name:'横ドレン75塩ビ',      unit:'個',    category:'drain',   alert:2},
+  {id:'strain_tate_al',name:'縦アルミストレーナー', unit:'個',   category:'drain',   alert:2},
+  {id:'strain_yoko_al',name:'横アルミストレーナー', unit:'個',   category:'drain',   alert:2},
+  {id:'poras_tate',    name:'ポラス縦ドレン',       unit:'個',   category:'drain',   alert:2},
+  {id:'poras_tate_s',  name:'ポラス縦ストレーナー', unit:'個',   category:'drain',   alert:2},
+  {id:'poras_yoko',    name:'ポラス横ドレン',       unit:'個',   category:'drain',   alert:2},
+  {id:'poras_yoko_s',  name:'ポラス横ストレーナー', unit:'個',   category:'drain',   alert:2},
+  {id:'poras_yoko_l',  name:'ポラス横ドレンロング', unit:'個',   category:'drain',   alert:2},
+  {id:'poras_over',    name:'ポラスオーバー',       unit:'個',   category:'drain',   alert:2},
+  {id:'poras_over_l',  name:'ポラスオーバーロング', unit:'個',   category:'drain',   alert:2},
+  // ローラー・工具
+  {id:'roller',      name:'ローラー',        unit:'本',    category:'tool',    alert:3},
+  {id:'roller_dewa', name:'脱泡ローラー',    unit:'本',    category:'tool',    alert:3},
+  {id:'roller_swap', name:'脱泡替え',        unit:'本',    category:'tool',    alert:5},
+  {id:'cutter',      name:'カッター',        unit:'個',    category:'tool',    alert:2},
+  {id:'blade',       name:'カッターの刃',    unit:'個',    category:'tool',    alert:5},
+  {id:'tacker',      name:'タッカーの刃',    unit:'個',    category:'tool',    alert:3},
+  {id:'grinder',     name:'サンダーの石',    unit:'枚',    category:'tool',    alert:3},
+  {id:'core',        name:'コア抜き',        unit:'個',    category:'tool',    alert:2},
+  {id:'kawasuki',    name:'皮スキ',          unit:'個',    category:'tool',    alert:2},
+  {id:'patebera',    name:'パテベラ',        unit:'個',    category:'tool',    alert:2},
+  // 消耗品
+  {id:'masking',     name:'マスキング',      unit:'個',    category:'consume', alert:3},
+  {id:'tape',        name:'ガムテープ',      unit:'巻',    category:'consume', alert:2},
+  {id:'bag',         name:'ごみ袋',          unit:'箱',    category:'consume', alert:2},
+  {id:'sheet',       name:'ブルーシート',    unit:'枚',    category:'consume', alert:2},
+  {id:'gas',         name:'ガス替え',        unit:'本',    category:'consume', alert:2},
+  {id:'mask',        name:'マスク',          unit:'箱',    category:'consume', alert:3},
+  {id:'mask_fil',    name:'マスク替え',      unit:'個',    category:'consume', alert:3},
+  {id:'sage_can',    name:'さげ缶',          unit:'個',    category:'consume', alert:2},
+  {id:'bucket',      name:'バケツ',          unit:'個',    category:'consume', alert:2},
+  {id:'glove',       name:'軍手',            unit:'双',    category:'consume', alert:5},
+];
+
+const CAT_LABELS = {
+  frp: 'FRP防水材',
+  sub: '副資材',
+  drain: 'ドレン',
+  tool: '工具',
+  consume: '消耗品',
+  other: 'その他',
+};
+const CAT_COLORS = {
+  frp: 'cat-frp', sub: 'cat-consume', drain: 'cat-drain', tool: 'cat-tool', consume: 'cat-consume', other: 'cat-other'
+};
+
+let inventory = {}; // {itemId: qty}
+let movements = {}; // Firebase movements
+let moveType = 'out';
+let moveCatFilter = 'all';
+let histFilter = 'all';
+let statsSeg = 'month';
+let catFilter = 'all';
+let statsMonth = new Date().toISOString().slice(0, 7);
+let adminLoggedIn = false;
+let currentItemId = '';
+
+// 初期化
+async function init() {
+  const moveDateEl = document.getElementById('move-date-top');
+  if (moveDateEl) moveDateEl.value = getToday();
+  await loadAll();
+  // デモ用：在庫が空の場合は全品目を10に初期化
+  const hasAny = ITEMS_MASTER.some(item => (inventory[item.id] || 0) > 0);
+  if (!hasAny) {
+    const updates = {};
+    ITEMS_MASTER.forEach(item => { updates[item.id] = 10; });
+    try {
+      await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+      ITEMS_MASTER.forEach(item => { inventory[item.id] = 10; });
+    } catch(e) {}
+  }
+  buildItemSelect();
+  renderStock();
+  renderMoveList();
+  updateAdminBadge();
+}
+
+function getToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function loadAll() {
+  try {
+    const [invRes, movRes] = await Promise.all([
+      fetch(DB + '/inventory.json'),
+      fetch(DB + '/movements.json')
+    ]);
+    inventory = await invRes.json() || {};
+    movements = await movRes.json() || {};
+  } catch(e) {
+    inventory = {}; movements = {};
+  }
+}
+
+// ── ビュー切替 ──
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'stock') { loadAll().then(() => renderStock()); }
+  if (name === 'move') {
+    document.getElementById('move-step1').style.display = 'block';
+    document.getElementById('move-step2').style.display = 'none';
+    document.getElementById('move-date-top').value = getToday();
+    loadAll().then(() => {});
+  }
+  if (name === 'history') { loadAll().then(() => renderHistory()); }
+  if (name === 'stats') { loadAll().then(() => renderStats()); }
+  if (name === 'admin') showAdmin();
+}
+
+// ── 在庫一覧 ──
+function buildCatFilter() {
+  const el = document.getElementById('cat-filter-row');
+  const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
+  const labels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
+  el.innerHTML = cats.map(c => `<button class="filter-btn ${catFilter === c ? 'active' : ''}" onclick="setCatFilter('${c}', this)">${labels[c]}</button>`).join('');
+}
+
+function setCatFilter(cat, btn) {
+  catFilter = cat;
+  document.querySelectorAll('#cat-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderStock();
+}
+
+function getQty(itemId) {
+  return parseFloat(inventory[itemId]) || 0;
+}
+
+function renderStock() {
+  buildCatFilter();
+  const items = catFilter === 'all' ? ITEMS_MASTER : ITEMS_MASTER.filter(i => i.category === catFilter);
+
+  // サマリー
+  const total = ITEMS_MASTER.length;
+  const low = ITEMS_MASTER.filter(i => { const q = getQty(i.id); return q > 0 && q <= i.alert; }).length;
+  const out = ITEMS_MASTER.filter(i => getQty(i.id) <= 0).length;
+  document.getElementById('stock-summary').innerHTML = `
+    <div class="summary-cell"><div class="summary-cell-label">品目数</div><div class="summary-cell-val">${total}</div></div>
+    <div class="summary-cell"><div class="summary-cell-label">⚠️ 残少</div><div class="summary-cell-val warn">${low}</div></div>
+    <div class="summary-cell"><div class="summary-cell-label">🔴 在庫切</div><div class="summary-cell-val danger">${out}</div></div>
+  `;
+
+  if (!items.length) { document.getElementById('stock-list').innerHTML = '<div class="empty">品目がありません</div>'; return; }
+
+  // カテゴリごとにグループ化
+  const grouped = {};
+  items.forEach(item => {
+    if (!grouped[item.category]) grouped[item.category] = [];
+    grouped[item.category].push(item);
+  });
+
+  let html = '';
+  Object.entries(grouped).forEach(([cat, list]) => {
+    html += `<div class="section-title" style="margin-top:12px">${CAT_LABELS[cat] || cat}</div>`;
+    list.forEach(item => {
+      const qty = getQty(item.id);
+      const isLow = qty > 0 && qty <= item.alert;
+      const isEmpty = qty <= 0;
+      const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
+      const icon = isEmpty ? '❌' : isLow ? '⚠️' : getItemIcon(item.category);
+      html += `<div class="stock-item ${cls}" onclick="quickMove('${item.id}')">
+        <div class="stock-icon ${cls}">${icon}</div>
+        <div class="stock-info">
+          <div class="stock-name">${item.name}</div>
+          <div class="stock-cat">${CAT_LABELS[item.category]} ・ アラート: ${item.alert}${item.unit}</div>
+        </div>
+        <div class="stock-qty">
+          <div class="stock-num ${cls}">${qty % 1 === 0 ? qty : qty.toFixed(1)}</div>
+          <div class="stock-unit">${item.unit}</div>
+          ${isEmpty ? '<div class="stock-alert out">在庫切れ</div>' : isLow ? '<div class="stock-alert">残少</div>' : ''}
+        </div>
+      </div>`;
+    });
+  });
+  document.getElementById('stock-list').innerHTML = html;
+}
+
+function getItemIcon(cat) {
+  const icons = { frp: '🪣', drain: '🔩', tool: '🛠', consume: '📦' };
+  return icons[cat] || '📦';
+}
+
+function quickMove(itemId) {
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  if (!item) return;
+  document.getElementById('move-item').value = itemId;
+  document.getElementById('move-unit-label').textContent = item.unit;
+  showView('move');
+}
+
+// ── 入出庫 ──
+function selectType(t) {
+  moveType = t;
+  document.getElementById('type-in').classList.remove('selected');
+  document.getElementById('type-out').classList.remove('selected');
+  document.getElementById('type-' + t).classList.add('selected');
+}
+
+function selectMoveType(t) {
+  moveType = t;
+  document.getElementById('type-in').classList.remove('selected');
+  document.getElementById('type-out').classList.remove('selected');
+  document.getElementById('type-' + t).classList.add('selected');
+  renderMoveList();
+}
+
+function goToMoveList(t) {
+  const staff = document.getElementById('move-staff-top').value;
+  const date = document.getElementById('move-date-top').value;
+  if (!staff) { alert('スタッフを選択してください'); return; }
+  if (!date) { alert('日付を入力してください'); return; }
+  moveType = t;
+  document.getElementById('move-step1').style.display = 'none';
+  document.getElementById('move-step2').style.display = 'block';
+  const typeLabel = t === 'out' ? '📤 持ち出し' : '📥 入庫';
+  document.getElementById('move-step2-label').textContent = `${staff}　${typeLabel}`;
+  document.getElementById('move-step2-sub').textContent = date;
+  renderMoveList();
+}
+
+function backToStep1() {
+  document.getElementById('move-step1').style.display = 'block';
+  document.getElementById('move-step2').style.display = 'none';
+}
+
+function buildMoveCatFilter() {
+  const el = document.getElementById('move-cat-filter-row');
+  if (!el) return;
+  const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
+  const labels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
+  el.innerHTML = cats.map(c => `<button class="filter-btn ${moveCatFilter === c ? 'active' : ''}" style="flex-shrink:0" onclick="setMoveCatFilter('${c}', this)">${labels[c]}</button>`).join('');
+}
+
+function setMoveCatFilter(cat, btn) {
+  moveCatFilter = cat;
+  document.querySelectorAll('#move-cat-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMoveList();
+}
+
+function renderMoveList() {
+  buildMoveCatFilter();
+  const el = document.getElementById('move-item-list');
+  if (!el) return;
+  const items = moveCatFilter === 'all' ? ITEMS_MASTER : ITEMS_MASTER.filter(i => i.category === moveCatFilter);
+
+  const grouped = {};
+  items.forEach(item => {
+    if (!grouped[item.category]) grouped[item.category] = [];
+    grouped[item.category].push(item);
+  });
+
+  // 一括登録バーの表示制御
+  const bulkBar = document.getElementById('move-bulk-submit-bar');
+  if (bulkBar) bulkBar.style.display = moveType === 'out' ? 'block' : 'none';
+
+  let html = '';
+  if (moveType === 'out') {
+    // 持ち出し：数量入力欄付き一覧
+    Object.entries(grouped).forEach(([cat, list]) => {
+      html += `<div class="section-title" style="margin-top:12px">${CAT_LABELS[cat] || cat}</div>`;
+      list.forEach(item => {
+        const qty = getQty(item.id);
+        const isLow = qty > 0 && qty <= item.alert;
+        const isEmpty = qty <= 0;
+        const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
+        html += `<div class="stock-item ${cls}" style="padding:10px 12px">
+          <div class="stock-info">
+            <div class="stock-name">${item.name}</div>
+            <div class="stock-cat">在庫: ${qty % 1 === 0 ? qty : qty.toFixed(1)}${item.unit}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <input type="number" min="0" step="1" placeholder="0"
+              id="out-qty-${item.id}"
+              value="${outQtyMap[item.id] || ''}"
+              oninput="onOutQtyInput('${item.id}', this.value)"
+              style="width:64px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;text-align:center;font-family:inherit;background:#fff">
+            <span style="font-size:12px;color:#aaa">${item.unit}</span>
+          </div>
+        </div>`;
+      });
+    });
+  } else {
+    // 入庫：品目タップ→モーダル
+    Object.entries(grouped).forEach(([cat, list]) => {
+      html += `<div class="section-title" style="margin-top:12px">${CAT_LABELS[cat] || cat}</div>`;
+      list.forEach(item => {
+        const qty = getQty(item.id);
+        const isLow = qty > 0 && qty <= item.alert;
+        const isEmpty = qty <= 0;
+        const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
+        const icon = isEmpty ? '❌' : isLow ? '⚠️' : getItemIcon(item.category);
+        html += `<div class="stock-item ${cls}" onclick="openItemMoveModal('${item.id}')" style="cursor:pointer">
+          <div class="stock-icon ${cls}">${icon}</div>
+          <div class="stock-info">
+            <div class="stock-name">${item.name}</div>
+            <div class="stock-cat">${CAT_LABELS[item.category]}</div>
+          </div>
+          <div class="stock-qty">
+            <div class="stock-num ${cls}">${qty % 1 === 0 ? qty : qty.toFixed(1)}</div>
+            <div class="stock-unit">${item.unit}</div>
+            ${isEmpty ? '<div class="stock-alert out">在庫切れ</div>' : isLow ? '<div class="stock-alert">残少</div>' : ''}
+          </div>
+          <div style="color:#388e3c;font-size:20px;padding-left:4px;flex-shrink:0">›</div>
+        </div>`;
+      });
+    });
+  }
+  el.innerHTML = html || '<div class="empty">品目がありません</div>';
+}
+
+let confirmEntries = []; // {itemId, itemName, unit, qty}
+let outQtyMap = {}; // {itemId: qty} フィルター切替時も値を保持
+
+function onOutQtyInput(itemId, val) {
+  const qty = parseFloat(val) || 0;
+  if (qty > 0) outQtyMap[itemId] = qty;
+  else delete outQtyMap[itemId];
+  const hasAny = Object.keys(outQtyMap).length > 0;
+  const btn = document.querySelector('#move-bulk-submit-bar .btn-primary');
+  if (btn) btn.style.opacity = hasAny ? '1' : '0.5';
+}
+
+function goToConfirm() {
+  // outQtyMapから収集
+  confirmEntries = [];
+  // 現在表示中の入力欄の値をまずoutQtyMapに保存
+  ITEMS_MASTER.forEach(item => {
+    const el = document.getElementById('out-qty-' + item.id);
+    if (el) {
+      const val = parseFloat(el.value) || 0;
+      if (val > 0) outQtyMap[item.id] = val;
+      else delete outQtyMap[item.id];
+    }
+  });
+  Object.entries(outQtyMap).forEach(([itemId, qty]) => {
+    const item = ITEMS_MASTER.find(i => i.id === itemId);
+    if (item) confirmEntries.push({ itemId: item.id, itemName: item.name, unit: item.unit, qty });
+  });
+  if (!confirmEntries.length) { alert('持ち出し数量を1つ以上入力してください'); return; }
+
+  const staff = document.getElementById('move-staff-top').value;
+  const date = document.getElementById('move-date-top').value;
+  document.getElementById('move-step3-sub').textContent = staff + '　' + date;
+
+  // 追加品目セレクトを構築
+  buildConfirmAddSelect();
+
+  document.getElementById('move-step2').style.display = 'none';
+  document.getElementById('move-step3').style.display = 'block';
+  renderConfirmList();
+}
+
+function backToStep2() {
+  document.getElementById('move-step3').style.display = 'none';
+  document.getElementById('move-step2').style.display = 'block';
+}
+
+function buildConfirmAddSelect() {
+  const sel = document.getElementById('confirm-add-item');
+  sel.innerHTML = '<option value="">品目を選択</option>';
+  const cats = ['frp', 'sub', 'drain', 'tool', 'consume'];
+  cats.forEach(cat => {
+    const group = document.createElement('optgroup');
+    group.label = CAT_LABELS[cat];
+    ITEMS_MASTER.filter(i => i.category === cat).forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = item.name;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  });
+  sel.onchange = function() {
+    const item = ITEMS_MASTER.find(i => i.id === this.value);
+    document.getElementById('confirm-add-unit').textContent = item ? item.unit : '―';
+  };
+}
+
+function renderConfirmList() {
+  const el = document.getElementById('confirm-list');
+  if (!confirmEntries.length) {
+    el.innerHTML = '<div class="empty">品目がありません</div>';
+    return;
+  }
+  el.innerHTML = confirmEntries.map((entry, idx) => {
+    const currentQty = getQty(entry.itemId);
+    const afterQty = Math.max(0, currentQty - entry.qty);
+    return `<div class="card" style="margin-bottom:8px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700;color:#2d2a26">${entry.itemName}</div>
+          <div style="font-size:11px;color:#aaa;margin-top:2px">在庫 ${currentQty}${entry.unit} → ${afterQty}${entry.unit}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <button onclick="changeConfirmQty(${idx}, -1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:18px;cursor:pointer;font-family:inherit">−</button>
+          <input type="number" min="0" step="1" value="${entry.qty}"
+            id="confirm-qty-${idx}"
+            onchange="updateConfirmQty(${idx}, this.value)"
+            style="width:56px;padding:6px 4px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;text-align:center;font-family:inherit">
+          <button onclick="changeConfirmQty(${idx}, 1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:18px;cursor:pointer;font-family:inherit">＋</button>
+          <span style="font-size:12px;color:#aaa">${entry.unit}</span>
+          <button onclick="removeConfirmEntry(${idx})" style="width:32px;height:32px;border-radius:8px;border:none;background:#fce8e8;color:#d32f2f;font-size:16px;cursor:pointer;font-family:inherit">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function changeConfirmQty(idx, delta) {
+  const newVal = Math.max(0, (confirmEntries[idx].qty || 0) + delta);
+  confirmEntries[idx].qty = newVal;
+  renderConfirmList();
+}
+
+function updateConfirmQty(idx, val) {
+  confirmEntries[idx].qty = Math.max(0, parseFloat(val) || 0);
+  renderConfirmList();
+}
+
+function removeConfirmEntry(idx) {
+  confirmEntries.splice(idx, 1);
+  renderConfirmList();
+}
+
+function confirmAddItem() {
+  const itemId = document.getElementById('confirm-add-item').value;
+  const qty = parseFloat(document.getElementById('confirm-add-qty').value);
+  if (!itemId) { alert('品目を選択してください'); return; }
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  if (!item) return;
+  // すでにある場合は加算
+  const existing = confirmEntries.find(e => e.itemId === itemId);
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    confirmEntries.push({ itemId: item.id, itemName: item.name, unit: item.unit, qty });
+  }
+  document.getElementById('confirm-add-item').value = '';
+  document.getElementById('confirm-add-qty').value = '';
+  document.getElementById('confirm-add-unit').textContent = '―';
+  renderConfirmList();
+}
+
+async function submitBulkOut() {
+  const staff = document.getElementById('move-staff-top').value;
+  const date = document.getElementById('move-date-top').value;
+  if (!staff || !date) { alert('スタッフと日付を確認してください'); return; }
+  if (!confirmEntries.length) { alert('品目がありません'); return; }
+
+  const promises = [];
+  confirmEntries.forEach(entry => {
+    const currentQty = getQty(entry.itemId);
+    const newQty = Math.max(0, currentQty - entry.qty);
+    const movement = { type: 'out', itemId: entry.itemId, itemName: entry.itemName, unit: entry.unit, qty: entry.qty, staff, date, note: '', createdAt: Date.now() };
+    inventory[entry.itemId] = newQty;
+    promises.push(fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) }));
+    promises.push(fetch(DB + '/inventory/' + entry.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newQty) }));
+  });
+
+  try {
+    await Promise.all(promises);
+    showToast('📤 ' + confirmEntries.length + '品目を登録しました！');
+    confirmEntries = [];
+    outQtyMap = {};
+    // 全ステップを非表示にしてSTEP1に戻る
+    document.getElementById('move-step3').style.display = 'none';
+    document.getElementById('move-step2').style.display = 'none';
+    document.getElementById('move-step1').style.display = 'block';
+    // スタッフ・日付もリセット
+    document.getElementById('move-staff-top').value = '';
+    document.getElementById('move-date-top').value = getToday();
+  } catch(e) { alert('登録に失敗しました。'); }
+}
+
+function openItemMoveModal(itemId) {
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  if (!item) return;
+  currentItemId = itemId;
+  const qty = getQty(itemId);
+  const typeLabel = moveType === 'out' ? '📤 持ち出し登録' : '📥 入庫登録';
+  const submitColor = moveType === 'out' ? '#e07b4f' : '#388e3c';
+
+  document.getElementById('item-move-title').textContent = typeLabel;
+  document.getElementById('item-move-name').textContent = item.name;
+  document.getElementById('item-move-current').textContent = `${qty % 1 === 0 ? qty : qty.toFixed(1)}${item.unit}`;
+  document.getElementById('item-move-qty-display').textContent = '0';
+  document.getElementById('item-move-unit-disp').textContent = item.unit;
+  document.getElementById('item-move-unit-label2').textContent = item.unit;
+  document.getElementById('item-move-qty').value = '';
+  document.getElementById('item-move-note').value = '';
+  document.getElementById('item-move-submit').style.background = submitColor;
+
+  document.getElementById('item-move-modal').style.display = 'flex';
+}
+
+function closeItemMoveModal() {
+  document.getElementById('item-move-modal').style.display = 'none';
+  currentItemId = '';
+}
+
+function changeQty(delta) {
+  const input = document.getElementById('item-move-qty');
+  const current = parseInt(input.value) || 0;
+  const newVal = Math.max(0, current + delta);
+  input.value = newVal;
+  document.getElementById('item-move-qty-display').textContent = newVal;
+}
+
+async function submitItemMove() {
+  const staff = document.getElementById('move-staff-top').value;
+  const date = document.getElementById('move-date-top').value;
+  const qty = parseFloat(document.getElementById('item-move-qty').value);
+  const note = document.getElementById('item-move-note').value.trim();
+
+  if (!staff) { alert('スタッフを選択してください'); return; }
+  if (!date) { alert('日付を入力してください'); return; }
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+
+  const item = ITEMS_MASTER.find(i => i.id === currentItemId);
+  if (!item) return;
+  const currentQty = getQty(currentItemId);
+
+  if (moveType === 'out' && qty > currentQty) {
+    if (!confirm(`在庫（${currentQty}${item.unit}）より多い数量です。続けますか？`)) return;
+  }
+
+  const movement = { type: moveType, itemId: currentItemId, itemName: item.name, unit: item.unit, qty, staff, date, note, createdAt: Date.now() };
+  const newQty = moveType === 'in' ? currentQty + qty : currentQty - qty;
+
+  try {
+    await Promise.all([
+      fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) }),
+      fetch(DB + '/inventory/' + currentItemId + '.json', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(Math.max(0, newQty)) })
+    ]);
+    inventory[currentItemId] = Math.max(0, newQty);
+    closeItemMoveModal();
+    showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
+    renderMoveList();
+  } catch(e) { alert('登録に失敗しました。'); }
+}
+
+function buildItemSelect() {
+  const sel = document.getElementById('move-item');
+  const cats = ['frp', 'sub', 'drain', 'tool', 'consume'];
+  cats.forEach(cat => {
+    const group = document.createElement('optgroup');
+    group.label = CAT_LABELS[cat];
+    ITEMS_MASTER.filter(i => i.category === cat).forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = `${item.name}（現在: ${getQty(item.id)}${item.unit}）`;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  });
+}
+
+function refreshItemSelect() {
+  const sel = document.getElementById('move-item');
+  const current = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  buildItemSelectInner(sel);
+  sel.value = current;
+}
+
+function buildItemSelectInner(sel) {
+  const cats = ['frp', 'sub', 'drain', 'tool', 'consume'];
+  cats.forEach(cat => {
+    const group = document.createElement('optgroup');
+    group.label = CAT_LABELS[cat];
+    ITEMS_MASTER.filter(i => i.category === cat).forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = `${item.name}（現在: ${getQty(item.id)}${item.unit}）`;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  });
+}
+
+function onItemChange() {
+  const id = document.getElementById('move-item').value;
+  const item = ITEMS_MASTER.find(i => i.id === id);
+  document.getElementById('move-unit-label').textContent = item ? item.unit : '―';
+}
+
+async function submitMove() {
+  const staff = document.getElementById('move-staff').value;
+  const date = document.getElementById('move-date').value;
+  const itemId = document.getElementById('move-item').value;
+  const qty = parseFloat(document.getElementById('move-qty').value);
+  const note = document.getElementById('move-note').value.trim();
+
+  if (!staff) { alert('スタッフを選択してください'); return; }
+  if (!itemId) { alert('品目を選択してください'); return; }
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  const currentQty = getQty(itemId);
+
+  if (moveType === 'out' && qty > currentQty) {
+    if (!confirm(`在庫（${currentQty}${item.unit}）より多い数量です。続けますか？`)) return;
+  }
+
+  const movement = {
+    type: moveType,
+    itemId,
+    itemName: item.name,
+    unit: item.unit,
+    qty,
+    staff,
+    date,
+    note,
+    createdAt: Date.now()
+  };
+
+  // 在庫更新
+  const newQty = moveType === 'in' ? currentQty + qty : currentQty - qty;
+
+  try {
+    await Promise.all([
+      fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) }),
+      fetch(DB + '/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(Math.max(0, newQty)) })
+    ]);
+    inventory[itemId] = Math.max(0, newQty);
+    movements['_' + Date.now()] = movement;
+
+    // フォームリセット
+    document.getElementById('move-staff').value = '';
+    document.getElementById('move-item').value = '';
+    document.getElementById('move-qty').value = '';
+    document.getElementById('move-note').value = '';
+    document.getElementById('move-unit-label').textContent = '―';
+
+    showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
+
+    // 品目セレクトを更新
+    const sel = document.getElementById('move-item');
+    while (sel.options.length > 1) sel.remove(1);
+    buildItemSelectInner(sel);
+
+  } catch(e) { alert('登録に失敗しました。'); }
+}
+
+// ── 一括持ち出し ──
+function showBulkModal() {
+  document.getElementById('bulk-date').value = getToday();
+  const el = document.getElementById('bulk-items-list');
+  el.innerHTML = ITEMS_MASTER.map(item => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0ede8">
+      <span style="flex:1;font-size:13px;color:#2d2a26">${item.name}</span>
+      <span style="font-size:11px;color:#aaa;width:30px;text-align:right">${getQty(item.id)}${item.unit}</span>
+      <input type="number" min="0" step="0.1" placeholder="0" id="bulk-qty-${item.id}"
+        style="width:60px;padding:6px;border-radius:7px;border:1.5px solid #e0d8d0;font-size:13px;text-align:right;font-family:inherit">
+      <span style="font-size:12px;color:#aaa;width:28px">${item.unit}</span>
+    </div>`).join('');
+  document.getElementById('bulk-modal').style.display = 'flex';
+}
+
+function closeBulkModal() {
+  document.getElementById('bulk-modal').style.display = 'none';
+}
+
+async function submitBulk() {
+  const staff = document.getElementById('bulk-staff').value;
+  const date = document.getElementById('bulk-date').value;
+  if (!staff) { alert('スタッフを選択してください'); return; }
+
+  const entries = [];
+  ITEMS_MASTER.forEach(item => {
+    const val = parseFloat(document.getElementById('bulk-qty-' + item.id)?.value);
+    if (val && val > 0) entries.push({ item, qty: val });
+  });
+
+  if (!entries.length) { alert('数量を1つ以上入力してください'); return; }
+
+  const promises = [];
+  entries.forEach(({ item, qty }) => {
+    const movement = { type: 'out', itemId: item.id, itemName: item.name, unit: item.unit, qty, staff, date, note: '一括持ち出し', createdAt: Date.now() };
+    const newQty = Math.max(0, getQty(item.id) - qty);
+    inventory[item.id] = newQty;
+    promises.push(fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) }));
+    promises.push(fetch(DB + '/inventory/' + item.id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newQty) }));
+  });
+
+  try {
+    await Promise.all(promises);
+    closeBulkModal();
+    showToast(`📤 ${entries.length}品目を一括登録しました！`);
+    await loadAll();
+    renderStock();
+  } catch(e) { alert('登録に失敗しました。'); }
+}
+
+// ── 履歴 ──
+let histTypeFilter = 'all';
+let histCatFilter = 'all';
+let histStaffFilter = 'all';
+let histSearchQuery = '';
+
+function setHistTypeFilter(f, btn) {
+  histTypeFilter = f;
+  document.querySelectorAll('#hist-type-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function setHistCatFilter(f, btn) {
+  histCatFilter = f;
+  document.querySelectorAll('#hist-cat-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function setHistStaffFilter(f, btn) {
+  histStaffFilter = f;
+  document.querySelectorAll('#hist-staff-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function onHistSearch(val) {
+  histSearchQuery = val.trim();
+  document.getElementById('hist-search-clear').style.display = histSearchQuery ? 'block' : 'none';
+  renderHistory();
+}
+
+function clearHistSearch() {
+  histSearchQuery = '';
+  document.getElementById('hist-search-input').value = '';
+  document.getElementById('hist-search-clear').style.display = 'none';
+  renderHistory();
+}
+
+function buildHistCatFilter() {
+  const el = document.getElementById('hist-cat-filter-row');
+  if (!el) return;
+  const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
+  const labels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
+  el.innerHTML = cats.map(c => `<button class="filter-btn ${histCatFilter === c ? 'active' : ''}" onclick="setHistCatFilter('${c}', this)">${labels[c]}</button>`).join('');
+}
+
+function renderHistory() {
+  buildHistCatFilter();
+  const el = document.getElementById('history-list');
+  let list = Object.entries(movements).sort((a, b) => b[1].createdAt - a[1].createdAt);
+
+  if (histTypeFilter !== 'all') list = list.filter(([,m]) => m.type === histTypeFilter);
+  if (histStaffFilter !== 'all') list = list.filter(([,m]) => m.staff === histStaffFilter);
+  if (histCatFilter !== 'all') {
+    list = list.filter(([,m]) => {
+      const item = ITEMS_MASTER.find(i => i.id === m.itemId);
+      return item && item.category === histCatFilter;
+    });
+  }
+  if (histSearchQuery) {
+    const q = histSearchQuery.toLowerCase();
+    list = list.filter(([,m]) =>
+      (m.itemName || '').toLowerCase().includes(q) ||
+      (m.note || '').toLowerCase().includes(q) ||
+      (m.staff || '').toLowerCase().includes(q)
+    );
+  }
+
+  if (!list.length) { el.innerHTML = '<div class="empty">📭 該当する履歴がありません</div>'; return; }
+
+  // 日付ごとにグループ化
+  const byDate = {};
+  list.slice(0, 300).forEach(([key, m]) => {
+    const d = m.date || '日付不明';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push([key, m]);
+  });
+
+  const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+  const today = getToday();
+
+  el.innerHTML = dateKeys.map(dateKey => {
+    const [y, mo, d] = dateKey.split('-');
+    const dateLabel = dateKey === '日付不明' ? '日付不明' :
+      (dateKey === today ? '今日　' : '') + `${parseInt(mo)}月${parseInt(d)}日`;
+    const dayList = byDate[dateKey];
+    const dayOutTotal = dayList.filter(([,m]) => m.type === 'out').length;
+    const dayInTotal = dayList.filter(([,m]) => m.type === 'in').length;
+
+    const itemsHtml = dayList.map(([key, m]) => `
+      <div class="history-item">
+        <div class="hist-badge ${m.type}">${m.type === 'in' ? '入庫' : '出庫'}</div>
+        <div class="hist-info">
+          <div class="hist-name">${m.itemName || '不明'}</div>
+          <div class="hist-meta">${m.staff || ''}${m.note ? ' ・ ' + m.note : ''}</div>
+        </div>
+        <div class="hist-qty">
+          <div class="hist-qty-num ${m.type}">${m.type === 'in' ? '+' : '-'}${m.qty % 1 === 0 ? m.qty : m.qty.toFixed(1)}</div>
+          <div class="hist-qty-unit">${m.unit || ''}</div>
+        </div>
+        <button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>
+      </div>`).join('');
+
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 2px;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:700;color:#2d2a26">${dateLabel}</div>
+        <div style="font-size:11px;color:#aaa">${dayOutTotal ? '📤' + dayOutTotal : ''} ${dayInTotal ? '📥' + dayInTotal : ''}</div>
+      </div>
+      ${itemsHtml}
+    </div>`;
+  }).join('');
+}
+
+async function deleteMovement(key, e) {
+  e.stopPropagation();
+  const m = movements[key];
+  if (!m) return;
+  if (!confirm(`「${m.itemName}」の${m.type === 'in' ? '入庫' : '持ち出し'}記録を削除しますか？\n在庫数も元に戻ります。`)) return;
+  try {
+    // 在庫を逆算して戻す
+    const currentQty = getQty(m.itemId);
+    const restoredQty = m.type === 'in' ? currentQty - m.qty : currentQty + m.qty;
+    await Promise.all([
+      fetch(DB + '/movements/' + key + '.json', { method: 'DELETE' }),
+      fetch(DB + '/inventory/' + m.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Math.max(0, restoredQty)) })
+    ]);
+    inventory[m.itemId] = Math.max(0, restoredQty);
+    delete movements[key];
+    showToast('削除しました');
+    renderHistory();
+  } catch(e) { alert('削除に失敗しました。'); }
+}
+
+// ── 集計 ──
+function setStatsSeg(seg) {
+  statsSeg = seg;
+  document.querySelectorAll('.stats-seg-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sseg-' + seg).classList.add('active');
+  renderStats();
+}
+
+function renderStats() {
+  const el = document.getElementById('stats-content');
+  const list = Object.entries(movements).sort((a, b) => b[1].createdAt - a[1].createdAt);
+
+  if (statsSeg === 'month') {
+    // 月ナビ
+    const allMonths = [...new Set(list.map(([,m]) => (m.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+    if (!allMonths.length) { el.innerHTML = '<div class="empty">データがありません</div>'; return; }
+    if (!allMonths.includes(statsMonth)) statsMonth = allMonths[0];
+    const idx = allMonths.indexOf(statsMonth);
+    const [y, mo] = statsMonth.split('-');
+    const monthList = list.filter(([,m]) => (m.date||'').startsWith(statsMonth));
+
+    // 品目ごとに集計
+    const byItem = {};
+    monthList.forEach(([,m]) => {
+      if (!byItem[m.itemId]) byItem[m.itemId] = { name: m.itemName, unit: m.unit, in: 0, out: 0 };
+      if (m.type === 'in') byItem[m.itemId].in += m.qty;
+      else byItem[m.itemId].out += m.qty;
+    });
+
+    el.innerHTML = `
+      <div class="month-nav">
+        <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx+1]||''}')" ${!allMonths[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
+        <span class="month-nav-label">${y}年${parseInt(mo)}月</span>
+        <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx-1]||''}')" ${!allMonths[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
+      </div>
+      <div class="section-title">${monthList.length}件の入出庫記録</div>
+      ${Object.entries(byItem).map(([, v]) => `
+        <div class="stats-row">
+          <div><div class="stats-label">${v.name}</div></div>
+          <div class="stats-vals">
+            <div class="stats-in">入庫 +${v.in % 1 === 0 ? v.in : v.in.toFixed(1)}${v.unit}</div>
+            <div class="stats-out">出庫 -${v.out % 1 === 0 ? v.out : v.out.toFixed(1)}${v.unit}</div>
+          </div>
+        </div>`).join('') || '<div class="empty">この月のデータはありません</div>'}`;
+
+  } else if (statsSeg === 'item') {
+    const byItem = {};
+    list.forEach(([,m]) => {
+      if (!byItem[m.itemId]) byItem[m.itemId] = { name: m.itemName, unit: m.unit, in: 0, out: 0 };
+      if (m.type === 'in') byItem[m.itemId].in += m.qty;
+      else byItem[m.itemId].out += m.qty;
+    });
+    el.innerHTML = `<div class="section-title">品目別 全期間集計</div>` +
+      Object.entries(byItem).sort((a, b) => b[1].out - a[1].out).map(([, v]) => `
+        <div class="stats-row">
+          <div><div class="stats-label">${v.name}</div><div class="stats-sub">現在庫: ${getQty(ITEMS_MASTER.find(i=>i.name===v.name)?.id||'')}${v.unit}</div></div>
+          <div class="stats-vals">
+            <div class="stats-in">入庫 +${v.in % 1 === 0 ? v.in : v.in.toFixed(1)}${v.unit}</div>
+            <div class="stats-out">出庫 -${v.out % 1 === 0 ? v.out : v.out.toFixed(1)}${v.unit}</div>
+          </div>
+        </div>`).join('') || '<div class="empty">データがありません</div>';
+
+  } else {
+    const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
+    el.innerHTML = `<div class="section-title">個人別 全期間集計</div>` +
+      STAFF.map(name => {
+        const sl = list.filter(([,m]) => m.staff === name);
+        if (!sl.length) return '';
+        const outCount = sl.filter(([,m]) => m.type === 'out').length;
+        const inCount = sl.filter(([,m]) => m.type === 'in').length;
+        return `<div class="stats-row">
+          <div><div class="stats-label">${name}</div><div class="stats-sub">合計 ${sl.length}件</div></div>
+          <div class="stats-vals">
+            <div class="stats-in">入庫 ${inCount}回</div>
+            <div class="stats-out">出庫 ${outCount}回</div>
+          </div>
+        </div>`;
+      }).join('') || '<div class="empty">データがありません</div>';
+  }
+}
+
+function changeStatsMonth(m) { if (m) { statsMonth = m; renderStats(); } }
+
+// ── 管理 ──
+function showAdmin() {
+  const el = document.getElementById('admin-content');
+  if (!adminLoggedIn) {
+    el.innerHTML = `<div class="admin-lock">
+      <div class="lock-icon">🔐</div>
+      <div class="lock-title">管理者ページ</div>
+      <div class="lock-sub">パスワードを入力してください</div>
+      <div style="width:100%;max-width:300px">
+        <input type="password" id="admin-pass" placeholder="パスワード" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')checkAdminPass()">
+        <button class="btn-primary" onclick="checkAdminPass()">ログイン</button>
+      </div>
+    </div>`;
+    return;
+  }
+  renderAdminContent();
+}
+
+function checkAdminPass() {
+  if (document.getElementById('admin-pass').value === ADMIN_PASS) {
+    adminLoggedIn = true; renderAdminContent();
+  } else { alert('パスワードが違います'); }
+}
+
+let adminCatFilter = 'all';
+
+function renderAdminContent() {
+  const el = document.getElementById('admin-content');
+  const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
+  const catLabels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
+
+  const filteredItems = ITEMS_MASTER.filter(item => {
+    if (adminCatFilter !== 'all' && item.category !== adminCatFilter) return false;
+    return true;
+  });
+
+  const itemsHtml = filteredItems.map(item => {
+    const qty = getQty(item.id);
+    const catColor = CAT_COLORS[item.category] || 'cat-other';
+    const catLabel = CAT_LABELS[item.category] || item.category;
+    return '<div class="item-edit-row">' +
+      '<div class="item-edit-name">' + item.name + ' <span class="cat-badge ' + catColor + '">' + catLabel + '</span></div>' +
+      '<div class="item-edit-fields">' +
+      '<input type="number" min="0" step="0.1" value="' + qty + '" id="admin-qty-' + item.id + '" placeholder="0">' +
+      '<span>' + item.unit + '</span>' +
+      '</div></div>';
+  }).join('');
+
+  const filterHtml = cats.map(c =>
+    '<button class="filter-btn ' + (adminCatFilter === c ? 'active' : '') + '" onclick="setAdminCatFilter(\'' + c + '\')">' + catLabels[c] + '</button>'
+  ).join('');
+
+  el.innerHTML = '<div class="wrap">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+    '<div class="page-title">⚙️ 在庫管理</div>' +
+    '<button class="logout-btn" onclick="adminLogout()">ログアウト</button></div>' +
+    '<div class="page-sub">現在庫を直接設定・初期設定</div>' +
+    '<div class="filter-row" style="margin-bottom:8px">' + filterHtml + '</div>' +
+    '<div class="section-title">在庫数を設定（' + filteredItems.length + '品目）</div>' +
+    (filteredItems.length ? itemsHtml : '<div class="empty">該当する品目がありません</div>') +
+    '<div style="margin-top:12px"><button class="btn-secondary" onclick="resetAllToTen()" style="width:100%;padding:12px;background:#fff;color:#888;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;cursor:pointer;font-family:inherit;">🔄 全品目を10にリセット（デモ用）</button></div>' +
+    '<div style="margin-top:8px"><button class="btn-primary" onclick="saveAllQty()">一括保存</button></div>' +
+    '</div>';
+}
+
+function setAdminCatFilter(cat) {
+  adminCatFilter = cat;
+  renderAdminContent();
+}
+
+async function resetAllToTen() {
+  if (!confirm('全品目の在庫を10にリセットします。よろしいですか？')) return;
+  const updates = {};
+  ITEMS_MASTER.forEach(item => { updates[item.id] = 10; });
+  try {
+    await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+    ITEMS_MASTER.forEach(item => { inventory[item.id] = 10; });
+    showToast('✅ 全品目を10にリセットしました！');
+    renderAdminContent();
+  } catch(e) { alert('リセットに失敗しました。'); }
+}
+
+
+
+async function saveItemQty(itemId) {
+  const qty = parseFloat(document.getElementById('admin-qty-' + itemId)?.value) || 0;
+  try {
+    await fetch(DB + '/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) });
+    inventory[itemId] = qty;
+    showToast('保存しました');
+  } catch(e) { alert('保存に失敗しました。'); }
+}
+
+async function saveAllQty() {
+  const updates = {};
+  ITEMS_MASTER.forEach(item => {
+    const val = parseFloat(document.getElementById('admin-qty-' + item.id)?.value) || 0;
+    updates[item.id] = val;
+    inventory[item.id] = val;
+  });
+  try {
+    await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+    showToast('✅ すべて保存しました！');
+  } catch(e) { alert('保存に失敗しました。'); }
+}
+
+function adminLogout() { adminLoggedIn = false; showAdmin(); }
+
+function updateAdminBadge() {
+  // 在庫切れ・残少品目数をバッジに
+  const alertCount = ITEMS_MASTER.filter(i => getQty(i.id) <= i.alert).length;
+  // 必要なら管理タブにバッジを追加できる
+}
+
+// ── トースト ──
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// 初期化
+init();
+</script>
+</body>
+</html>
