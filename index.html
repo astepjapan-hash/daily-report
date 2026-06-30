@@ -353,6 +353,8 @@ textarea { resize: vertical; }
       <div class="notice-section" id="notice-section">
         <div class="notice-title">📢 お知らせ</div>
         <div id="notice-list"><div class="notice-empty">お知らせはありません</div></div>
+        <button id="pin-toggle-btn" onclick="togglePinView()" style="width:100%;margin-top:8px;padding:10px;background:#fff;color:#c97a1f;border:1.5px solid #f0c040;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📌 ピン留めを見る</button>
+        <div id="pin-list" style="display:none;margin-top:10px"></div>
       </div>
 
       <div id="list-calendar-area">
@@ -723,16 +725,52 @@ function matGridHtml(t){return `<div class="mat-grid">
 function renderNotices(){
   const el=document.getElementById('notice-list');
   if(!el)return;
-  const list=Object.entries(notices).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  const list=Object.entries(notices).filter(([,n])=>!n.pinned).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   if(!list.length){
     el.innerHTML='<div class="notice-empty">お知らせはありません</div>';
+  }else{
+    el.innerHTML=list.map(([key,n])=>`
+      <div class="notice-card">
+        <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
+        <div class="notice-body">${n.body||''}</div>
+      </div>`).join('');
+  }
+  // ピン留めボタンの表示制御
+  const pinned=Object.entries(notices).filter(([,n])=>n.pinned);
+  const btn=document.getElementById('pin-toggle-btn');
+  if(btn)btn.style.display=pinned.length?'block':'none';
+}
+
+let _pinViewOpen=false;
+function togglePinView(){
+  _pinViewOpen=!_pinViewOpen;
+  const el=document.getElementById('pin-list');
+  const btn=document.getElementById('pin-toggle-btn');
+  if(!_pinViewOpen){
+    el.style.display='none';
+    btn.textContent='📌 ピン留めを見る';
     return;
   }
-  el.innerHTML=list.map(([key,n])=>`
-    <div class="notice-card">
-      <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
-      <div class="notice-body">${n.body||''}</div>
-    </div>`).join('');
+  btn.textContent='📌 ピン留めを閉じる';
+  el.style.display='block';
+  // 月ごとにグループ化
+  const pinned=Object.entries(notices).filter(([,n])=>n.pinned).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  if(!pinned.length){el.innerHTML='<div class="notice-empty">ピン留めはありません</div>';return;}
+  const groups={};
+  pinned.forEach(([key,n])=>{
+    const ym=(n.date||'').slice(0,7);
+    const label=ym?`${ym.slice(0,4)}年${parseInt(ym.slice(5,7))}月`:'その他';
+    if(!groups[label])groups[label]=[];
+    groups[label].push([key,n]);
+  });
+  el.innerHTML=Object.entries(groups).map(([month,items])=>`
+    <div style="font-size:12px;font-weight:700;color:#c97a1f;margin:12px 0 6px">📌 ${month}</div>
+    ${items.map(([key,n])=>`
+      <div class="notice-card" style="background:#faf6ee;border-color:#e0d0a8">
+        <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
+        <div class="notice-body">${n.body||''}</div>
+      </div>`).join('')}
+  `).join('');
 }
 
 async function loadSchedules(){
@@ -1523,10 +1561,15 @@ async function renderAdminContent(){
         <button class="btn-primary" onclick="postNotice()">投稿する</button>
         <div style="margin-top:14px" id="admin-notice-list">
         ${Object.entries(notices).sort((a,b)=>b[1].createdAt-a[1].createdAt).map(([key,n])=>`
-          <div class="notice-card" style="padding-right:48px">
-            <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
-            <div class="notice-body">${n.body||''}</div>
-            <button onclick="deleteNotice('${key}')" style="position:absolute;top:10px;right:10px;background:none;border:none;color:#ccc;font-size:18px;cursor:pointer">🗑</button>
+          <div class="notice-card" style="${n.pinned?'background:#faf6ee;border-color:#e0d0a8':''}">
+            <div class="notice-date">📅 ${n.dateLabel||n.date||''} ${n.pinned?'<span style=\'color:#c97a1f;font-weight:700\'>📌 ピン留め中</span>':'<span style=\'color:#27ae60;font-weight:700\'>📢 表示中</span>'}</div>
+            <div class="notice-body" style="margin-bottom:10px">${n.body||''}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${n.pinned
+                ?`<button onclick="setNoticePin('${key}',false)" style="flex:1;min-width:90px;padding:7px;background:#eafaf0;color:#27ae60;border:1.5px solid #27ae60;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📢 表示に戻す</button>`
+                :`<button onclick="setNoticePin('${key}',true)" style="flex:1;min-width:90px;padding:7px;background:#fff8ee;color:#c97a1f;border:1.5px solid #f0c040;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📌 ピン留めに移動</button>`}
+              <button onclick="deleteNotice('${key}')" style="flex:1;min-width:70px;padding:7px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🗑 削除</button>
+            </div>
           </div>`).join('')||'<div class="notice-empty">投稿したお知らせはありません</div>'}
       </div>
       </div>
@@ -1588,6 +1631,7 @@ async function postNotice(){
     body,
     date:now.toLocaleDateString('sv'),
     dateLabel:now.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'}),
+    pinned:false,
     createdAt:Date.now()
   };
   try{
@@ -1597,6 +1641,17 @@ async function postNotice(){
     alert('投稿しました！');
     renderAdminContent();
   }catch(e){alert('投稿に失敗しました。');}
+}
+
+async function setNoticePin(key,pinned){
+  try{
+    const res=await fetch(DB+'/notices/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned})});
+    if(!res.ok)throw new Error();
+    notices[key]={...notices[key],pinned};
+    renderNotices();
+    renderAdminContent();
+    alert(pinned?'ピン留めに移動しました':'表示に戻しました');
+  }catch(e){alert('処理に失敗しました。');}
 }
 
 async function deleteNotice(key){
