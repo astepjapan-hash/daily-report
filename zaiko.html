@@ -207,8 +207,8 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
             <div style="font-size:11px;color:#aaa" id="move-step2-sub"></div>
           </div>
         </div>
-        <div class="filter-row" id="move-cat-filter-row"></div>
-        <div id="move-item-list"></div>
+        <div id="move-cat-filter-row" style="position:sticky;top:56px;z-index:50;background:#f5f0ea;padding:6px 0 4px;margin:0 -16px;padding-left:16px;overflow-x:auto;display:flex;gap:6px;-webkit-overflow-scrolling:touch"></div>
+        <div id="move-item-list" style="margin-top:4px"></div>
         <div id="move-bulk-submit-bar" style="display:none;position:sticky;bottom:8px;margin-top:12px">
           <button class="btn-primary" onclick="goToConfirm()">確認画面へ →</button>
         </div>
@@ -621,7 +621,7 @@ function buildMoveCatFilter() {
   if (!el) return;
   const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
   const labels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
-  el.innerHTML = cats.map(c => `<button class="filter-btn ${moveCatFilter === c ? 'active' : ''}" onclick="setMoveCatFilter('${c}', this)">${labels[c]}</button>`).join('');
+  el.innerHTML = cats.map(c => `<button class="filter-btn ${moveCatFilter === c ? 'active' : ''}" style="flex-shrink:0" onclick="setMoveCatFilter('${c}', this)">${labels[c]}</button>`).join('');
 }
 
 function setMoveCatFilter(cat, btn) {
@@ -857,7 +857,13 @@ async function submitBulkOut() {
     showToast('📤 ' + confirmEntries.length + '品目を登録しました！');
     confirmEntries = [];
     outQtyMap = {};
-    backToStep1();
+    // 全ステップを非表示にしてSTEP1に戻る
+    document.getElementById('move-step3').style.display = 'none';
+    document.getElementById('move-step2').style.display = 'none';
+    document.getElementById('move-step1').style.display = 'block';
+    // スタッフ・日付もリセット
+    document.getElementById('move-staff-top').value = '';
+    document.getElementById('move-date-top').value = getToday();
   } catch(e) { alert('登録に失敗しました。'); }
 }
 
