@@ -99,6 +99,13 @@ textarea { resize: vertical; }
 .highlight { background: #fff3cd; border-radius: 2px; }
 .no-result { text-align: center; padding: 40px 20px; color: #aaa; font-size: 14px; }
 
+/* 折りたたみ */
+.collapse-header { display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; }
+.collapse-arrow { font-size:13px; color:#aaa; transition:transform 0.2s; }
+.collapse-arrow.open { transform:rotate(90deg); }
+.collapse-body { display:none; }
+.collapse-body.open { display:block; }
+
 /* お知らせ */
 .notice-section { margin-top: 24px; }
 .notice-title { font-size: 13px; font-weight: 700; color: #aaa; letter-spacing: 0.05em; margin-bottom: 10px; }
@@ -1553,8 +1560,8 @@ async function renderAdminContent(){
           </div>
         </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
 
-      <div class="section-title">📢 お知らせ投稿</div>
-      <div class="card" style="margin-bottom:20px">
+      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-notice')">📢 お知らせ投稿 <span class="collapse-arrow" id="arrow-collapse-notice">▶</span></div>
+      <div class="card collapse-body" id="collapse-notice" style="margin-bottom:20px">
         <div class="field"><label class="lbl">内容</label>
           <textarea id="notice-body" rows="3" placeholder="スタッフへのお知らせを入力してください"></textarea>
         </div>
@@ -1589,7 +1596,8 @@ async function renderAdminContent(){
         </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
 
       ${approvedLeaves.length?`
-      <div class="section-title" style="margin-top:16px">承認済み（取り消し可能）</div>
+      <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-leave-approved')">有給 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-leave-approved">▶</span></div>
+      <div class="collapse-body" id="collapse-leave-approved">
       ${approvedLeaves.map(([key,l])=>`
         <div class="apply-card">
           <div class="apply-top">
@@ -1598,10 +1606,12 @@ async function renderAdminContent(){
           </div>
           ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
           <button class="btn-cancel-leave" onclick="cancelLeave('${key}')">✗ 取り消す</button>
-        </div>`).join('')}`:''}
+        </div>`).join('')}
+      </div>`:''}
 
       ${approvedAbsences.length?`
-      <div class="section-title" style="margin-top:16px">休み申請 承認済み（取り消し可能）</div>
+      <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-abs-approved')">休み申請 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-abs-approved">▶</span></div>
+      <div class="collapse-body" id="collapse-abs-approved">
       ${approvedAbsences.map(([key,a])=>`
         <div class="yasumi-card">
           <div class="apply-top">
@@ -1610,7 +1620,8 @@ async function renderAdminContent(){
           </div>
           ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
           <button class="btn-cancel-leave" onclick="cancelAbsence('${key}')">✗ 取り消す</button>
-        </div>`).join('')}`:''}
+        </div>`).join('')}
+      </div>`:''}
     </div>`;
 }
 async function saveLeaveSettings(name){
@@ -1621,6 +1632,14 @@ async function saveLeaveSettings(name){
     leaveSettings[name]=val;
     alert(name+'の付与日数を'+val+'日に設定しました');
   }catch(e){alert('保存に失敗しました。');}
+}
+
+function toggleCollapse(id){
+  const body=document.getElementById(id);
+  const arrow=document.getElementById('arrow-'+id);
+  if(!body)return;
+  const open=body.classList.toggle('open');
+  if(arrow)arrow.classList.toggle('open',open);
 }
 
 async function postNotice(){
