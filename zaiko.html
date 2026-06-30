@@ -247,15 +247,29 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
   <!-- 履歴 -->
   <div class="view" id="view-history">
     <div class="wrap">
-      <div class="filter-row" id="hist-filter-row">
-        <button class="filter-btn active" data-filter="all" onclick="setHistFilter('all',this)">すべて</button>
-        <button class="filter-btn" data-filter="in" onclick="setHistFilter('in',this)">入庫のみ</button>
-        <button class="filter-btn" data-filter="out" onclick="setHistFilter('out',this)">持ち出しのみ</button>
-        <button class="filter-btn" data-filter="加藤瑞樹" onclick="setHistFilter('加藤瑞樹',this)">加藤</button>
-        <button class="filter-btn" data-filter="山内浩一" onclick="setHistFilter('山内浩一',this)">山内</button>
-        <button class="filter-btn" data-filter="森田義則" onclick="setHistFilter('森田義則',this)">森田</button>
-        <button class="filter-btn" data-filter="富山裕貴" onclick="setHistFilter('富山裕貴',this)">富山</button>
+      <div class="search-wrap" style="margin-bottom:10px">
+        <span class="search-ico">🔍</span>
+        <input class="search-inp" type="text" id="hist-search-input" placeholder="品目名・メモで検索" oninput="onHistSearch(this.value)">
+        <button class="search-clr" id="hist-search-clear" onclick="clearHistSearch()">×</button>
       </div>
+
+      <div class="filter-row" id="hist-type-filter-row" style="margin-bottom:8px">
+        <button class="filter-btn active" data-filter="all" onclick="setHistTypeFilter('all',this)">すべて</button>
+        <button class="filter-btn" data-filter="out" onclick="setHistTypeFilter('out',this)">📤 持ち出し</button>
+        <button class="filter-btn" data-filter="in" onclick="setHistTypeFilter('in',this)">📥 入庫</button>
+      </div>
+
+      <div class="filter-row" id="hist-cat-filter-row" style="margin-bottom:8px"></div>
+
+      <div class="filter-row" id="hist-staff-filter-row" style="margin-bottom:12px">
+        <button class="filter-btn active" data-filter="all" onclick="setHistStaffFilter('all',this)">全員</button>
+        <button class="filter-btn" data-filter="加藤瑞樹" onclick="setHistStaffFilter('加藤瑞樹',this)">加藤</button>
+        <button class="filter-btn" data-filter="山内浩一" onclick="setHistStaffFilter('山内浩一',this)">山内</button>
+        <button class="filter-btn" data-filter="森田義則" onclick="setHistStaffFilter('森田義則',this)">森田</button>
+        <button class="filter-btn" data-filter="富山裕貴" onclick="setHistStaffFilter('富山裕貴',this)">富山</button>
+        <button class="filter-btn" data-filter="外注" onclick="setHistStaffFilter('外注',this)">外注</button>
+      </div>
+
       <div id="history-list"><div class="loading">読み込み中...</div></div>
     </div>
   </div>
@@ -1088,37 +1102,116 @@ async function submitBulk() {
 }
 
 // ── 履歴 ──
-function setHistFilter(f, btn) {
-  histFilter = f;
-  document.querySelectorAll('#hist-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+let histTypeFilter = 'all';
+let histCatFilter = 'all';
+let histStaffFilter = 'all';
+let histSearchQuery = '';
+
+function setHistTypeFilter(f, btn) {
+  histTypeFilter = f;
+  document.querySelectorAll('#hist-type-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderHistory();
 }
 
+function setHistCatFilter(f, btn) {
+  histCatFilter = f;
+  document.querySelectorAll('#hist-cat-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function setHistStaffFilter(f, btn) {
+  histStaffFilter = f;
+  document.querySelectorAll('#hist-staff-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function onHistSearch(val) {
+  histSearchQuery = val.trim();
+  document.getElementById('hist-search-clear').style.display = histSearchQuery ? 'block' : 'none';
+  renderHistory();
+}
+
+function clearHistSearch() {
+  histSearchQuery = '';
+  document.getElementById('hist-search-input').value = '';
+  document.getElementById('hist-search-clear').style.display = 'none';
+  renderHistory();
+}
+
+function buildHistCatFilter() {
+  const el = document.getElementById('hist-cat-filter-row');
+  if (!el) return;
+  const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
+  const labels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
+  el.innerHTML = cats.map(c => `<button class="filter-btn ${histCatFilter === c ? 'active' : ''}" onclick="setHistCatFilter('${c}', this)">${labels[c]}</button>`).join('');
+}
+
 function renderHistory() {
+  buildHistCatFilter();
   const el = document.getElementById('history-list');
   let list = Object.entries(movements).sort((a, b) => b[1].createdAt - a[1].createdAt);
 
-  if (histFilter === 'in') list = list.filter(([,m]) => m.type === 'in');
-  else if (histFilter === 'out') list = list.filter(([,m]) => m.type === 'out');
-  else if (!['all','in','out'].includes(histFilter)) list = list.filter(([,m]) => m.staff === histFilter);
+  if (histTypeFilter !== 'all') list = list.filter(([,m]) => m.type === histTypeFilter);
+  if (histStaffFilter !== 'all') list = list.filter(([,m]) => m.staff === histStaffFilter);
+  if (histCatFilter !== 'all') {
+    list = list.filter(([,m]) => {
+      const item = ITEMS_MASTER.find(i => i.id === m.itemId);
+      return item && item.category === histCatFilter;
+    });
+  }
+  if (histSearchQuery) {
+    const q = histSearchQuery.toLowerCase();
+    list = list.filter(([,m]) =>
+      (m.itemName || '').toLowerCase().includes(q) ||
+      (m.note || '').toLowerCase().includes(q) ||
+      (m.staff || '').toLowerCase().includes(q)
+    );
+  }
 
-  if (!list.length) { el.innerHTML = '<div class="empty">📭 履歴がありません</div>'; return; }
+  if (!list.length) { el.innerHTML = '<div class="empty">📭 該当する履歴がありません</div>'; return; }
 
-  el.innerHTML = list.slice(0, 100).map(([key, m]) => {
-    const [y, mo, d] = (m.date || '').split('-');
-    const dateStr = m.date ? `${parseInt(mo)}/${parseInt(d)}` : '';
-    return `<div class="history-item">
-      <div class="hist-badge ${m.type}">${m.type === 'in' ? '入庫' : '出庫'}</div>
-      <div class="hist-info">
-        <div class="hist-name">${m.itemName || '不明'}</div>
-        <div class="hist-meta">${dateStr} ・ ${m.staff || ''}${m.note ? ' ・ ' + m.note : ''}</div>
+  // 日付ごとにグループ化
+  const byDate = {};
+  list.slice(0, 300).forEach(([key, m]) => {
+    const d = m.date || '日付不明';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push([key, m]);
+  });
+
+  const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+  const today = getToday();
+
+  el.innerHTML = dateKeys.map(dateKey => {
+    const [y, mo, d] = dateKey.split('-');
+    const dateLabel = dateKey === '日付不明' ? '日付不明' :
+      (dateKey === today ? '今日　' : '') + `${parseInt(mo)}月${parseInt(d)}日`;
+    const dayList = byDate[dateKey];
+    const dayOutTotal = dayList.filter(([,m]) => m.type === 'out').length;
+    const dayInTotal = dayList.filter(([,m]) => m.type === 'in').length;
+
+    const itemsHtml = dayList.map(([key, m]) => `
+      <div class="history-item">
+        <div class="hist-badge ${m.type}">${m.type === 'in' ? '入庫' : '出庫'}</div>
+        <div class="hist-info">
+          <div class="hist-name">${m.itemName || '不明'}</div>
+          <div class="hist-meta">${m.staff || ''}${m.note ? ' ・ ' + m.note : ''}</div>
+        </div>
+        <div class="hist-qty">
+          <div class="hist-qty-num ${m.type}">${m.type === 'in' ? '+' : '-'}${m.qty % 1 === 0 ? m.qty : m.qty.toFixed(1)}</div>
+          <div class="hist-qty-unit">${m.unit || ''}</div>
+        </div>
+        <button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>
+      </div>`).join('');
+
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 2px;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:700;color:#2d2a26">${dateLabel}</div>
+        <div style="font-size:11px;color:#aaa">${dayOutTotal ? '📤' + dayOutTotal : ''} ${dayInTotal ? '📥' + dayInTotal : ''}</div>
       </div>
-      <div class="hist-qty">
-        <div class="hist-qty-num ${m.type}">${m.type === 'in' ? '+' : '-'}${m.qty % 1 === 0 ? m.qty : m.qty.toFixed(1)}</div>
-        <div class="hist-qty-unit">${m.unit || ''}</div>
-      </div>
-      <button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>
+      ${itemsHtml}
     </div>`;
   }).join('');
 }
