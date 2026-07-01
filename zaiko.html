@@ -315,11 +315,9 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
   <!-- 集計 -->
   <div class="view" id="view-stats">
     <div class="wrap">
-      <div class="stats-seg">
-        <button class="stats-seg-btn active" id="sseg-table" onclick="setStatsSeg('table')">持ち出し表</button>
-        <button class="stats-seg-btn" id="sseg-month" onclick="setStatsSeg('month')">月別</button>
-        <button class="stats-seg-btn" id="sseg-item" onclick="setStatsSeg('item')">品目別</button>
-        <button class="stats-seg-btn" id="sseg-staff" onclick="setStatsSeg('staff')">個人別</button>
+      <div class="stats-seg" style="margin-bottom:12px">
+        <button class="stats-seg-btn active" id="sseg-out" onclick="setStatsSeg('out')">📤 持ち出し表</button>
+        <button class="stats-seg-btn" id="sseg-in" onclick="setStatsSeg('in')">📥 入庫表</button>
       </div>
       <div id="stats-content"><div class="loading">読み込み中...</div></div>
     </div>
@@ -492,7 +490,7 @@ let movements = {}; // Firebase movements
 let moveType = 'out';
 let moveCatFilter = 'all';
 let histFilter = 'all';
-let statsSeg = 'table';
+let statsSeg = 'out';
 let catFilter = 'all';
 let statsMonth = new Date().toISOString().slice(0, 7);
 let adminLoggedIn = false;
@@ -1453,7 +1451,9 @@ function renderTableStats() {
   if (!allMonths.includes(statsMonth)) statsMonth = allMonths[0];
   const idx = allMonths.indexOf(statsMonth);
   const [y, mo] = statsMonth.split('-');
-  const monthList = list.filter(([,m]) => (m.date||'').startsWith(statsMonth) && m.type === 'out');
+  const moveType = statsSeg === 'in' ? 'in' : 'out';
+  const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
+  const monthList = list.filter(([,m]) => (m.date||'').startsWith(statsMonth) && m.type === moveType);
 
   // 品目×スタッフ集計
   const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
@@ -1504,16 +1504,17 @@ function renderTableStats() {
     </div>
     ${tableHtml}
     <div style="margin-top:12px">
-      <button class="btn-primary" onclick="exportTableExcel('${statsMonth}')">📥 Excelで出力</button>
+      <button class="btn-primary" onclick="exportTableExcel('${statsMonth}','${moveType}')">📥 Excelで出力</button>
     </div>`;
 }
 
-async function exportTableExcel(month) {
+async function exportTableExcel(month, moveType = 'out') {
   if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリが読み込まれていません'); return; }
   const [y, mo] = month.split('-');
   const label = y + '年' + parseInt(mo) + '月';
+  const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
   const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
-  const list = Object.values(movements).filter(m => (m.date||'').startsWith(month) && m.type === 'out');
+  const list = Object.values(movements).filter(m => (m.date||'').startsWith(month) && m.type === moveType);
   const byItemStaff = {};
   ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; STAFF.forEach(s => byItemStaff[item.id].staff[s]=0); });
   list.forEach(m => {
@@ -1527,82 +1528,19 @@ async function exportTableExcel(month) {
     data.push([item.name, d.staff['加藤瑞樹']||'', d.staff['山内浩一']||'', d.staff['森田義則']||'', d.staff['富山裕貴']||'', d.total||'']);
   });
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), label+'持ち出し表');
-  XLSX.writeFile(wb, '持ち出し表_'+label+'.xlsx');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), label+typeLabel+'表');
+  XLSX.writeFile(wb, typeLabel+'表_'+label+'.xlsx');
+}
+
+function setStatsSeg(seg) {
+  statsSeg = seg;
+  document.querySelectorAll('.stats-seg-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sseg-' + seg).classList.add('active');
+  renderStats();
 }
 
 function renderStats() {
-  const el = document.getElementById('stats-content');
-  const list = Object.entries(movements).sort((a, b) => b[1].createdAt - a[1].createdAt);
-
-  if (statsSeg === 'table') { renderTableStats(); return; }
-  else if (statsSeg === 'month') {
-    // 月ナビ
-    const allMonths = [...new Set(list.map(([,m]) => (m.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
-    if (!allMonths.length) { el.innerHTML = '<div class="empty">データがありません</div>'; return; }
-    if (!allMonths.includes(statsMonth)) statsMonth = allMonths[0];
-    const idx = allMonths.indexOf(statsMonth);
-    const [y, mo] = statsMonth.split('-');
-    const monthList = list.filter(([,m]) => (m.date||'').startsWith(statsMonth));
-
-    // 品目ごとに集計
-    const byItem = {};
-    monthList.forEach(([,m]) => {
-      if (!byItem[m.itemId]) byItem[m.itemId] = { name: m.itemName, unit: m.unit, in: 0, out: 0 };
-      if (m.type === 'in') byItem[m.itemId].in += m.qty;
-      else byItem[m.itemId].out += m.qty;
-    });
-
-    el.innerHTML = `
-      <div class="month-nav">
-        <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx+1]||''}')" ${!allMonths[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
-        <span class="month-nav-label">${y}年${parseInt(mo)}月</span>
-        <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx-1]||''}')" ${!allMonths[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
-      </div>
-      <div class="section-title">${monthList.length}件の入出庫記録</div>
-      ${Object.entries(byItem).map(([, v]) => `
-        <div class="stats-row">
-          <div><div class="stats-label">${v.name}</div></div>
-          <div class="stats-vals">
-            <div class="stats-in">入庫 +${v.in % 1 === 0 ? v.in : v.in.toFixed(1)}${v.unit}</div>
-            <div class="stats-out">出庫 -${v.out % 1 === 0 ? v.out : v.out.toFixed(1)}${v.unit}</div>
-          </div>
-        </div>`).join('') || '<div class="empty">この月のデータはありません</div>'}`;
-
-  } else if (statsSeg === 'item') {
-    const byItem = {};
-    list.forEach(([,m]) => {
-      if (!byItem[m.itemId]) byItem[m.itemId] = { name: m.itemName, unit: m.unit, in: 0, out: 0 };
-      if (m.type === 'in') byItem[m.itemId].in += m.qty;
-      else byItem[m.itemId].out += m.qty;
-    });
-    el.innerHTML = `<div class="section-title">品目別 全期間集計</div>` +
-      Object.entries(byItem).sort((a, b) => b[1].out - a[1].out).map(([, v]) => `
-        <div class="stats-row">
-          <div><div class="stats-label">${v.name}</div><div class="stats-sub">現在庫: ${getQty(ITEMS_MASTER.find(i=>i.name===v.name)?.id||'')}${v.unit}</div></div>
-          <div class="stats-vals">
-            <div class="stats-in">入庫 +${v.in % 1 === 0 ? v.in : v.in.toFixed(1)}${v.unit}</div>
-            <div class="stats-out">出庫 -${v.out % 1 === 0 ? v.out : v.out.toFixed(1)}${v.unit}</div>
-          </div>
-        </div>`).join('') || '<div class="empty">データがありません</div>';
-
-  } else {
-    const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
-    el.innerHTML = `<div class="section-title">個人別 全期間集計</div>` +
-      STAFF.map(name => {
-        const sl = list.filter(([,m]) => m.staff === name);
-        if (!sl.length) return '';
-        const outCount = sl.filter(([,m]) => m.type === 'out').length;
-        const inCount = sl.filter(([,m]) => m.type === 'in').length;
-        return `<div class="stats-row">
-          <div><div class="stats-label">${name}</div><div class="stats-sub">合計 ${sl.length}件</div></div>
-          <div class="stats-vals">
-            <div class="stats-in">入庫 ${inCount}回</div>
-            <div class="stats-out">出庫 ${outCount}回</div>
-          </div>
-        </div>`;
-      }).join('') || '<div class="empty">データがありません</div>';
-  }
+  renderTableStats();
 }
 
 function changeStatsMonth(m) { if (m) { statsMonth = m; renderStats(); } }
