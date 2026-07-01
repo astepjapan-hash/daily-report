@@ -167,8 +167,8 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
   <div class="view" id="view-stock">
     <div class="wrap">
       <div id="stock-summary" class="summary-bar"></div>
-      <div class="filter-row" id="cat-filter-row"></div>
-      <div id="stock-list"><div class="loading">読み込み中...</div></div>
+      <div id="cat-filter-row" style="position:sticky;top:56px;z-index:50;background:#f5f0ea;padding:6px 0 4px;margin:0 -16px;padding-left:16px;overflow-x:auto;display:flex;gap:6px;-webkit-overflow-scrolling:touch"></div>
+      <div id="stock-list" style="margin-top:4px"><div class="loading">読み込み中...</div></div>
     </div>
   </div>
 
@@ -395,8 +395,11 @@ const ITEMS_MASTER = [
   {id:'strain_tate', name:'縦ストレーナー',  unit:'個',    category:'drain',   alert:2},
   {id:'drain_yoko',  name:'横ドレン',        unit:'個',    category:'drain',   alert:2},
   {id:'strain_yoko', name:'横ストレーナー',  unit:'個',    category:'drain',   alert:2},
-  {id:'vp25',        name:'VP25',            unit:'個',    category:'drain',   alert:2},
+  {id:'overflow',    name:'オーバーフロー',  unit:'個',    category:'drain',   alert:2},
+  {id:'vp25',        name:'VP25',            unit:'本',    category:'drain',   alert:2},
   {id:'vj50',        name:'VU50',            unit:'本',    category:'drain',   alert:2},
+  {id:'socket50',    name:'ソケット50',      unit:'個',    category:'drain',   alert:2},
+  {id:'socket75',    name:'ソケット75',      unit:'個',    category:'drain',   alert:2},
   {id:'drain_tate75',  name:'縦ドレン75',          unit:'個',    category:'drain',   alert:2},
   {id:'drain_yoko75',  name:'横ドレン75',          unit:'個',    category:'drain',   alert:2},
   {id:'drain_yoko75p', name:'横ドレン75塩ビ',      unit:'個',    category:'drain',   alert:2},
@@ -519,7 +522,7 @@ function buildCatFilter() {
   const el = document.getElementById('cat-filter-row');
   const cats = ['all', 'frp', 'sub', 'drain', 'tool', 'consume'];
   const labels = { all: 'すべて', frp: 'FRP材', sub: '副資材', drain: 'ドレン', tool: '工具', consume: '消耗品' };
-  el.innerHTML = cats.map(c => `<button class="filter-btn ${catFilter === c ? 'active' : ''}" onclick="setCatFilter('${c}', this)">${labels[c]}</button>`).join('');
+  el.innerHTML = cats.map(c => `<button class="filter-btn ${catFilter === c ? 'active' : ''}" style="flex-shrink:0" onclick="setCatFilter('${c}', this)">${labels[c]}</button>`).join('');
 }
 
 function setCatFilter(cat, btn) {
