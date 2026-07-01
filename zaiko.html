@@ -247,27 +247,63 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
   <!-- 履歴 -->
   <div class="view" id="view-history">
     <div class="wrap">
+
+      <!-- 検索ボックス -->
       <div class="search-wrap" style="margin-bottom:10px">
         <span class="search-ico">🔍</span>
         <input class="search-inp" type="text" id="hist-search-input" placeholder="品目名・メモで検索" oninput="onHistSearch(this.value)">
         <button class="search-clr" id="hist-search-clear" onclick="clearHistSearch()">×</button>
       </div>
 
-      <div class="filter-row" id="hist-type-filter-row" style="margin-bottom:8px">
-        <button class="filter-btn active" data-filter="all" onclick="setHistTypeFilter('all',this)">すべて</button>
-        <button class="filter-btn" data-filter="out" onclick="setHistTypeFilter('out',this)">📤 持ち出し</button>
-        <button class="filter-btn" data-filter="in" onclick="setHistTypeFilter('in',this)">📥 入庫</button>
+      <!-- 期間タブ -->
+      <div class="stats-seg" style="margin-bottom:12px">
+        <button class="stats-seg-btn active" id="hseg-day" onclick="setHistSeg('day')">日別</button>
+        <button class="stats-seg-btn" id="hseg-month" onclick="setHistSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="hseg-range" onclick="setHistSeg('range')">期間検索</button>
       </div>
 
-      <div class="filter-row" id="hist-cat-filter-row" style="margin-bottom:8px"></div>
+      <!-- 日別：カレンダーナビ -->
+      <div id="hist-day-picker" style="margin-bottom:10px">
+        <div class="month-nav">
+          <button class="month-nav-btn" onclick="changeHistMonth(-1)">◀</button>
+          <span class="month-nav-label" id="hist-month-label"></span>
+          <button class="month-nav-btn" onclick="changeHistMonth(1)">▶</button>
+        </div>
+      </div>
 
-      <div class="filter-row" id="hist-staff-filter-row" style="margin-bottom:12px">
-        <button class="filter-btn active" data-filter="all" onclick="setHistStaffFilter('all',this)">全員</button>
-        <button class="filter-btn" data-filter="加藤瑞樹" onclick="setHistStaffFilter('加藤瑞樹',this)">加藤</button>
-        <button class="filter-btn" data-filter="山内浩一" onclick="setHistStaffFilter('山内浩一',this)">山内</button>
-        <button class="filter-btn" data-filter="森田義則" onclick="setHistStaffFilter('森田義則',this)">森田</button>
-        <button class="filter-btn" data-filter="富山裕貴" onclick="setHistStaffFilter('富山裕貴',this)">富山</button>
-        <button class="filter-btn" data-filter="外注" onclick="setHistStaffFilter('外注',this)">外注</button>
+      <!-- 月別：月ナビ -->
+      <div id="hist-month-picker" style="display:none;margin-bottom:10px">
+        <div class="month-nav">
+          <button class="month-nav-btn" onclick="changeHistYearMonth(-1)">◀</button>
+          <span class="month-nav-label" id="hist-yearmonth-label"></span>
+          <button class="month-nav-btn" onclick="changeHistYearMonth(1)">▶</button>
+        </div>
+      </div>
+
+      <!-- 期間検索 -->
+      <div id="hist-range-picker" style="display:none;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="date" id="hist-range-from" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <span style="color:#aaa">〜</span>
+          <input type="date" id="hist-range-to" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <button onclick="renderHistory()" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
+        </div>
+      </div>
+
+      <!-- 共通フィルター -->
+      <div class="filter-row" id="hist-type-filter-row" style="margin-bottom:6px">
+        <button class="filter-btn active" onclick="setHistTypeFilter('all',this)">すべて</button>
+        <button class="filter-btn" onclick="setHistTypeFilter('out',this)">📤 持ち出し</button>
+        <button class="filter-btn" onclick="setHistTypeFilter('in',this)">📥 入庫</button>
+      </div>
+      <div class="filter-row" id="hist-cat-filter-row" style="margin-bottom:6px"></div>
+      <div class="filter-row" id="hist-staff-filter-row" style="margin-bottom:10px">
+        <button class="filter-btn active" onclick="setHistStaffFilter('all',this)">全員</button>
+        <button class="filter-btn" onclick="setHistStaffFilter('加藤瑞樹',this)">加藤</button>
+        <button class="filter-btn" onclick="setHistStaffFilter('山内浩一',this)">山内</button>
+        <button class="filter-btn" onclick="setHistStaffFilter('森田義則',this)">森田</button>
+        <button class="filter-btn" onclick="setHistStaffFilter('富山裕貴',this)">富山</button>
+        <button class="filter-btn" onclick="setHistStaffFilter('外注',this)">外注</button>
       </div>
 
       <div id="history-list"><div class="loading">読み込み中...</div></div>
@@ -1109,6 +1145,34 @@ let histTypeFilter = 'all';
 let histCatFilter = 'all';
 let histStaffFilter = 'all';
 let histSearchQuery = '';
+let histSeg = 'day';
+let histDayMonth = new Date().toISOString().slice(0,7); // 日別で表示中の月
+let histYearMonth = new Date().toISOString().slice(0,7); // 月別
+
+function setHistSeg(seg) {
+  histSeg = seg;
+  ['day','month','range'].forEach(s => {
+    document.getElementById('hseg-'+s).classList.remove('active');
+    document.getElementById('hist-'+s+'-picker').style.display = 'none';
+  });
+  document.getElementById('hseg-'+seg).classList.add('active');
+  document.getElementById('hist-'+seg+'-picker').style.display = 'block';
+  renderHistory();
+}
+
+function changeHistMonth(dir) {
+  const [y, m] = histDayMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  histDayMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  renderHistory();
+}
+
+function changeHistYearMonth(dir) {
+  const [y, m] = histYearMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + dir, 1);
+  histYearMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  renderHistory();
+}
 
 function setHistTypeFilter(f, btn) {
   histTypeFilter = f;
@@ -1155,8 +1219,29 @@ function buildHistCatFilter() {
 function renderHistory() {
   buildHistCatFilter();
   const el = document.getElementById('history-list');
+
+  // 月ナビラベル更新
+  const [dy, dm] = histDayMonth.split('-');
+  const dayLabel = document.getElementById('hist-month-label');
+  if (dayLabel) dayLabel.textContent = `${dy}年${parseInt(dm)}月`;
+  const [my, mm] = histYearMonth.split('-');
+  const monthLabel = document.getElementById('hist-yearmonth-label');
+  if (monthLabel) monthLabel.textContent = `${my}年${parseInt(mm)}月`;
+
   let list = Object.entries(movements).sort((a, b) => b[1].createdAt - a[1].createdAt);
 
+  // セグメントによる日付絞り込み
+  if (histSeg === 'day') {
+    list = list.filter(([,m]) => (m.date || '').startsWith(histDayMonth));
+  } else if (histSeg === 'month') {
+    list = list.filter(([,m]) => (m.date || '').startsWith(histYearMonth));
+  } else if (histSeg === 'range') {
+    const from = document.getElementById('hist-range-from')?.value;
+    const to = document.getElementById('hist-range-to')?.value;
+    if (from && to) list = list.filter(([,m]) => m.date >= from && m.date <= to);
+  }
+
+  // 共通フィルター
   if (histTypeFilter !== 'all') list = list.filter(([,m]) => m.type === histTypeFilter);
   if (histStaffFilter !== 'all') list = list.filter(([,m]) => m.staff === histStaffFilter);
   if (histCatFilter !== 'all') {
@@ -1176,7 +1261,7 @@ function renderHistory() {
 
   if (!list.length) { el.innerHTML = '<div class="empty">📭 該当する履歴がありません</div>'; return; }
 
-  // 日付ごとにグループ化
+  // 月別はさらに日付グループ化
   const byDate = {};
   list.slice(0, 300).forEach(([key, m]) => {
     const d = m.date || '日付不明';
@@ -1187,7 +1272,21 @@ function renderHistory() {
   const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
   const today = getToday();
 
-  el.innerHTML = dateKeys.map(dateKey => {
+  // 月別・期間検索の場合は件数サマリーを先頭に表示
+  let summaryHtml = '';
+  if (histSeg === 'month' || histSeg === 'range') {
+    const outCount = list.filter(([,m]) => m.type === 'out').length;
+    const inCount = list.filter(([,m]) => m.type === 'in').length;
+    summaryHtml = `<div class="card" style="margin-bottom:12px;display:flex;gap:12px;justify-content:center">
+      <div style="text-align:center"><div style="font-size:11px;color:#aaa">📤 持ち出し</div><div style="font-size:20px;font-weight:700;color:#e07b4f">${outCount}件</div></div>
+      <div style="width:1px;background:#ede8e2"></div>
+      <div style="text-align:center"><div style="font-size:11px;color:#aaa">📥 入庫</div><div style="font-size:20px;font-weight:700;color:#388e3c">${inCount}件</div></div>
+      <div style="width:1px;background:#ede8e2"></div>
+      <div style="text-align:center"><div style="font-size:11px;color:#aaa">合計</div><div style="font-size:20px;font-weight:700;color:#2d2a26">${list.length}件</div></div>
+    </div>`;
+  }
+
+  const listHtml = dateKeys.map(dateKey => {
     const [y, mo, d] = dateKey.split('-');
     const dateLabel = dateKey === '日付不明' ? '日付不明' :
       (dateKey === today ? '今日　' : '') + `${parseInt(mo)}月${parseInt(d)}日`;
@@ -1195,8 +1294,8 @@ function renderHistory() {
     const dayOutTotal = dayList.filter(([,m]) => m.type === 'out').length;
     const dayInTotal = dayList.filter(([,m]) => m.type === 'in').length;
 
-    const itemsHtml = dayList.map(([key, m]) => `
-      <div class="history-item">
+    const itemsHtml = dayList.map(([key, m]) =>
+      `<div class="history-item">
         <div class="hist-badge ${m.type}">${m.type === 'in' ? '入庫' : '出庫'}</div>
         <div class="hist-info">
           <div class="hist-name">${m.itemName || '不明'}</div>
@@ -1212,11 +1311,13 @@ function renderHistory() {
     return `<div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 2px;margin-bottom:6px">
         <div style="font-size:13px;font-weight:700;color:#2d2a26">${dateLabel}</div>
-        <div style="font-size:11px;color:#aaa">${dayOutTotal ? '📤' + dayOutTotal : ''} ${dayInTotal ? '📥' + dayInTotal : ''}</div>
+        <div style="font-size:11px;color:#aaa">${dayOutTotal ? '📤'+dayOutTotal : ''} ${dayInTotal ? '📥'+dayInTotal : ''}</div>
       </div>
       ${itemsHtml}
     </div>`;
   }).join('');
+
+  el.innerHTML = summaryHtml + listHtml;
 }
 
 async function deleteMovement(key, e) {
