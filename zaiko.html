@@ -252,7 +252,7 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
       <div class="search-wrap" style="margin-bottom:10px">
         <span class="search-ico">🔍</span>
         <input class="search-inp" type="text" id="hist-search-input" placeholder="品目名・メモで検索" oninput="onHistSearch(this.value)">
-        <button class="search-clr" id="hist-search-clear" onclick="clearHistSearch()">×</button>
+        <button class="search-clr" id="hist-search-clear" onclick="clearHistSearch()" style="display:none">×</button>
       </div>
 
       <!-- 期間タブ -->
@@ -260,15 +260,6 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
         <button class="stats-seg-btn active" id="hseg-day" onclick="setHistSeg('day')">日別</button>
         <button class="stats-seg-btn" id="hseg-month" onclick="setHistSeg('month')">月別</button>
         <button class="stats-seg-btn" id="hseg-range" onclick="setHistSeg('range')">期間検索</button>
-      </div>
-
-      <!-- 日別：カレンダーナビ -->
-      <div id="hist-day-picker" style="margin-bottom:10px">
-        <div class="month-nav">
-          <button class="month-nav-btn" onclick="changeHistMonth(-1)">◀</button>
-          <span class="month-nav-label" id="hist-month-label"></span>
-          <button class="month-nav-btn" onclick="changeHistMonth(1)">▶</button>
-        </div>
       </div>
 
       <!-- 月別：月ナビ -->
@@ -307,6 +298,17 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
       </div>
 
       <div id="history-list"><div class="loading">読み込み中...</div></div>
+
+      <!-- 日別：カレンダー -->
+      <div id="hist-day-picker" style="margin-top:16px">
+        <div class="month-nav">
+          <button class="month-nav-btn" onclick="changeHistMonth(-1)">◀</button>
+          <span class="month-nav-label" id="hist-month-label"></span>
+          <button class="month-nav-btn" onclick="changeHistMonth(1)">▶</button>
+        </div>
+        <div id="hist-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:16px"></div>
+        <div id="hist-cal-day-content"></div>
+      </div>
     </div>
   </div>
 
@@ -548,7 +550,7 @@ function showView(name) {
     document.getElementById('move-date-top').value = getToday();
     loadAll().then(() => {});
   }
-  if (name === 'history') { loadAll().then(() => renderHistory()); }
+  if (name === 'history') { loadAll().then(() => { renderHistCalendar(); renderHistory(); }); }
   if (name === 'stats') { loadAll().then(() => renderStats()); }
   if (name === 'admin') showAdmin();
 }
@@ -1149,6 +1151,8 @@ let histSeg = 'day';
 let histDayMonth = new Date().toISOString().slice(0,7); // 日別で表示中の月
 let histYearMonth = new Date().toISOString().slice(0,7); // 月別
 
+let histSelectedDate = '';
+
 function setHistSeg(seg) {
   histSeg = seg;
   ['day','month','range'].forEach(s => {
@@ -1157,14 +1161,16 @@ function setHistSeg(seg) {
   });
   document.getElementById('hseg-'+seg).classList.add('active');
   document.getElementById('hist-'+seg+'-picker').style.display = 'block';
-  renderHistory();
+  if (seg === 'day') renderHistCalendar();
+  else renderHistory();
 }
 
 function changeHistMonth(dir) {
   const [y, m] = histDayMonth.split('-').map(Number);
   const d = new Date(y, m - 1 + dir, 1);
   histDayMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-  renderHistory();
+  histSelectedDate = '';
+  renderHistCalendar();
 }
 
 function changeHistYearMonth(dir) {
@@ -1172,6 +1178,108 @@ function changeHistYearMonth(dir) {
   const d = new Date(y, m - 1 + dir, 1);
   histYearMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
   renderHistory();
+}
+
+function renderHistCalendar() {
+  const [cy, cm] = histDayMonth.split('-').map(Number);
+  const today = getToday();
+  const labelEl = document.getElementById('hist-month-label');
+  if (labelEl) labelEl.textContent = `${cy}年${cm}月`;
+
+  // その月の入出庫を集計
+  const movByDate = {};
+  Object.values(movements).forEach(m => {
+    if (!(m.date||'').startsWith(histDayMonth)) return;
+    if (!movByDate[m.date]) movByDate[m.date] = {out:0, in:0};
+    movByDate[m.date][m.type]++;
+  });
+
+  const firstDay = new Date(cy, cm-1, 1).getDay();
+  const daysInMonth = new Date(cy, cm, 0).getDate();
+  const dows = ['日','月','火','水','木','金','土'];
+
+  const dowStyle = 'text-align:center;font-size:11px;font-weight:600;color:#aaa;padding:4px 0;';
+  const dowSunStyle = 'text-align:center;font-size:11px;font-weight:600;color:#e05a5a;padding:4px 0;';
+  const dowSatStyle = 'text-align:center;font-size:11px;font-weight:600;color:#4a7ccc;padding:4px 0;';
+  let html = dows.map((d,i) => `<div style="${i===0?dowSunStyle:i===6?dowSatStyle:dowStyle}">${d}</div>`).join('');
+  for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${cy}-${String(cm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow = new Date(cy, cm-1, d).getDay();
+    const data = movByDate[dateStr];
+    const isToday = dateStr === today;
+    const isSelected = dateStr === histSelectedDate;
+    const numColor = isSelected ? '#fff' : dow===0 ? '#e05a5a' : dow===6 ? '#4a7ccc' : '#2d2a26';
+    const bg = isSelected ? '#e07b4f' : isToday ? '#fff' : data ? '#fdf0e8' : '#fff';
+    const border = isToday ? '1.5px solid #e07b4f' : '1.5px solid transparent';
+    const dots = data ? `<div style="display:flex;justify-content:center;gap:2px;margin-top:3px">
+      ${data.out > 0 ? `<div style="width:5px;height:5px;border-radius:50%;background:${isSelected?'#fff':'#e07b4f'}"></div>` : ''}
+      ${data.in > 0 ? `<div style="width:5px;height:5px;border-radius:50%;background:${isSelected?'#fff':'#388e3c'}"></div>` : ''}
+    </div>` : '';
+    html += `<div style="border-radius:8px;padding:5px 2px;text-align:center;min-height:48px;cursor:pointer;background:${bg};border:${border};"
+      onclick="selectHistDate('${dateStr}')">
+      <div style="font-size:13px;font-weight:600;color:${numColor}">${d}</div>${dots}
+    </div>`;
+  }
+
+  const gridEl = document.getElementById('hist-cal-grid');
+  if (gridEl) gridEl.innerHTML = html;
+
+  renderHistDayContent();
+}
+
+function selectHistDate(dateStr) {
+  histSelectedDate = histSelectedDate === dateStr ? '' : dateStr;
+  renderHistCalendar();
+}
+
+function renderHistDayContent() {
+  const el = document.getElementById('hist-cal-day-content');
+  if (!el) return;
+  if (!histSelectedDate) { el.innerHTML = ''; return; }
+
+  const [y, mo, d] = histSelectedDate.split('-');
+  const dateLabel = `${parseInt(mo)}月${parseInt(d)}日`;
+
+  let list = Object.entries(movements)
+    .filter(([,m]) => m.date === histSelectedDate)
+    .sort((a,b) => b[1].createdAt - a[1].createdAt);
+
+  if (histTypeFilter !== 'all') list = list.filter(([,m]) => m.type === histTypeFilter);
+  if (histStaffFilter !== 'all') list = list.filter(([,m]) => m.staff === histStaffFilter);
+  if (histCatFilter !== 'all') list = list.filter(([,m]) => {
+    const item = ITEMS_MASTER.find(i => i.id === m.itemId);
+    return item && item.category === histCatFilter;
+  });
+
+  if (!list.length) {
+    el.innerHTML = `<div style="text-align:center;padding:16px;color:#aaa;font-size:13px">${dateLabel}の記録はありません</div>`;
+    return;
+  }
+
+  const outCount = list.filter(([,m]) => m.type==='out').length;
+  const inCount = list.filter(([,m]) => m.type==='in').length;
+
+  el.innerHTML = `<div style="margin-top:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:14px;font-weight:700;color:#2d2a26">${dateLabel}</div>
+      <div style="font-size:11px;color:#aaa">${outCount?'📤'+outCount:''} ${inCount?'📥'+inCount:''}</div>
+    </div>
+    ${list.map(([key, m]) => `
+      <div class="history-item">
+        <div class="hist-badge ${m.type}">${m.type==='in'?'入庫':'出庫'}</div>
+        <div class="hist-info">
+          <div class="hist-name">${m.itemName||'不明'}</div>
+          <div class="hist-meta">${m.staff||''}${m.note?' ・ '+m.note:''}</div>
+        </div>
+        <div class="hist-qty">
+          <div class="hist-qty-num ${m.type}">${m.type==='in'?'+':'-'}${m.qty%1===0?m.qty:m.qty.toFixed(1)}</div>
+          <div class="hist-qty-unit">${m.unit||''}</div>
+        </div>
+        <button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>
+      </div>`).join('')}
+  </div>`;
 }
 
 function setHistTypeFilter(f, btn) {
