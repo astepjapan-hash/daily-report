@@ -315,9 +315,32 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
   <!-- 集計 -->
   <div class="view" id="view-stats">
     <div class="wrap">
+      <div class="search-wrap" style="margin-bottom:10px">
+        <span class="search-ico">🔍</span>
+        <input class="search-inp" type="text" id="stats-search-input" placeholder="品目名で検索" oninput="onStatsSearch(this.value)">
+        <button class="search-clr" id="stats-search-clear" onclick="clearStatsSearch()" style="display:none">×</button>
+      </div>
       <div class="stats-seg" style="margin-bottom:12px">
         <button class="stats-seg-btn active" id="sseg-out" onclick="setStatsSeg('out')">📤 持ち出し表</button>
         <button class="stats-seg-btn" id="sseg-in" onclick="setStatsSeg('in')">📥 入庫表</button>
+      </div>
+      <!-- 期間モード切替 -->
+      <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:12px">
+        <button class="stats-seg-btn active" id="speriod-month" onclick="setStatsPeriod('month')" style="flex:1">月別</button>
+        <button class="stats-seg-btn" id="speriod-range" onclick="setStatsPeriod('range')" style="flex:1">期間指定</button>
+      </div>
+      <!-- 月別ナビ（デフォルト表示） -->
+      <div id="stats-month-picker" style="margin-bottom:10px">
+        <div class="month-nav" id="stats-month-nav"></div>
+      </div>
+      <!-- 期間指定 -->
+      <div id="stats-range-picker" style="display:none;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="date" id="stats-range-from" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <span style="color:#aaa">〜</span>
+          <input type="date" id="stats-range-to" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+          <button onclick="renderStats()" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
+        </div>
       </div>
       <div id="stats-content"><div class="loading">読み込み中...</div></div>
     </div>
@@ -1436,6 +1459,31 @@ async function deleteMovement(key, e) {
 }
 
 // ── 集計 ──
+let statsSearchQuery = '';
+let statsPeriod = 'month'; // 'month' or 'range'
+
+function setStatsPeriod(period) {
+  statsPeriod = period;
+  document.getElementById('speriod-month').classList.toggle('active', period === 'month');
+  document.getElementById('speriod-range').classList.toggle('active', period === 'range');
+  document.getElementById('stats-month-picker').style.display = period === 'month' ? 'block' : 'none';
+  document.getElementById('stats-range-picker').style.display = period === 'range' ? 'block' : 'none';
+  renderStats();
+}
+
+function onStatsSearch(val) {
+  statsSearchQuery = val.trim();
+  document.getElementById('stats-search-clear').style.display = statsSearchQuery ? 'block' : 'none';
+  renderStats();
+}
+
+function clearStatsSearch() {
+  statsSearchQuery = '';
+  document.getElementById('stats-search-input').value = '';
+  document.getElementById('stats-search-clear').style.display = 'none';
+  renderStats();
+}
+
 function setStatsSeg(seg) {
   statsSeg = seg;
   document.querySelectorAll('.stats-seg-btn').forEach(b => b.classList.remove('active'));
@@ -1453,11 +1501,27 @@ function renderTableStats() {
   const [y, mo] = statsMonth.split('-');
   const moveType = statsSeg === 'in' ? 'in' : 'out';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
-  const monthList = list.filter(([,m]) => (m.date||'').startsWith(statsMonth) && m.type === moveType);
+
+  // 持ち出し：スタッフ4名、入庫：外注のみ
+  const STAFF = moveType === 'out' ? ['加藤瑞樹','山内浩一','森田義則','富山裕貴'] : ['外注'];
+  const STAFF_SHORT = moveType === 'out' ? ['加藤','山内','森田','富山'] : ['外注'];
+
+  // 期間フィルター
+  const rangeFrom = document.getElementById('stats-range-from')?.value || '';
+  const rangeTo = document.getElementById('stats-range-to')?.value || '';
+
+  const monthList = list.filter(([,m]) => {
+    if (m.type !== moveType) return false;
+    if (moveType === 'in' && m.staff !== '外注') return false;
+    if (statsPeriod === 'range') {
+      if (rangeFrom && rangeTo) return m.date >= rangeFrom && m.date <= rangeTo;
+      return false;
+    } else {
+      return (m.date||'').startsWith(statsMonth);
+    }
+  });
 
   // 品目×スタッフ集計
-  const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
-  const STAFF_SHORT = ['加藤','山内','森田','富山'];
   const byItemStaff = {};
   ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; STAFF.forEach(s => byItemStaff[item.id].staff[s]=0); });
   monthList.forEach(([,m]) => {
@@ -1465,8 +1529,13 @@ function renderTableStats() {
     if (STAFF.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
   });
 
-  // データある品目のみ
-  const activeItems = ITEMS_MASTER.filter(item => byItemStaff[item.id]?.total > 0);
+  // データある品目のみ＋検索フィルター
+  const statsQuery = (document.getElementById('stats-search-input')?.value || '').trim().toLowerCase();
+  const activeItems = ITEMS_MASTER.filter(item => {
+    if (!byItemStaff[item.id] || byItemStaff[item.id].total <= 0) return false;
+    if (statsQuery && !item.name.toLowerCase().includes(statsQuery)) return false;
+    return true;
+  });
 
   // テーブルCSS
   const thStyle = 'padding:8px 6px;font-size:12px;font-weight:700;color:#2d2a26;background:#f5f0ea;text-align:center;border-bottom:2px solid #e0d8d0;white-space:nowrap;';
@@ -1496,12 +1565,19 @@ function renderTableStats() {
     </table>
   </div>`;
 
+  // 月ナビを更新
+  const navEl = document.getElementById('stats-month-nav');
+  if (navEl) navEl.innerHTML = `
+    <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx+1]||''}')" ${!allMonths[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
+    <span class="month-nav-label">${y}年${parseInt(mo)}月</span>
+    <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx-1]||''}')" ${!allMonths[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>`;
+
+  // 期間ラベル
+  const periodLabel = statsPeriod === 'range' && rangeFrom && rangeTo
+    ? rangeFrom + ' 〜 ' + rangeTo
+    : `${y}年${parseInt(mo)}月`;
+
   el.innerHTML = `
-    <div class="month-nav" style="margin-bottom:12px">
-      <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx+1]||''}')" ${!allMonths[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
-      <span class="month-nav-label">${y}年${parseInt(mo)}月</span>
-      <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx-1]||''}')" ${!allMonths[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
-    </div>
     ${tableHtml}
     <div style="margin-top:12px">
       <button class="btn-primary" onclick="exportTableExcel('${statsMonth}','${moveType}')">📥 Excelで出力</button>
@@ -1514,12 +1590,18 @@ async function exportTableExcel(month, moveType = 'out') {
   const label = y + '年' + parseInt(mo) + '月';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
   const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
-  const list = Object.values(movements).filter(m => (m.date||'').startsWith(month) && m.type === moveType);
+  const staffList = moveType === 'out' ? ['加藤瑞樹','山内浩一','森田義則','富山裕貴'] : ['外注'];
+  const list = Object.values(movements).filter(m => {
+    if (!(m.date||'').startsWith(month)) return false;
+    if (m.type !== moveType) return false;
+    if (moveType === 'in' && m.staff !== '外注') return false;
+    return true;
+  });
   const byItemStaff = {};
-  ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; STAFF.forEach(s => byItemStaff[item.id].staff[s]=0); });
+  ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; staffList.forEach(s => byItemStaff[item.id].staff[s]=0); });
   list.forEach(m => {
     if (!byItemStaff[m.itemId]) return;
-    if (STAFF.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
+    if (staffList.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
   });
   const activeItems = ITEMS_MASTER.filter(item => byItemStaff[item.id]?.total > 0);
   const data = [['品目','加藤瑞樹','山内浩一','森田義則','富山裕貴','計']];
