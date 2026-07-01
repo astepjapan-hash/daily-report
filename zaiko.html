@@ -297,18 +297,18 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
         <button class="filter-btn" onclick="setHistStaffFilter('外注',this)">外注</button>
       </div>
 
-      <div id="history-list"><div class="loading">読み込み中...</div></div>
-
       <!-- 日別：カレンダー -->
-      <div id="hist-day-picker" style="margin-top:16px">
+      <div id="hist-day-picker" style="margin-top:4px">
         <div class="month-nav">
           <button class="month-nav-btn" onclick="changeHistMonth(-1)">◀</button>
           <span class="month-nav-label" id="hist-month-label"></span>
           <button class="month-nav-btn" onclick="changeHistMonth(1)">▶</button>
         </div>
-        <div id="hist-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:16px"></div>
+        <div id="hist-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:8px"></div>
         <div id="hist-cal-day-content"></div>
       </div>
+
+      <div id="history-list"><div class="loading">読み込み中...</div></div>
     </div>
   </div>
 
