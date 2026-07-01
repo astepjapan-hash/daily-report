@@ -305,7 +305,6 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
           <button class="month-nav-btn" onclick="changeHistMonth(1)">▶</button>
         </div>
         <div id="hist-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:8px"></div>
-        <div id="hist-cal-day-content"></div>
       </div>
 
       <div id="history-list"><div class="loading">読み込み中...</div></div>
@@ -1232,6 +1231,7 @@ function renderHistCalendar() {
 function selectHistDate(dateStr) {
   histSelectedDate = histSelectedDate === dateStr ? '' : dateStr;
   renderHistCalendar();
+  renderHistory();
 }
 
 function renderHistDayContent() {
@@ -1340,7 +1340,8 @@ function renderHistory() {
 
   // セグメントによる日付絞り込み
   if (histSeg === 'day') {
-    list = list.filter(([,m]) => (m.date || '').startsWith(histDayMonth));
+    if (!histSelectedDate) { el.innerHTML = ''; return; }
+    list = list.filter(([,m]) => m.date === histSelectedDate);
   } else if (histSeg === 'month') {
     list = list.filter(([,m]) => (m.date || '').startsWith(histYearMonth));
   } else if (histSeg === 'range') {
