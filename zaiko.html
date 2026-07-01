@@ -145,6 +145,7 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
 .cat-drain { background: #fdf4e8; color: #a05010; }
 .cat-other { background: #f0ede8; color: #666; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -315,7 +316,8 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
   <div class="view" id="view-stats">
     <div class="wrap">
       <div class="stats-seg">
-        <button class="stats-seg-btn active" id="sseg-month" onclick="setStatsSeg('month')">月別</button>
+        <button class="stats-seg-btn active" id="sseg-table" onclick="setStatsSeg('table')">持ち出し表</button>
+        <button class="stats-seg-btn" id="sseg-month" onclick="setStatsSeg('month')">月別</button>
         <button class="stats-seg-btn" id="sseg-item" onclick="setStatsSeg('item')">品目別</button>
         <button class="stats-seg-btn" id="sseg-staff" onclick="setStatsSeg('staff')">個人別</button>
       </div>
@@ -490,7 +492,7 @@ let movements = {}; // Firebase movements
 let moveType = 'out';
 let moveCatFilter = 'all';
 let histFilter = 'all';
-let statsSeg = 'month';
+let statsSeg = 'table';
 let catFilter = 'all';
 let statsMonth = new Date().toISOString().slice(0, 7);
 let adminLoggedIn = false;
@@ -1381,20 +1383,6 @@ function renderHistory() {
   const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
   const today = getToday();
 
-  // 月別・期間検索の場合は件数サマリーを先頭に表示
-  let summaryHtml = '';
-  if (histSeg === 'month' || histSeg === 'range') {
-    const outCount = list.filter(([,m]) => m.type === 'out').length;
-    const inCount = list.filter(([,m]) => m.type === 'in').length;
-    summaryHtml = `<div class="card" style="margin-bottom:12px;display:flex;gap:12px;justify-content:center">
-      <div style="text-align:center"><div style="font-size:11px;color:#aaa">📤 持ち出し</div><div style="font-size:20px;font-weight:700;color:#e07b4f">${outCount}件</div></div>
-      <div style="width:1px;background:#ede8e2"></div>
-      <div style="text-align:center"><div style="font-size:11px;color:#aaa">📥 入庫</div><div style="font-size:20px;font-weight:700;color:#388e3c">${inCount}件</div></div>
-      <div style="width:1px;background:#ede8e2"></div>
-      <div style="text-align:center"><div style="font-size:11px;color:#aaa">合計</div><div style="font-size:20px;font-weight:700;color:#2d2a26">${list.length}件</div></div>
-    </div>`;
-  }
-
   const listHtml = dateKeys.map(dateKey => {
     const [y, mo, d] = dateKey.split('-');
     const dateLabel = dateKey === '日付不明' ? '日付不明' :
@@ -1426,7 +1414,7 @@ function renderHistory() {
     </div>`;
   }).join('');
 
-  el.innerHTML = summaryHtml + listHtml;
+  el.innerHTML = listHtml;
 }
 
 async function deleteMovement(key, e) {
@@ -1457,11 +1445,98 @@ function setStatsSeg(seg) {
   renderStats();
 }
 
+function renderTableStats() {
+  const el = document.getElementById('stats-content');
+  const list = Object.entries(movements).sort((a,b) => b[1].createdAt - a[1].createdAt);
+  const allMonths = [...new Set(list.map(([,m]) => (m.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  if (!allMonths.length) { el.innerHTML = '<div class="empty">データがありません</div>'; return; }
+  if (!allMonths.includes(statsMonth)) statsMonth = allMonths[0];
+  const idx = allMonths.indexOf(statsMonth);
+  const [y, mo] = statsMonth.split('-');
+  const monthList = list.filter(([,m]) => (m.date||'').startsWith(statsMonth) && m.type === 'out');
+
+  // 品目×スタッフ集計
+  const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
+  const STAFF_SHORT = ['加藤','山内','森田','富山'];
+  const byItemStaff = {};
+  ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; STAFF.forEach(s => byItemStaff[item.id].staff[s]=0); });
+  monthList.forEach(([,m]) => {
+    if (!byItemStaff[m.itemId]) return;
+    if (STAFF.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
+  });
+
+  // データある品目のみ
+  const activeItems = ITEMS_MASTER.filter(item => byItemStaff[item.id]?.total > 0);
+
+  // テーブルCSS
+  const thStyle = 'padding:8px 6px;font-size:12px;font-weight:700;color:#2d2a26;background:#f5f0ea;text-align:center;border-bottom:2px solid #e0d8d0;white-space:nowrap;';
+  const tdStyle = 'padding:8px 6px;font-size:13px;text-align:center;border-bottom:1px solid #f0ede8;color:#2d2a26;';
+  const tdNameStyle = 'padding:8px 8px;font-size:13px;text-align:left;border-bottom:1px solid #f0ede8;color:#2d2a26;white-space:nowrap;';
+  const tdTotalStyle = 'padding:8px 6px;font-size:13px;font-weight:700;text-align:center;border-bottom:1px solid #f0ede8;color:#e07b4f;';
+
+  const tableHtml = `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <thead>
+        <tr>
+          <th style="${thStyle}text-align:left">品目</th>
+          ${STAFF_SHORT.map(s => `<th style="${thStyle}">${s}</th>`).join('')}
+          <th style="${thStyle}color:#e07b4f">計</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${activeItems.length ? activeItems.map(item => {
+          const d = byItemStaff[item.id];
+          return `<tr>
+            <td style="${tdNameStyle}">${item.name}</td>
+            ${STAFF.map(s => `<td style="${tdStyle}">${d.staff[s] > 0 ? (d.staff[s]%1===0?d.staff[s]:d.staff[s].toFixed(1)) : ''}</td>`).join('')}
+            <td style="${tdTotalStyle}">${d.total%1===0?d.total:d.total.toFixed(1)}</td>
+          </tr>`;
+        }).join('') : `<tr><td colspan="6" style="padding:24px;text-align:center;color:#aaa;font-size:14px">この月の持ち出しデータはありません</td></tr>`}
+      </tbody>
+    </table>
+  </div>`;
+
+  el.innerHTML = `
+    <div class="month-nav" style="margin-bottom:12px">
+      <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx+1]||''}')" ${!allMonths[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
+      <span class="month-nav-label">${y}年${parseInt(mo)}月</span>
+      <button class="month-nav-btn" onclick="changeStatsMonth('${allMonths[idx-1]||''}')" ${!allMonths[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
+    </div>
+    ${tableHtml}
+    <div style="margin-top:12px">
+      <button class="btn-primary" onclick="exportTableExcel('${statsMonth}')">📥 Excelで出力</button>
+    </div>`;
+}
+
+async function exportTableExcel(month) {
+  if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリが読み込まれていません'); return; }
+  const [y, mo] = month.split('-');
+  const label = y + '年' + parseInt(mo) + '月';
+  const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
+  const list = Object.values(movements).filter(m => (m.date||'').startsWith(month) && m.type === 'out');
+  const byItemStaff = {};
+  ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; STAFF.forEach(s => byItemStaff[item.id].staff[s]=0); });
+  list.forEach(m => {
+    if (!byItemStaff[m.itemId]) return;
+    if (STAFF.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
+  });
+  const activeItems = ITEMS_MASTER.filter(item => byItemStaff[item.id]?.total > 0);
+  const data = [['品目','加藤瑞樹','山内浩一','森田義則','富山裕貴','計']];
+  activeItems.forEach(item => {
+    const d = byItemStaff[item.id];
+    data.push([item.name, d.staff['加藤瑞樹']||'', d.staff['山内浩一']||'', d.staff['森田義則']||'', d.staff['富山裕貴']||'', d.total||'']);
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), label+'持ち出し表');
+  XLSX.writeFile(wb, '持ち出し表_'+label+'.xlsx');
+}
+
 function renderStats() {
   const el = document.getElementById('stats-content');
   const list = Object.entries(movements).sort((a, b) => b[1].createdAt - a[1].createdAt);
 
-  if (statsSeg === 'month') {
+  if (statsSeg === 'table') { renderTableStats(); return; }
+  else if (statsSeg === 'month') {
     // 月ナビ
     const allMonths = [...new Set(list.map(([,m]) => (m.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
     if (!allMonths.length) { el.innerHTML = '<div class="empty">データがありません</div>'; return; }
