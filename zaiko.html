@@ -356,36 +356,51 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
 <!-- 品目タップモーダル -->
 <div class="modal-overlay" id="item-move-modal" style="display:none" onclick="closeItemMoveModal()">
   <div class="modal-box" onclick="event.stopPropagation()">
-    <div class="modal-title" id="item-move-title">持ち出し登録</div>
-    <div style="background:#f5f0ea;border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:16px;font-weight:700;color:#2d2a26" id="item-move-name"></div>
-        <div style="font-size:12px;color:#aaa;margin-top:2px">現在庫: <span id="item-move-current"></span></div>
+
+    <!-- STEP1: 数量入力 -->
+    <div id="in-step1">
+      <div class="modal-title" id="item-move-title">📥 入庫登録</div>
+      <div style="background:#f5f0ea;border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#2d2a26" id="item-move-name"></div>
+          <div style="font-size:12px;color:#aaa;margin-top:2px">現在庫: <span id="item-move-current"></span></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:24px;font-weight:700;color:#388e3c" id="item-move-qty-display">0</div>
+          <div style="font-size:12px;color:#aaa" id="item-move-unit-disp"></div>
+        </div>
       </div>
-      <div style="text-align:right">
-        <div style="font-size:24px;font-weight:700;color:#e07b4f" id="item-move-qty-display">0</div>
-        <div style="font-size:12px;color:#aaa" id="item-move-unit-disp"></div>
+      <div class="field">
+        <label class="lbl">数量</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="changeQty(-1)" style="width:44px;height:44px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;font-size:22px;cursor:pointer;font-family:inherit;flex-shrink:0">−</button>
+          <input type="number" id="item-move-qty" min="0" step="1" placeholder="0"
+            style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #e0d8d0;font-size:20px;text-align:center;font-family:inherit"
+            oninput="document.getElementById('item-move-qty-display').textContent=this.value||0">
+          <button onclick="changeQty(1)" style="width:44px;height:44px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;font-size:22px;cursor:pointer;font-family:inherit;flex-shrink:0">＋</button>
+          <span style="font-size:14px;color:#888;white-space:nowrap" id="item-move-unit-label2"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="lbl">メモ（任意）</label>
+        <input type="text" id="item-move-note" placeholder="例：〇〇現場用">
+      </div>
+      <div class="modal-btn-row">
+        <button class="modal-cancel" onclick="closeItemMoveModal()">キャンセル</button>
+        <button class="modal-save" id="item-move-submit" onclick="goToInConfirm()" style="background:#388e3c">確認画面へ →</button>
       </div>
     </div>
-    <div class="field">
-      <label class="lbl">数量</label>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button onclick="changeQty(-1)" style="width:44px;height:44px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;font-size:22px;cursor:pointer;font-family:inherit;flex-shrink:0">−</button>
-        <input type="number" id="item-move-qty" min="0" step="1" placeholder="0"
-          style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #e0d8d0;font-size:20px;text-align:center;font-family:inherit"
-          oninput="document.getElementById('item-move-qty-display').textContent=this.value||0">
-        <button onclick="changeQty(1)" style="width:44px;height:44px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;font-size:22px;cursor:pointer;font-family:inherit;flex-shrink:0">＋</button>
-        <span style="font-size:14px;color:#888;white-space:nowrap" id="item-move-unit-label2"></span>
+
+    <!-- STEP2: 確認画面 -->
+    <div id="in-step2" style="display:none">
+      <div class="modal-title">📋 入庫確認</div>
+      <div id="in-confirm-content"></div>
+      <div class="modal-btn-row">
+        <button class="modal-cancel" onclick="backToInStep1()">← 戻る</button>
+        <button class="modal-save" onclick="submitItemMove()" style="background:#388e3c">📥 登録する</button>
       </div>
     </div>
-    <div class="field">
-      <label class="lbl">メモ（任意）</label>
-      <input type="text" id="item-move-note" placeholder="例：〇〇現場用">
-    </div>
-    <div class="modal-btn-row">
-      <button class="modal-cancel" onclick="closeItemMoveModal()">キャンセル</button>
-      <button class="modal-save" id="item-move-submit" onclick="submitItemMove()">登録する</button>
-    </div>
+
   </div>
 </div>
 
@@ -970,7 +985,46 @@ function openItemMoveModal(itemId) {
 
 function closeItemMoveModal() {
   document.getElementById('item-move-modal').style.display = 'none';
+  document.getElementById('in-step1').style.display = 'block';
+  document.getElementById('in-step2').style.display = 'none';
   currentItemId = '';
+}
+
+function goToInConfirm() {
+  const qty = parseFloat(document.getElementById('item-move-qty').value);
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+  const item = ITEMS_MASTER.find(i => i.id === currentItemId);
+  const note = document.getElementById('item-move-note').value.trim();
+  const staff = document.getElementById('move-staff-top').value;
+  const date = document.getElementById('move-date-top').value;
+  const currentQty = getQty(currentItemId);
+  const afterQty = currentQty + qty;
+
+  document.getElementById('in-confirm-content').innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:13px;color:#aaa;margin-bottom:8px">${staff}　${date}</div>
+      <div style="font-size:16px;font-weight:700;color:#2d2a26;margin-bottom:4px">${item.name}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+        <div style="text-align:center;flex:1">
+          <div style="font-size:11px;color:#aaa">現在庫</div>
+          <div style="font-size:20px;font-weight:700;color:#2d2a26">${currentQty}${item.unit}</div>
+        </div>
+        <div style="font-size:20px;color:#388e3c;padding:0 8px">+${qty}</div>
+        <div style="text-align:center;flex:1">
+          <div style="font-size:11px;color:#aaa">入庫後</div>
+          <div style="font-size:20px;font-weight:700;color:#388e3c">${afterQty}${item.unit}</div>
+        </div>
+      </div>
+      ${note ? `<div style="margin-top:8px;font-size:13px;color:#888">📝 ${note}</div>` : ''}
+    </div>`;
+
+  document.getElementById('in-step1').style.display = 'none';
+  document.getElementById('in-step2').style.display = 'block';
+}
+
+function backToInStep1() {
+  document.getElementById('in-step1').style.display = 'block';
+  document.getElementById('in-step2').style.display = 'none';
 }
 
 function changeQty(delta) {
@@ -1010,6 +1064,8 @@ async function submitItemMove() {
     inventory[currentItemId] = Math.max(0, newQty);
     closeItemMoveModal();
     showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
+    document.getElementById('in-step1').style.display = 'block';
+    document.getElementById('in-step2').style.display = 'none';
     renderMoveList();
   } catch(e) { alert('登録に失敗しました。'); }
 }
