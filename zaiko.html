@@ -154,9 +154,9 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
     <span class="logo">📦 材料管理</span>
     <div class="tabs">
       <button class="tab active" id="tab-move" onclick="showView('move')">入出庫</button>
-      <button class="tab" id="tab-stock" onclick="showView('stock')">在庫</button>
       <button class="tab" id="tab-history" onclick="showView('history')">履歴</button>
       <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
+      <button class="tab" id="tab-stock" onclick="showView('stock')">在庫</button>
       <button class="tab" id="tab-admin" onclick="showView('admin')">管理</button>
     </div>
   </div>
@@ -473,7 +473,7 @@ const ITEMS_MASTER = [
   {id:'poras_over',    name:'ポラスオーバー',       unit:'個',   category:'drain',   alert:2},
   {id:'poras_over_l',  name:'ポラスオーバーロング', unit:'個',   category:'drain',   alert:2},
   // ローラー・工具
-  {id:'roller',      name:'ローラー',        unit:'本',    category:'tool',    alert:3},
+  {id:'roller',      name:'ローラー',        unit:'袋',    category:'tool',    alert:3},
   {id:'roller_dewa', name:'脱泡ローラー',    unit:'本',    category:'tool',    alert:3},
   {id:'roller_swap', name:'脱泡替え',        unit:'本',    category:'tool',    alert:5},
   {id:'cutter',      name:'カッター',        unit:'個',    category:'tool',    alert:2},
