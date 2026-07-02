@@ -231,7 +231,7 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
             <select id="confirm-add-item" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;background:#fff">
               <option value="">品目を選択</option>
             </select>
-            <input type="number" min="0" step="1" placeholder="0" id="confirm-add-qty"
+            <input type="number" min="0" step="0.1" placeholder="0" id="confirm-add-qty"
               style="width:64px;padding:10px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:15px;text-align:center;font-family:inherit">
             <span id="confirm-add-unit" style="font-size:12px;color:#aaa;white-space:nowrap">―</span>
             <button onclick="confirmAddItem()" style="padding:10px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">追加</button>
@@ -397,7 +397,7 @@ select, input[type=text], input[type=date], input[type=number], input[type=passw
       <label class="lbl">スタッフ</label>
       <select id="bulk-staff">
         <option value="">選択してください</option>
-        <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option><option>外注</option>
+        <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option>
       </select>
     </div>
     <div class="field">
@@ -430,7 +430,7 @@ const ITEMS_MASTER = [
   {id:'primer3',     name:'三井プライマー',  unit:'缶',    category:'frp',     alert:3},
   {id:'resin3',      name:'三井樹脂',        unit:'缶',    category:'frp',     alert:3},
   {id:'gray3',       name:'三井グレー',      unit:'缶',    category:'frp',     alert:2},
-  {id:'ivory3',      name:'三井トップ高耐候', unit:'缶',   category:'frp',     alert:2},
+  {id:'ivory3',      name:'三井トップ高耐候', unit:'缶', step:0.1,   category:'frp',     alert:2},
   {id:'parmec',      name:'パーメック',      unit:'本',    category:'frp',     alert:2},
   {id:'acetone',     name:'アセトン',        unit:'缶',    category:'frp',     alert:2},
   {id:'paste',       name:'ポリエステルパテ', unit:'個',   category:'frp',     alert:2},
@@ -438,18 +438,18 @@ const ITEMS_MASTER = [
   {id:'remaster',    name:'リマスターパテ',  unit:'個',    category:'frp',     alert:2},
   // 副資材
   {id:'mat',         name:'ガラスマット',    unit:'本',    category:'sub',     alert:5},
-  {id:'mat450',      name:'ガラスマット450', unit:'本',    category:'sub',     alert:5},
-  {id:'mat_red',     name:'ガラスマット赤',  unit:'本',    category:'sub',     alert:3},
-  {id:'mat_green',   name:'ガラスマット緑',  unit:'本',    category:'sub',     alert:3},
-  {id:'mat_blue',    name:'ガラスマット青',  unit:'本',    category:'sub',     alert:3},
-  {id:'avs_sheet',   name:'AVSシート',       unit:'枚',    category:'sub',     alert:2},
+  {id:'mat450',      name:'ガラスマット450', unit:'本', step:0.1,    category:'sub',     alert:5},
+  {id:'mat_red',     name:'ガラスマット赤',  unit:'本', step:0.1,    category:'sub',     alert:3},
+  {id:'mat_green',   name:'ガラスマット緑',  unit:'本', step:0.1,    category:'sub',     alert:3},
+  {id:'mat_blue',    name:'ガラスマット青',  unit:'本', step:0.1,    category:'sub',     alert:3},
+  {id:'avs_sheet',   name:'AVSシート',       unit:'枚', step:0.1,    category:'sub',     alert:2},
   {id:'a07tape',     name:'A07テープ',       unit:'巻',    category:'sub',     alert:2},
   {id:'g_tape',      name:'Ｇテープ',        unit:'巻',    category:'sub',     alert:2},
-  {id:'r_mat',       name:'Ｒマット',        unit:'枚',    category:'sub',     alert:2},
-  {id:'r_bond',      name:'Ｒボンド',        unit:'缶',    category:'sub',     alert:2},
+  {id:'r_mat',       name:'Ｒマット',        unit:'枚', step:0.1,    category:'sub',     alert:2},
+  {id:'r_bond',      name:'Ｒボンド',        unit:'缶', step:0.1,    category:'sub',     alert:2},
   {id:'r_tape',      name:'Ｒテープ',        unit:'巻',    category:'sub',     alert:2},
-  {id:'big_coat',    name:'ビックサンコート', unit:'缶',   category:'sub',     alert:2},
-  {id:'big_powder',  name:'ビックサンパウダー', unit:'袋', category:'sub',     alert:2},
+  {id:'big_coat',    name:'ビックサンコート', unit:'缶', step:0.1,   category:'sub',     alert:2},
+  {id:'big_powder',  name:'ビックサンパウダー', unit:'袋', step:0.1, category:'sub',     alert:2},
   // ドレン・排水
   {id:'drain_tate',  name:'縦ドレン',        unit:'個',    category:'drain',   alert:2},
   {id:'strain_tate', name:'縦ストレーナー',  unit:'個',    category:'drain',   alert:2},
@@ -488,6 +488,7 @@ const ITEMS_MASTER = [
   {id:'tape',        name:'ガムテープ',      unit:'巻',    category:'consume', alert:2},
   {id:'bag',         name:'ごみ袋',          unit:'箱',    category:'consume', alert:2},
   {id:'sheet',       name:'ブルーシート',    unit:'枚',    category:'consume', alert:2},
+  {id:'burner',      name:'バーナー火口',    unit:'個',    category:'consume', alert:2},
   {id:'gas',         name:'ガス替え',        unit:'本',    category:'consume', alert:2},
   {id:'mask',        name:'マスク',          unit:'箱',    category:'consume', alert:3},
   {id:'mask_fil',    name:'マスク替え',      unit:'個',    category:'consume', alert:3},
@@ -740,7 +741,7 @@ function renderMoveList() {
             <div class="stock-cat">在庫: ${qty % 1 === 0 ? qty : qty.toFixed(1)}${item.unit}</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <input type="number" min="0" step="1" placeholder="0"
+            <input type="number" min="0" step="${item.step || 1}" placeholder="0"
               id="out-qty-${item.id}"
               value="${outQtyMap[item.id] || ''}"
               oninput="onOutQtyInput('${item.id}', this.value)"
@@ -866,6 +867,7 @@ function renderConfirmList() {
           <button onclick="changeConfirmQty(${idx}, -1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:18px;cursor:pointer;font-family:inherit">−</button>
           <input type="number" min="0" step="1" value="${entry.qty}"
             id="confirm-qty-${idx}"
+            step="${ITEMS_MASTER.find(i=>i.id===entry.itemId)?.step||1}"
             onchange="updateConfirmQty(${idx}, this.value)"
             style="width:56px;padding:6px 4px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;text-align:center;font-family:inherit">
           <button onclick="changeConfirmQty(${idx}, 1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:18px;cursor:pointer;font-family:inherit">＋</button>
@@ -959,6 +961,7 @@ function openItemMoveModal(itemId) {
   document.getElementById('item-move-unit-disp').textContent = item.unit;
   document.getElementById('item-move-unit-label2').textContent = item.unit;
   document.getElementById('item-move-qty').value = '';
+  document.getElementById('item-move-qty').step = item.step || 1;
   document.getElementById('item-move-note').value = '';
   document.getElementById('item-move-submit').style.background = submitColor;
 
@@ -1122,7 +1125,7 @@ function showBulkModal() {
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0ede8">
       <span style="flex:1;font-size:13px;color:#2d2a26">${item.name}</span>
       <span style="font-size:11px;color:#aaa;width:30px;text-align:right">${getQty(item.id)}${item.unit}</span>
-      <input type="number" min="0" step="0.1" placeholder="0" id="bulk-qty-${item.id}"
+      <input type="number" min="0" step="1" placeholder="0" id="bulk-qty-${item.id}"
         style="width:60px;padding:6px;border-radius:7px;border:1.5px solid #e0d8d0;font-size:13px;text-align:right;font-family:inherit">
       <span style="font-size:12px;color:#aaa;width:28px">${item.unit}</span>
     </div>`).join('');
@@ -1502,37 +1505,60 @@ function renderTableStats() {
   const moveType = statsSeg === 'in' ? 'in' : 'out';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
 
-  // 持ち出し：スタッフ4名、入庫：外注のみ
-  const STAFF = moveType === 'out' ? ['加藤瑞樹','山内浩一','森田義則','富山裕貴'] : ['外注'];
-  const STAFF_SHORT = moveType === 'out' ? ['加藤','山内','森田','富山'] : ['外注'];
+  // 持ち出し：スタッフ4名+外注、入庫：外注のみ
+  const STAFF = moveType === 'out' ? ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'] : ['外注'];
+  const STAFF_SHORT = moveType === 'out' ? ['加藤','山内','森田','富山','外注'] : ['外注'];
 
   // 期間フィルター
   const rangeFrom = document.getElementById('stats-range-from')?.value || '';
   const rangeTo = document.getElementById('stats-range-to')?.value || '';
 
-  const monthList = list.filter(([,m]) => {
-    if (m.type !== moveType) return false;
-    if (moveType === 'in' && m.staff !== '外注') return false;
-    if (statsPeriod === 'range') {
-      if (rangeFrom && rangeTo) return m.date >= rangeFrom && m.date <= rangeTo;
-      return false;
-    } else {
-      return (m.date||'').startsWith(statsMonth);
-    }
-  });
+  const inDateFilter = (m) => {
+    if (statsPeriod === 'range') return rangeFrom && rangeTo && m.date >= rangeFrom && m.date <= rangeTo;
+    return (m.date||'').startsWith(statsMonth);
+  };
+
+  // 持ち出しリスト
+  const outList = list.filter(([,m]) => m.type === 'out' && STAFF.includes(m.staff) && inDateFilter(m));
+  // 外注以外の入庫リスト（持ち出しから相殺用）
+  const inListNonGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff !== '外注' && inDateFilter(m));
+  // 入庫表用：外注の入庫のみ
+  const inListGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff === '外注' && inDateFilter(m));
+
+  const monthList = moveType === 'out' ? outList : inListGaicyu;
 
   // 品目×スタッフ集計
   const byItemStaff = {};
-  ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; STAFF.forEach(s => byItemStaff[item.id].staff[s]=0); });
-  monthList.forEach(([,m]) => {
-    if (!byItemStaff[m.itemId]) return;
-    if (STAFF.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
+  ITEMS_MASTER.forEach(item => {
+    byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0};
+    STAFF.forEach(s => byItemStaff[item.id].staff[s]=0);
   });
+
+  if (moveType === 'out') {
+    // 持ち出しを加算
+    outList.forEach(([,m]) => {
+      if (!byItemStaff[m.itemId] || !STAFF.includes(m.staff)) return;
+      byItemStaff[m.itemId].staff[m.staff] += m.qty;
+      byItemStaff[m.itemId].total += m.qty;
+    });
+    // 外注以外の入庫を相殺（持ち出しから引く）
+    inListNonGaicyu.forEach(([,m]) => {
+      if (!byItemStaff[m.itemId] || !STAFF.includes(m.staff)) return;
+      byItemStaff[m.itemId].staff[m.staff] -= m.qty;
+      byItemStaff[m.itemId].total -= m.qty;
+    });
+  } else {
+    inListGaicyu.forEach(([,m]) => {
+      if (!byItemStaff[m.itemId]) return;
+      byItemStaff[m.itemId].staff['外注'] += m.qty;
+      byItemStaff[m.itemId].total += m.qty;
+    });
+  }
 
   // データある品目のみ＋検索フィルター
   const statsQuery = (document.getElementById('stats-search-input')?.value || '').trim().toLowerCase();
   const activeItems = ITEMS_MASTER.filter(item => {
-    if (!byItemStaff[item.id] || byItemStaff[item.id].total <= 0) return false;
+    if (!byItemStaff[item.id] || byItemStaff[item.id].total === 0) return false;
     if (statsQuery && !item.name.toLowerCase().includes(statsQuery)) return false;
     return true;
   });
@@ -1557,8 +1583,12 @@ function renderTableStats() {
           const d = byItemStaff[item.id];
           return `<tr>
             <td style="${tdNameStyle}">${item.name}</td>
-            ${STAFF.map(s => `<td style="${tdStyle}">${d.staff[s] > 0 ? (d.staff[s]%1===0?d.staff[s]:d.staff[s].toFixed(1)) : ''}</td>`).join('')}
-            <td style="${tdTotalStyle}">${d.total%1===0?d.total:d.total.toFixed(1)}</td>
+            ${STAFF.map(s => {
+              const v = d.staff[s];
+              const color = v < 0 ? 'color:#388e3c;' : '';
+              return `<td style="${tdStyle}${color}">${v !== 0 ? (v%1===0?v:v.toFixed(1)) : ''}</td>`;
+            }).join('')}
+            <td style="${tdTotalStyle}${d.total < 0 ? 'color:#388e3c;' : ''}">${d.total%1===0?d.total:d.total.toFixed(1)}</td>
           </tr>`;
         }).join('') : `<tr><td colspan="6" style="padding:24px;text-align:center;color:#aaa;font-size:14px">この月の持ち出しデータはありません</td></tr>`}
       </tbody>
@@ -1670,7 +1700,7 @@ function renderAdminContent() {
     return '<div class="item-edit-row">' +
       '<div class="item-edit-name">' + item.name + ' <span class="cat-badge ' + catColor + '">' + catLabel + '</span></div>' +
       '<div class="item-edit-fields">' +
-      '<input type="number" min="0" step="0.1" value="' + qty + '" id="admin-qty-' + item.id + '" placeholder="0">' +
+      '<input type="number" min="0" step="1" value="' + qty + '" id="admin-qty-' + item.id + '" placeholder="0">' +
       '<span>' + item.unit + '</span>' +
       '</div></div>';
   }).join('');
