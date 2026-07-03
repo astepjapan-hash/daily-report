@@ -1766,6 +1766,8 @@ function checkAdminPass() {
 }
 
 let adminCatFilter = 'all';
+let adminQtyMap = {};   // 入力中の在庫値を保持
+let adminAlertMap = {}; // 入力中のアラート値を保持
 
 function renderAdminContent() {
   const el = document.getElementById('admin-content');
@@ -1778,8 +1780,8 @@ function renderAdminContent() {
   });
 
   const itemsHtml = filteredItems.map(item => {
-    const qty = getQty(item.id);
-    const alertVal = getAlertVal(item.id);
+    const qty = adminQtyMap[item.id] !== undefined ? adminQtyMap[item.id] : getQty(item.id);
+    const alertVal = adminAlertMap[item.id] !== undefined ? adminAlertMap[item.id] : getAlertVal(item.id);
     const catColor = CAT_COLORS[item.category] || 'cat-other';
     const catLabel = CAT_LABELS[item.category] || item.category;
     return '<div class="item-edit-row">' +
@@ -1805,15 +1807,27 @@ function renderAdminContent() {
     '<div class="section-title">在庫数を設定（' + filteredItems.length + '品目）</div>' +
     (filteredItems.length ? itemsHtml : '<div class="empty">該当する品目がありません</div>') +
     
-    '<div style="margin-top:8px"><button class="btn-primary" onclick="saveAllQty()">一括保存</button></div>' +
+    '<div style="margin-top:8px"><button class="btn-primary" onclick="saveCatQty()">💾 保存する</button></div>' +
+    '<div style="margin-top:6px"><button class="btn-secondary" onclick="saveAllQty()" style="width:100%;padding:10px;background:#fff;color:#888;border:1.5px solid #e0d8d0;border-radius:12px;font-size:13px;cursor:pointer;font-family:inherit;">全カテゴリ一括保存</button></div>' +
     '<div style="margin-top:8px"><button class="btn-secondary" onclick="exportInventoryExcel()" style="width:100%;padding:12px;background:#1d7044;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">📥 在庫データをExcelで出力（バックアップ）</button></div>' +
     '<div style="margin-top:8px"><button class="btn-secondary" onclick="triggerImport()" style="width:100%;padding:12px;background:#fff;color:#2858b0;border:1.5px solid #2858b0;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">📤 Excelから在庫を復元</button></div>' +
     '</div>';
 }
 
 function setAdminCatFilter(cat) {
+  // 切り替え前に現在の入力値を保存
+  saveAdminInputs();
   adminCatFilter = cat;
   renderAdminContent();
+}
+
+function saveAdminInputs() {
+  ITEMS_MASTER.forEach(item => {
+    const qtyEl = document.getElementById('admin-qty-' + item.id);
+    const alertEl = document.getElementById('admin-alert-' + item.id);
+    if (qtyEl) adminQtyMap[item.id] = qtyEl.value;
+    if (alertEl) adminAlertMap[item.id] = alertEl.value;
+  });
 }
 
 
@@ -1829,30 +1843,55 @@ async function saveItemQty(itemId) {
   } catch(e) { alert('保存に失敗しました。'); }
 }
 
+async function saveCatQty() {
+  // 現在表示中の品目のみ保存
+  const invUpdates = {};
+  const alertUpdates = {};
+  const visibleItems = ITEMS_MASTER.filter(item =>
+    adminCatFilter === 'all' || item.category === adminCatFilter
+  );
+  visibleItems.forEach(item => {
+    const qtyEl = document.getElementById('admin-qty-' + item.id);
+    const alertEl = document.getElementById('admin-alert-' + item.id);
+    const qty = parseFloat(qtyEl?.value) || 0;
+    const alert = parseFloat(alertEl?.value);
+    invUpdates[item.id] = qty;
+    inventory[item.id] = qty;
+    if (!isNaN(alert)) {
+      alertUpdates[item.id] = alert;
+      alertSettings[item.id] = alert;
+    }
+  });
+  try {
+    const promises = Object.entries(invUpdates).map(([id, qty]) =>
+      fetch(DB + '/inventory/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) })
+    );
+    Object.entries(alertUpdates).forEach(([id, val]) =>
+      promises.push(fetch(DB + '/alertSettings/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
+    );
+    await Promise.all(promises);
+    const catLabel = adminCatFilter === 'all' ? '全品目' : CAT_LABELS[adminCatFilter] || adminCatFilter;
+    showToast('✅ ' + catLabel + 'を保存しました！');
+  } catch(e) { alert('保存に失敗しました。'); }
+}
+
 async function saveAllQty() {
+  // 保存前に現在の入力値をマップに保存
+  saveAdminInputs();
   const invUpdates = {};
   const alertUpdates = {};
   ITEMS_MASTER.forEach(item => {
-    const qtyEl = document.getElementById('admin-qty-' + item.id);
-    const alertEl = document.getElementById('admin-alert-' + item.id);
-    // 表示中の品目のみ更新（非表示は現在の値を維持）
-    if (qtyEl) {
-      const qty = parseFloat(qtyEl.value) || 0;
-      invUpdates[item.id] = qty;
-      inventory[item.id] = qty;
-    } else {
-      // 表示されていない品目は現在の在庫値を維持
-      invUpdates[item.id] = getQty(item.id);
-    }
-    if (alertEl) {
-      const alert = parseFloat(alertEl.value);
-      if (!isNaN(alert)) {
-        alertUpdates[item.id] = alert;
-        alertSettings[item.id] = alert;
-      }
-    } else {
-      alertUpdates[item.id] = getAlertVal(item.id);
-    }
+    // マップの値を優先、なければ現在の在庫値
+    const qty = adminQtyMap[item.id] !== undefined
+      ? (parseFloat(adminQtyMap[item.id]) || 0)
+      : getQty(item.id);
+    const alert = adminAlertMap[item.id] !== undefined
+      ? parseFloat(adminAlertMap[item.id])
+      : getAlertVal(item.id);
+    invUpdates[item.id] = qty;
+    inventory[item.id] = qty;
+    alertUpdates[item.id] = !isNaN(alert) ? alert : getAlertVal(item.id);
+    alertSettings[item.id] = alertUpdates[item.id];
   });
   try {
     await Promise.all([
@@ -1863,7 +1902,12 @@ async function saveAllQty() {
   } catch(e) { alert('保存に失敗しました。'); }
 }
 
-function adminLogout() { adminLoggedIn = false; showAdmin(); }
+function adminLogout() {
+  adminLoggedIn = false;
+  adminQtyMap = {};
+  adminAlertMap = {};
+  showAdmin();
+}
 
 // ファイル入力（body直下に配置）
 function triggerImport() {
