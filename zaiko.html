@@ -512,6 +512,7 @@ const ITEMS_MASTER = [
   {id:'burner',      name:'バーナー火口',    unit:'個',    category:'consume', alert:2},
   {id:'gas',         name:'ガス替え',        unit:'本',    category:'consume', alert:2},
   {id:'mask',        name:'マスク',          unit:'箱',    category:'consume', alert:3},
+  {id:'gas_mask',    name:'防毒マスク',      unit:'個',    category:'consume', alert:2},
   {id:'mask_fil',    name:'マスク替え',      unit:'個',    category:'consume', alert:3},
   {id:'sage_can',    name:'さげ缶',          unit:'個',    category:'consume', alert:2},
 ];
@@ -544,17 +545,7 @@ async function init() {
   const moveDateEl = document.getElementById('move-date-top');
   if (moveDateEl) moveDateEl.value = getToday();
   await loadAll();
-  // デモ用：在庫が空の場合は全品目を10に初期化
-  const hasAny = ITEMS_MASTER.some(item => (inventory[item.id] || 0) > 0);
-  if (!hasAny) {
-    const updates = {};
-    ITEMS_MASTER.forEach(item => { updates[item.id] = 10; });
-    try {
-      await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
-      ITEMS_MASTER.forEach(item => { inventory[item.id] = 10; });
-    } catch(e) {}
-  }
-  buildItemSelect();
+buildItemSelect();
   renderStock();
   renderMoveList();
   updateAdminBadge();
@@ -1789,7 +1780,7 @@ function renderAdminContent() {
     '<div class="filter-row" style="margin-bottom:8px">' + filterHtml + '</div>' +
     '<div class="section-title">在庫数を設定（' + filteredItems.length + '品目）</div>' +
     (filteredItems.length ? itemsHtml : '<div class="empty">該当する品目がありません</div>') +
-    '<div style="margin-top:12px"><button class="btn-secondary" onclick="resetAllToTen()" style="width:100%;padding:12px;background:#fff;color:#888;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;cursor:pointer;font-family:inherit;">🔄 全品目を50にリセット（デモ用）</button></div>' +
+    
     '<div style="margin-top:8px"><button class="btn-primary" onclick="saveAllQty()">一括保存</button></div>' +
     '</div>';
 }
@@ -1799,17 +1790,7 @@ function setAdminCatFilter(cat) {
   renderAdminContent();
 }
 
-async function resetAllToTen() {
-  if (!confirm('全品目の在庫を50にリセットします。よろしいですか？')) return;
-  const updates = {};
-  ITEMS_MASTER.forEach(item => { updates[item.id] = 50; });
-  try {
-    await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
-    ITEMS_MASTER.forEach(item => { inventory[item.id] = 50; });
-    showToast('✅ 全品目を50にリセットしました！');
-    renderAdminContent();
-  } catch(e) { alert('リセットに失敗しました。'); }
-}
+
 
 
 
