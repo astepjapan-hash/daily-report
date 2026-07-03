@@ -1833,13 +1833,25 @@ async function saveAllQty() {
   const invUpdates = {};
   const alertUpdates = {};
   ITEMS_MASTER.forEach(item => {
-    const qty = parseFloat(document.getElementById('admin-qty-' + item.id)?.value) || 0;
-    const alert = parseFloat(document.getElementById('admin-alert-' + item.id)?.value);
-    invUpdates[item.id] = qty;
-    inventory[item.id] = qty;
-    if (!isNaN(alert)) {
-      alertUpdates[item.id] = alert;
-      alertSettings[item.id] = alert;
+    const qtyEl = document.getElementById('admin-qty-' + item.id);
+    const alertEl = document.getElementById('admin-alert-' + item.id);
+    // 表示中の品目のみ更新（非表示は現在の値を維持）
+    if (qtyEl) {
+      const qty = parseFloat(qtyEl.value) || 0;
+      invUpdates[item.id] = qty;
+      inventory[item.id] = qty;
+    } else {
+      // 表示されていない品目は現在の在庫値を維持
+      invUpdates[item.id] = getQty(item.id);
+    }
+    if (alertEl) {
+      const alert = parseFloat(alertEl.value);
+      if (!isNaN(alert)) {
+        alertUpdates[item.id] = alert;
+        alertSettings[item.id] = alert;
+      }
+    } else {
+      alertUpdates[item.id] = getAlertVal(item.id);
     }
   });
   try {
@@ -1847,7 +1859,7 @@ async function saveAllQty() {
       fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(invUpdates) }),
       fetch(DB + '/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) })
     ]);
-    showToast('✅ すべて保存しました！');
+    showToast('✅ 保存しました！');
   } catch(e) { alert('保存に失敗しました。'); }
 }
 
