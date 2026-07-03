@@ -495,9 +495,11 @@ const ITEMS_MASTER = [
   {id:'blade',       name:'カッターの刃',    unit:'個',    category:'tool',    alert:5},
   {id:'tacker',      name:'タッカーの刃',    unit:'個',    category:'tool',    alert:3},
   {id:'grinder',     name:'サンダーの石',    unit:'枚',    category:'tool',    alert:3},
+  {id:'scale',       name:'スケール',        unit:'個',    category:'tool',    alert:2},
   {id:'core',        name:'コア抜き',        unit:'個',    category:'tool',    alert:2},
   {id:'kawasuki',    name:'皮スキ',          unit:'個',    category:'tool',    alert:2},
   {id:'patebera',    name:'パテベラ',        unit:'個',    category:'tool',    alert:2},
+  {id:'caulk_hera',  name:'コーキングヘラ',  unit:'個',    category:'tool',    alert:2},
   // 消耗品
   {id:'masking',     name:'マスキング',      unit:'個',    category:'consume', alert:3},
   {id:'tape',        name:'ガムテープ',      unit:'巻',    category:'consume', alert:2},
@@ -508,8 +510,6 @@ const ITEMS_MASTER = [
   {id:'mask',        name:'マスク',          unit:'箱',    category:'consume', alert:3},
   {id:'mask_fil',    name:'マスク替え',      unit:'個',    category:'consume', alert:3},
   {id:'sage_can',    name:'さげ缶',          unit:'個',    category:'consume', alert:2},
-  {id:'bucket',      name:'バケツ',          unit:'個',    category:'consume', alert:2},
-  {id:'glove',       name:'軍手',            unit:'双',    category:'consume', alert:5},
 ];
 
 const CAT_LABELS = {
@@ -1561,13 +1561,25 @@ function renderTableStats() {
   const moveType = statsSeg === 'in' ? 'in' : 'out';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
 
-  // 持ち出し：スタッフ4名+外注、入庫：外注のみ
-  const STAFF = moveType === 'out' ? ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'] : ['外注'];
-  const STAFF_SHORT = moveType === 'out' ? ['加藤','山内','森田','富山','外注'] : ['外注'];
+  // 持ち出し：スタッフ4名（外注は持ち出しがある場合のみ追加）、入庫：外注のみ
+  const BASE_STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
+  const BASE_STAFF_SHORT = ['加藤','山内','森田','富山'];
 
-  // 期間フィルター
+  // 外注の持ち出しがあるか確認（期間フィルター適用後）
   const rangeFrom = document.getElementById('stats-range-from')?.value || '';
   const rangeTo = document.getElementById('stats-range-to')?.value || '';
+  const inDateFilter2 = (m) => {
+    if (statsPeriod === 'range') return rangeFrom && rangeTo && m.date >= rangeFrom && m.date <= rangeTo;
+    return (m.date||'').startsWith(statsMonth);
+  };
+  const hasGaichuOut = moveType === 'out' && list.some(([,m]) => m.type === 'out' && m.staff === '外注' && inDateFilter2(m));
+
+  const STAFF = moveType === 'out'
+    ? (hasGaichuOut ? [...BASE_STAFF, '外注'] : BASE_STAFF)
+    : ['外注'];
+  const STAFF_SHORT = moveType === 'out'
+    ? (hasGaichuOut ? [...BASE_STAFF_SHORT, '外注'] : BASE_STAFF_SHORT)
+    : ['外注'];
 
   const inDateFilter = (m) => {
     if (statsPeriod === 'range') return rangeFrom && rangeTo && m.date >= rangeFrom && m.date <= rangeTo;
@@ -1575,11 +1587,11 @@ function renderTableStats() {
   };
 
   // 持ち出しリスト
-  const outList = list.filter(([,m]) => m.type === 'out' && STAFF.includes(m.staff) && inDateFilter(m));
+  const outList = list.filter(([,m]) => m.type === 'out' && STAFF.includes(m.staff) && inDateFilter2(m));
   // 外注以外の入庫リスト（持ち出しから相殺用）
-  const inListNonGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff !== '外注' && inDateFilter(m));
+  const inListNonGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff !== '外注' && inDateFilter2(m));
   // 入庫表用：外注の入庫のみ
-  const inListGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff === '外注' && inDateFilter(m));
+  const inListGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff === '外注' && inDateFilter2(m));
 
   const monthList = moveType === 'out' ? outList : inListGaicyu;
 
