@@ -396,7 +396,7 @@ textarea { resize: vertical; }
             <input type="text" id="guide-site" placeholder="現場名を入力">
           </div>
           <div class="field"><label class="lbl">PDF URL</label>
-            <input type="text" id="guide-url" placeholder="https://astepjapan-hash.github.io/daily-report/xxx.pdf">
+            <input type="text" id="guide-url" placeholder="Googleドライブの共有リンクを貼り付け">
           </div>
           <button class="btn-primary" onclick="addGuide()">追加する</button>
         </div>
@@ -732,7 +732,7 @@ let schedules={};
 let drafts={};
 let notices={};
 let guides={};
-const GUIDE_COMPANIES = ['タクトホーム','大巻建設','飯田産業','アーネストワン','その他']; // 固定会社リスト（変更可）
+const GUIDE_COMPANIES = []; // 固定会社リスト（変更可）
 
 function kgToKanWari(kg, kanKg){
   if(!kg||kg===0)return '0';
@@ -884,6 +884,23 @@ function renderGuides(){
   }).join('');
 }
 
+function convertPdfUrl(url){
+  if(!url)return url;
+  url=url.trim();
+  // Googleドライブ: /file/d/FILEID/view... → プレビュー表示URL
+  let m=url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if(m)return 'https://drive.google.com/file/d/'+m[1]+'/view';
+  // Googleドライブ: open?id=FILEID
+  m=url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+  if(m)return 'https://drive.google.com/file/d/'+m[1]+'/view';
+  // Dropbox: ?dl=0 や末尾を ?raw=1 に変換
+  if(url.includes('dropbox.com')){
+    url=url.replace(/[?&]dl=0/,'').replace(/[?&]dl=1/,'');
+    return url+(url.includes('?')?'&':'?')+'raw=1';
+  }
+  return url;
+}
+
 async function addGuide(){
   const sel=document.getElementById('guide-company');
   let company=sel.value;
@@ -893,7 +910,7 @@ async function addGuide(){
   }
   if(!company){alert('会社名を選択してください');return;}
   const site=document.getElementById('guide-site').value.trim();
-  const url=document.getElementById('guide-url').value.trim();
+  const url=convertPdfUrl(document.getElementById('guide-url').value.trim());
   if(!site){alert('現場名を入力してください');return;}
   if(!url){alert('PDF URLを入力してください');return;}
   try{
