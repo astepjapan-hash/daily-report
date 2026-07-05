@@ -638,7 +638,7 @@ function renderStock() {
 
   // サマリー
   const total = ITEMS_MASTER.length;
-  const low = ITEMS_MASTER.filter(i => { const q = getQty(i.id); return q > 0 && q <= i.alert; }).length;
+  const low = ITEMS_MASTER.filter(i => { const q = getQty(i.id); return q > 0 && q <= getAlertVal(i.id); }).length;
   const out = ITEMS_MASTER.filter(i => getQty(i.id) <= 0).length;
   document.getElementById('stock-summary').innerHTML = `
     <div class="summary-cell"><div class="summary-cell-label">品目数</div><div class="summary-cell-val">${total}</div></div>
