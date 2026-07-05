@@ -288,6 +288,7 @@ textarea { resize: vertical; }
     <div class="tabs">
       <button class="tab active" id="tab-list" onclick="showView('list')">一覧<span class="badge" id="badge">0</span></button>
       <button class="tab" id="tab-form" onclick="showView('form')">入力</button>
+      <button class="tab" id="tab-guide" onclick="showView('guide')">案内図</button>
       <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
       <button class="tab" id="tab-kyuka" onclick="showView('kyuka')">有給</button>
       <button class="tab" id="tab-admin" onclick="showView('admin')">管理<span id="admin-badge" style="display:none;background:#e07b4f;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:3px;vertical-align:middle"></span></button>
@@ -374,6 +375,36 @@ textarea { resize: vertical; }
       <div id="cal-day-content"></div>
       </div><!-- end list-calendar-area -->
 
+    </div>
+  </div>
+
+  <!-- 案内図 -->
+  <div class="view" id="view-guide">
+    <div class="wrap">
+      <div id="guide-admin-form" style="display:none">
+        <div class="section-title">📄 案内図を追加</div>
+        <div class="card" style="margin-bottom:20px">
+          <div class="field"><label class="lbl">会社名</label>
+            <select id="guide-company" onchange="onGuideCompanyChange()">
+              <option value="">選択してください</option>
+            </select>
+          </div>
+          <div class="field" id="guide-newcompany-field" style="display:none"><label class="lbl">新規会社名</label>
+            <input type="text" id="guide-newcompany" placeholder="会社名を入力">
+          </div>
+          <div class="field"><label class="lbl">現場名</label>
+            <input type="text" id="guide-site" placeholder="現場名を入力">
+          </div>
+          <div class="field"><label class="lbl">PDF URL</label>
+            <input type="text" id="guide-url" placeholder="https://astepjapan-hash.github.io/daily-report/xxx.pdf">
+          </div>
+          <button class="btn-primary" onclick="addGuide()">追加する</button>
+        </div>
+      </div>
+      <div style="position:relative;margin-bottom:14px">
+        <input type="text" id="guide-search" placeholder="🔍 会社名・現場名で検索" oninput="renderGuides()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+      </div>
+      <div id="guide-list"></div>
     </div>
   </div>
 
@@ -490,6 +521,7 @@ function showView(name) {
   if(tabEl) tabEl.classList.add('active');
   if(name==='form') checkDraft();
   if(name==='list') loadReports();
+  if(name==='guide') loadGuides();
   if(name==='stats') loadStats();
   if(name==='kyuka') loadKyuka();
   if(name==='admin') showAdmin();
@@ -699,6 +731,8 @@ let calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSelecte
 let schedules={};
 let drafts={};
 let notices={};
+let guides={};
+const GUIDE_COMPANIES = ['タクトホーム','大巻建設','飯田産業','アーネストワン','その他']; // 固定会社リスト（変更可）
 
 function kgToKanWari(kg, kanKg){
   if(!kg||kg===0)return '0';
@@ -778,6 +812,111 @@ function togglePinView(){
         <div class="notice-body">${n.body||''}</div>
       </div>`).join('')}
   `).join('');
+}
+
+// ── 案内図 ─────────────────────
+async function loadGuides(){
+  try{const res=await fetch(DB+'/guides.json');guides=await res.json()||{};}catch(e){guides={};}
+  // 管理者フォームの表示制御
+  const form=document.getElementById('guide-admin-form');
+  if(form)form.style.display=adminLoggedIn?'block':'none';
+  // 会社セレクトを構築
+  const sel=document.getElementById('guide-company');
+  if(sel){
+    const companies=[...new Set([...GUIDE_COMPANIES,...Object.values(guides).map(g=>g.company)])].filter(Boolean);
+    sel.innerHTML='<option value="">選択してください</option>'
+      +companies.map(c=>`<option>${c}</option>`).join('')
+      +'<option value="__new__">＋ 新規会社を追加</option>';
+  }
+  renderGuides();
+}
+
+function onGuideCompanyChange(){
+  const sel=document.getElementById('guide-company');
+  const field=document.getElementById('guide-newcompany-field');
+  if(field)field.style.display=(sel.value==='__new__')?'block':'none';
+}
+
+let _openCompanies={};
+function toggleCompany(company){
+  _openCompanies[company]=!_openCompanies[company];
+  renderGuides();
+}
+
+function renderGuides(){
+  const el=document.getElementById('guide-list');
+  if(!el)return;
+  const kw=(document.getElementById('guide-search')?.value||'').trim().toLowerCase();
+  // 会社ごとにグループ化（検索フィルタ適用）
+  const groups={};
+  Object.entries(guides).forEach(([key,g])=>{
+    if(kw){
+      const hit=(g.company||'').toLowerCase().includes(kw)||(g.site||'').toLowerCase().includes(kw);
+      if(!hit)return;
+    }
+    if(!groups[g.company])groups[g.company]=[];
+    groups[g.company].push([key,g]);
+  });
+  const companies=Object.keys(groups).sort();
+  if(!companies.length){
+    el.innerHTML=kw?'<div class="notice-empty">該当する案内図がありません</div>':'<div class="notice-empty">案内図はまだありません</div>';
+    return;
+  }
+  // 検索中は全て開く
+  const forceOpen=!!kw;
+  el.innerHTML=companies.map(company=>{
+    const items=groups[company];
+    const open=forceOpen||_openCompanies[company];
+    return `
+    <div style="margin-bottom:10px">
+      <div onclick="toggleCompany('${company}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;cursor:pointer;font-weight:700;font-size:15px">
+        <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span></span>
+        <span class="collapse-arrow ${open?'open':''}">▶</span>
+      </div>
+      ${open?`<div style="padding:8px 0 0 8px">
+        ${items.map(([key,g])=>`
+          <div style="display:flex;align-items:center;gap:8px;background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px">
+            <a href="${g.url}" target="_blank" style="flex:1;color:#2980b9;text-decoration:none;font-size:14px;font-weight:600">📄 ${g.site}</a>
+            ${adminLoggedIn?`<button onclick="deleteGuide('${key}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">🗑</button>`:''}
+          </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function addGuide(){
+  const sel=document.getElementById('guide-company');
+  let company=sel.value;
+  if(company==='__new__'){
+    company=document.getElementById('guide-newcompany').value.trim();
+    if(!company){alert('新規会社名を入力してください');return;}
+  }
+  if(!company){alert('会社名を選択してください');return;}
+  const site=document.getElementById('guide-site').value.trim();
+  const url=document.getElementById('guide-url').value.trim();
+  if(!site){alert('現場名を入力してください');return;}
+  if(!url){alert('PDF URLを入力してください');return;}
+  try{
+    const data={company,site,url,createdAt:Date.now()};
+    const res=await fetch(DB+'/guides.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const j=await res.json();
+    guides[j.name]=data;
+    document.getElementById('guide-site').value='';
+    document.getElementById('guide-url').value='';
+    _openCompanies[company]=true;
+    alert('追加しました！');
+    renderGuides();
+  }catch(e){alert('追加に失敗しました。');}
+}
+
+async function deleteGuide(key){
+  if(!confirm('この案内図を削除しますか？'))return;
+  try{
+    await fetch(DB+'/guides/'+key+'.json',{method:'DELETE'});
+    delete guides[key];
+    renderGuides();
+    alert('削除しました！');
+  }catch(e){alert('削除に失敗しました。');}
 }
 
 async function loadSchedules(){
