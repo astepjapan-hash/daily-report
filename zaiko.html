@@ -575,6 +575,7 @@ let moveCatFilter = 'all';
 let histFilter = 'all';
 let statsSeg = 'out';
 let catFilter = 'all';
+let summaryFilter = 'all'; // 'all' / 'low' / 'out'
 let statsMonth = new Date().toISOString().slice(0, 7);
 let adminLoggedIn = false;
 let currentItemId = '';
@@ -638,8 +639,14 @@ function buildCatFilter() {
   el.innerHTML = cats.map(c => `<button class="filter-btn ${catFilter === c ? 'active' : ''}" style="flex-shrink:0" onclick="setCatFilter('${c}', this)">${labels[c]}</button>`).join('');
 }
 
+function setSummaryFilter(filter) {
+  summaryFilter = filter;
+  renderStock();
+}
+
 function setCatFilter(cat, btn) {
   catFilter = cat;
+  summaryFilter = 'all';
   document.querySelectorAll('#cat-filter-row .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderStock();
@@ -651,16 +658,27 @@ function getQty(itemId) {
 
 function renderStock() {
   buildCatFilter();
-  const items = catFilter === 'all' ? ITEMS_MASTER : ITEMS_MASTER.filter(i => i.category === catFilter);
+  let items = catFilter === 'all' ? ITEMS_MASTER : ITEMS_MASTER.filter(i => i.category === catFilter);
+  if (summaryFilter === 'low') items = items.filter(i => { const q = getQty(i.id); return q > 0 && q <= getAlertVal(i.id); });
+  if (summaryFilter === 'out') items = items.filter(i => getQty(i.id) <= 0);
 
   // サマリー
   const total = ITEMS_MASTER.length;
   const low = ITEMS_MASTER.filter(i => { const q = getQty(i.id); return q > 0 && q <= getAlertVal(i.id); }).length;
   const out = ITEMS_MASTER.filter(i => getQty(i.id) <= 0).length;
   document.getElementById('stock-summary').innerHTML = `
-    <div class="summary-cell"><div class="summary-cell-label">品目数</div><div class="summary-cell-val">${total}</div></div>
-    <div class="summary-cell"><div class="summary-cell-label">⚠️ 残少</div><div class="summary-cell-val warn">${low}</div></div>
-    <div class="summary-cell"><div class="summary-cell-label">🔴 在庫切</div><div class="summary-cell-val danger">${out}</div></div>
+    <div class="summary-cell" onclick="setSummaryFilter('all')" style="cursor:pointer">
+      <div class="summary-cell-label">品目数</div>
+      <div class="summary-cell-val" style="${summaryFilter==='all'?'text-decoration:underline':''}">${total}</div>
+    </div>
+    <div class="summary-cell" onclick="setSummaryFilter('low')" style="cursor:pointer;${summaryFilter==='low'?'border-color:#d4a017;background:#fffbf0;':''}">
+      <div class="summary-cell-label">⚠️ 残少</div>
+      <div class="summary-cell-val warn">${low}</div>
+    </div>
+    <div class="summary-cell" onclick="setSummaryFilter('out')" style="cursor:pointer;${summaryFilter==='out'?'border-color:#d32f2f;background:#fff5f5;':''}">
+      <div class="summary-cell-label">🔴 在庫切</div>
+      <div class="summary-cell-val danger">${out}</div>
+    </div>
   `;
 
   if (!items.length) { document.getElementById('stock-list').innerHTML = '<div class="empty">品目がありません</div>'; return; }
