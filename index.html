@@ -392,11 +392,11 @@ textarea { resize: vertical; }
           <div class="field" id="guide-newcompany-field" style="display:none"><label class="lbl">新規会社名</label>
             <input type="text" id="guide-newcompany" placeholder="会社名を入力">
           </div>
-          <div class="field"><label class="lbl">現場名</label>
-            <input type="text" id="guide-site" placeholder="現場名を入力">
+          <div class="field"><label class="lbl">現場名・項目名</label>
+            <input type="text" id="guide-site" placeholder="現場名や年度など（例: 2026、三鷹5丁目）">
           </div>
-          <div class="field"><label class="lbl">PDF URL</label>
-            <input type="text" id="guide-url" placeholder="Googleドライブの共有リンクを貼り付け">
+          <div class="field"><label class="lbl">PDF または フォルダのURL</label>
+            <input type="text" id="guide-url" placeholder="Googleドライブの共有リンク（ファイル・フォルダ両方OK）">
           </div>
           <button class="btn-primary" onclick="addGuide()">追加する</button>
         </div>
@@ -876,7 +876,7 @@ function renderGuides(){
       ${open?`<div style="padding:8px 0 0 8px">
         ${items.map(([key,g])=>`
           <div style="display:flex;align-items:center;gap:8px;background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px">
-            <a href="${g.url}" target="_blank" style="flex:1;color:#2980b9;text-decoration:none;font-size:14px;font-weight:600">📄 ${g.site}</a>
+            <a href="${g.url}" target="_blank" style="flex:1;color:#2980b9;text-decoration:none;font-size:14px;font-weight:600">${g.url&&g.url.includes('/drive/folders/')?'📁':'📄'} ${g.site}</a>
             ${adminLoggedIn?`<button onclick="deleteGuide('${key}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">🗑</button>`:''}
           </div>`).join('')}
       </div>`:''}
@@ -887,6 +887,8 @@ function renderGuides(){
 function convertPdfUrl(url){
   if(!url)return url;
   url=url.trim();
+  // Googleドライブ フォルダ: そのまま通す
+  if(url.includes('drive.google.com/drive/folders/'))return url;
   // Googleドライブ: /file/d/FILEID/view... → プレビュー表示URL
   let m=url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
   if(m)return 'https://drive.google.com/file/d/'+m[1]+'/view';
