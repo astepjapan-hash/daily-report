@@ -811,7 +811,7 @@ function renderMoveList() {
             <div class="stock-cat">在庫: ${qty % 1 === 0 ? qty : qty.toFixed(1)}${item.unit}</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <input type="number" min="0" step="${item.step || 1}" placeholder="0"
+            <input type="number" min="0" max="${qty}" step="${item.step || 1}" placeholder="0"
               id="out-qty-${item.id}"
               value="${outQtyMap[item.id] || ''}"
               oninput="onOutQtyInput('${item.id}', this.value)"
@@ -854,7 +854,13 @@ let confirmEntries = []; // {itemId, itemName, unit, qty}
 let outQtyMap = {}; // {itemId: qty} フィルター切替時も値を保持
 
 function onOutQtyInput(itemId, val) {
-  const qty = parseFloat(val) || 0;
+  const inputEl = document.getElementById('out-qty-' + itemId);
+  const stock = getQty(itemId);
+  let qty = parseFloat(val) || 0;
+  if (qty > stock) {
+    qty = stock;
+    if (inputEl) inputEl.value = stock;
+  }
   if (qty > 0) outQtyMap[itemId] = qty;
   else delete outQtyMap[itemId];
   const hasAny = Object.keys(outQtyMap).length > 0;
@@ -950,13 +956,15 @@ function renderConfirmList() {
 }
 
 function changeConfirmQty(idx, delta) {
-  const newVal = Math.max(0, (confirmEntries[idx].qty || 0) + delta);
+  const stock = getQty(confirmEntries[idx].itemId);
+  const newVal = Math.min(stock, Math.max(0, (confirmEntries[idx].qty || 0) + delta));
   confirmEntries[idx].qty = newVal;
   renderConfirmList();
 }
 
 function updateConfirmQty(idx, val) {
-  confirmEntries[idx].qty = Math.max(0, parseFloat(val) || 0);
+  const stock = getQty(confirmEntries[idx].itemId);
+  confirmEntries[idx].qty = Math.min(stock, Math.max(0, parseFloat(val) || 0));
   renderConfirmList();
 }
 
