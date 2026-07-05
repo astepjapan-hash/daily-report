@@ -1876,6 +1876,9 @@ async function saveCatQty() {
     await Promise.all(promises);
     const catLabel = adminCatFilter === 'all' ? '全品目' : CAT_LABELS[adminCatFilter] || adminCatFilter;
     showToast('✅ ' + catLabel + 'を保存しました！');
+    // alertSettingsをFirebaseから再読み込みして在庫タブに反映
+    const alertRes = await fetch(DB + '/alertSettings.json');
+    alertSettings = await alertRes.json() || {};
   } catch(e) { alert('保存に失敗しました。'); }
 }
 
