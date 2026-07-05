@@ -416,6 +416,7 @@ textarea { resize: vertical; }
         <button class="stats-seg-btn" id="seg-month" onclick="setStatsSeg('month')">月別</button>
         <button class="stats-seg-btn" id="seg-person" onclick="setStatsSeg('person')">個人別</button>
         <button class="stats-seg-btn" id="seg-total" onclick="setStatsSeg('total')">合算</button>
+        <button class="stats-seg-btn" id="seg-site" onclick="setStatsSeg('site')">現場</button>
       </div>
       <div id="stats-content"></div>
     </div>
@@ -482,7 +483,7 @@ function getLocalDateStr(d=new Date()){
   const day=String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
-const PROCESSES = ['現調','下地','プライマー','1ply','2ply','トップ'];
+const PROCESSES = ['現調','下地','マット切り','プライマー','1ply','2ply','トップ','ビックサン','完了'];
 const MATERIALS = [{label:'プライマー',field:'primerKg'},{label:'トップ',field:'topKg'}];
 const SHITAJI = ['湿気なし','湿気あり','バーナー未使用','バーナー小','バーナー大'];
 const KAN_KG = {primerKg:16, topKg:15}; // 1缶あたりのkg
@@ -732,6 +733,7 @@ let schedules={};
 let drafts={};
 let notices={};
 let guides={};
+let siteMeta={};
 const GUIDE_COMPANIES = []; // 固定会社リスト（変更可）
 
 function kgToKanWari(kg, kanKg){
@@ -1001,6 +1003,7 @@ async function loadReports(){
     absences=await aRes.json()||{};
     drafts=await dRes.json()||{};
     notices=await nRes.json()||{};
+    try{const smRes=await fetch(DB+'/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
     const todayStr=new Date().toLocaleDateString('sv');
     const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
     document.getElementById('badge').textContent=todayCount||'';
@@ -1366,10 +1369,207 @@ function renderStats(){
     <div><div class="section-title">日別内訳</div>${Object.entries(byDay).sort((a,b)=>b[0].localeCompare(a[0])).map(([,v])=>statsRowHtml(v.label,v.list.length,calcTotals(v.list))).join('')||'<div class="empty">データなし</div>'}</div>`;
   }else if(statsSeg==='person'){
     renderPersonStats();
+  }else if(statsSeg==='site'){
+    renderSiteList();
   }else{
     renderTotalStats();
   }
 }
+// ── 現場リスト ─────────────────────
+let _openSiteCompanies={};
+
+function getCompanyName(siteName){
+  const s=(siteName||'').trim();
+  const sp=s.search(/[ 　]/); // 半角/全角スペース
+  if(sp<0)return '住協建設';
+  return s.slice(0,sp).trim()||'住協建設';
+}
+function getSiteShort(siteName){
+  const s=(siteName||'').trim();
+  const sp=s.search(/[ 　]/);
+  if(sp<0)return s;
+  return s.slice(sp+1).trim()||s;
+}
+
+function aggregateSites(){
+  // 現場名ごとに全日報を集約
+  const sites={};
+  Object.entries(reports).forEach(([key,r])=>{
+    (r.sites||[]).forEach(s=>{
+      const name=(s.name||'').trim();
+      if(!name)return;
+      if(!sites[name])sites[name]={name,company:getCompanyName(name),completed:false,completedDate:'',workers:{},history:[],primerKg:0,resinKan:0,resinWari:0,topKg:0,shitaji:new Set(),burner:new Set()};
+      const site=sites[name];
+      const procs=s.processes||[];
+      // 完了判定
+      if(procs.includes('完了')){site.completed=true;if(!site.completedDate||r.date>site.completedDate)site.completedDate=r.date;}
+      // 施工者（現調のみの人は除外）
+      const nonGenba=procs.filter(p=>p!=='現調');
+      if(nonGenba.length>0 && r.staffName){site.workers[r.staffName]=true;}
+      // 工程履歴
+      if(procs.length)site.history.push({date:r.date,dateLabel:r.dateLabel||r.date,staff:r.staffName,procs:procs.slice()});
+      // 材料合計
+      site.primerKg+=parseFloat(s.primerKg)||0;
+      site.topKg+=parseFloat(s.topKg)||0;
+      const kan=parseInt(s.resinKan)||0,wari=parseInt(s.resinWari)||0;
+      site.resinKan+=kan;site.resinWari+=wari;
+      // 下地状況
+      (s.shitaji||[]).forEach(sh=>{
+        if(sh==='湿気なし'||sh==='湿気あり')site.shitaji.add(sh);
+        else site.burner.add(sh);
+      });
+    });
+  });
+  // 樹脂の割を缶に繰り上げ
+  Object.values(sites).forEach(site=>{
+    site.resinKan+=Math.floor(site.resinWari/10);
+    site.resinWari=site.resinWari%10;
+  });
+  return sites;
+}
+
+function renderSiteList(){
+  const content=document.getElementById('stats-content');
+  const allSites=aggregateSites();
+  // 完了現場のみ
+  const completed=Object.values(allSites).filter(s=>s.completed);
+
+  // 検索
+  const searchHtml=`<div style="position:relative;margin-bottom:14px">
+    <input type="text" id="site-search" placeholder="🔍 会社名・現場名で検索" oninput="renderSiteListInner()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+  </div>`;
+
+  content.innerHTML=searchHtml+'<div id="site-list-inner"></div>';
+  window._completedSites=completed;
+  renderSiteListInner();
+}
+
+function renderSiteListInner(){
+  const el=document.getElementById('site-list-inner');
+  if(!el)return;
+  const completed=window._completedSites||[];
+  const kw=(document.getElementById('site-search')?.value||'').trim().toLowerCase();
+
+  // 会社ごとにグループ化
+  const groups={};
+  completed.forEach(s=>{
+    if(kw){
+      const hit=(s.company||'').toLowerCase().includes(kw)||(s.name||'').toLowerCase().includes(kw);
+      if(!hit)return;
+    }
+    if(!groups[s.company])groups[s.company]=[];
+    groups[s.company].push(s);
+  });
+  const companies=Object.keys(groups).sort();
+  if(!companies.length){
+    el.innerHTML=kw?'<div class="empty">該当する現場がありません</div>':'<div class="empty">完了した現場がありません</div>';
+    return;
+  }
+  const forceOpen=!!kw;
+  el.innerHTML=companies.map(company=>{
+    const items=groups[company].sort((a,b)=>(b.completedDate||'').localeCompare(a.completedDate||''));
+    const open=forceOpen||_openSiteCompanies[company];
+    return `
+    <div style="margin-bottom:10px">
+      <div onclick="toggleSiteCompany('${company.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;cursor:pointer;font-weight:700;font-size:15px">
+        <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span></span>
+        <span class="collapse-arrow ${open?'open':''}">▶</span>
+      </div>
+      ${open?`<div style="padding:8px 0 0 8px">
+        ${items.map(s=>`
+          <div onclick="showSiteDetail('${encodeURIComponent(s.name)}')" style="background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
+            <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}</div>
+            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}</div>
+          </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function toggleSiteCompany(company){
+  _openSiteCompanies[company]=!_openSiteCompanies[company];
+  renderSiteListInner();
+}
+
+function showSiteDetail(nameEnc){
+  const name=decodeURIComponent(nameEnc);
+  const sites=aggregateSites();
+  const s=sites[name];
+  if(!s)return;
+  const meta=siteMeta[name]||{};
+  const content=document.getElementById('stats-content');
+  // 工程履歴（日付順）
+  const history=s.history.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const resinKg=Math.round((s.resinKan*10+s.resinWari)*RESIN_KG_PER_KAN/10*10)/10;
+  content.innerHTML=`
+    <button onclick="renderSiteList()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:12px">← 現場リストへ戻る</button>
+    <div style="background:#fff;border-radius:14px;padding:18px;border:1.5px solid #e0d8d0">
+      <div style="font-size:12px;color:#c97a1f;font-weight:700">🏢 ${s.company}</div>
+      <div style="font-size:19px;font-weight:800;margin:4px 0 2px">${getSiteShort(s.name)}</div>
+      <div style="font-size:13px;color:#27ae60;font-weight:700;margin-bottom:14px">✅ 完了日：${s.completedDate||'-'}</div>
+
+      <div class="detail-section-label" style="margin-top:10px">👤 施工者</div>
+      <div style="font-size:14px;margin-bottom:12px">${Object.keys(s.workers).join('、')||'-'}</div>
+
+      <div class="detail-section-label">🧪 材料使用量（合計）</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        <span class="material-chip">プライマー ${Math.round(s.primerKg*10)/10}kg</span>
+        <span class="material-chip">樹脂 ${s.resinKan}缶${s.resinWari}割（${resinKg}kg）</span>
+        <span class="material-chip">トップ ${Math.round(s.topKg*10)/10}kg</span>
+      </div>
+
+      <div class="detail-section-label">🌡️ 下地状況</div>
+      <div style="font-size:14px;margin-bottom:12px">${[...s.shitaji,...s.burner].join('、')||'-'}</div>
+
+      <div class="detail-section-label">📐 面積・メモ</div>
+      <div style="font-size:14px;margin-bottom:4px">${meta.area?meta.area+' ㎡':'（面積未入力）'}</div>
+      ${meta.memo?`<div style="font-size:13px;color:#7a6a55;background:#fff8ee;padding:8px 10px;border-radius:8px;margin-bottom:12px">📝 ${meta.memo}</div>`:'<div style="margin-bottom:12px"></div>'}
+
+      ${adminLoggedIn?`<button onclick="openSiteEdit('${encodeURIComponent(s.name)}')" style="width:100%;padding:10px;background:#e07b4f;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:14px">✏️ 面積・メモを編集</button>`:''}
+
+      <div class="detail-section-label">📋 工程履歴</div>
+      <div style="margin-top:6px">
+        ${history.map(h=>`
+          <div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid #f0ebe4;font-size:13px">
+            <div style="color:#aaa;min-width:80px">${h.dateLabel||h.date}</div>
+            <div style="flex:1"><b>${h.staff}</b><br><span style="color:#c97a1f">${(h.procs||[]).join('・')}</span></div>
+          </div>`).join('')||'<div style="color:#aaa;font-size:13px">履歴なし</div>'}
+      </div>
+    </div>`;
+}
+
+function openSiteEdit(nameEnc){
+  const name=decodeURIComponent(nameEnc);
+  const meta=siteMeta[name]||{};
+  const content=document.getElementById('stats-content');
+  content.innerHTML=`
+    <button onclick="showSiteDetail('${encodeURIComponent(name)}')" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:12px">← 戻る</button>
+    <div style="background:#fff;border-radius:14px;padding:18px;border:1.5px solid #e0d8d0">
+      <div style="font-size:16px;font-weight:800;margin-bottom:14px">✏️ ${getSiteShort(name)}</div>
+      <div class="field"><label class="lbl">面積（㎡）</label>
+        <input type="number" step="0.1" id="site-area-input" value="${meta.area||''}" placeholder="例: 45.5" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+      </div>
+      <div class="field"><label class="lbl">メモ</label>
+        <textarea id="site-memo-input" rows="3" placeholder="メモを入力" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;resize:vertical">${meta.memo||''}</textarea>
+      </div>
+      <button onclick="saveSiteMeta('${encodeURIComponent(name)}')" style="width:100%;padding:12px;background:#e07b4f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">保存する</button>
+    </div>`;
+}
+
+async function saveSiteMeta(nameEnc){
+  const name=decodeURIComponent(nameEnc);
+  const area=document.getElementById('site-area-input').value.trim();
+  const memo=document.getElementById('site-memo-input').value.trim();
+  const key=name.replace(/[.#$/\[\]]/g,'_');
+  try{
+    const data={area,memo,name};
+    await fetch(DB+'/siteMeta/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    siteMeta[name]=data;
+    alert('保存しました！');
+    showSiteDetail(nameEnc);
+  }catch(e){alert('保存に失敗しました。');}
+}
+
 function renderTotalStats(){
   const content=document.getElementById('stats-content');
   const from=document.getElementById('total-date-from')?.value||'';
