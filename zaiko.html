@@ -601,6 +601,7 @@ function showView(name) {
   document.getElementById('tab-' + name).classList.add('active');
 
   if (name === 'stock') { loadAll().then(() => renderStock()); }
+  if (name === 'admin' && adminLoggedIn) { loadAll().then(() => renderAdminContent()); }
   if (name === 'move') {
     document.getElementById('move-step1').style.display = 'block';
     document.getElementById('move-step2').style.display = 'none';
@@ -609,7 +610,7 @@ function showView(name) {
   }
   if (name === 'history') { loadAll().then(() => { renderHistCalendar(); renderHistory(); }); }
   if (name === 'stats') { loadAll().then(() => renderStats()); }
-  if (name === 'admin') showAdmin();
+  if (name === 'admin') { loadAll().then(() => showAdmin()); }
 }
 
 // ── 在庫一覧 ──
@@ -667,7 +668,7 @@ function renderStock() {
         <div class="stock-icon ${cls}">${icon}</div>
         <div class="stock-info">
           <div class="stock-name">${item.name}</div>
-          <div class="stock-cat">${CAT_LABELS[item.category]} ・ アラート: ${item.alert}${item.unit}</div>
+          <div class="stock-cat">${CAT_LABELS[item.category]} ・ アラート: ${getAlertVal(item.id)}${item.unit}</div>
         </div>
         <div class="stock-qty">
           <div class="stock-num ${cls}">${qty % 1 === 0 ? qty : qty.toFixed(1)}</div>
