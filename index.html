@@ -1389,11 +1389,16 @@ let _openSiteCompanies={};
 
 function getCompanyName(siteName){
   const s=(siteName||'').trim();
-  const sp=s.search(/[ 　]/); // 半角/全角スペース
+  // 手動で会社を設定済みならそれを優先
+  if(siteMeta[s]&&siteMeta[s].company)return siteMeta[s].company;
+  // 先頭がG（半角/全角）なら住協建設
+  if(/^[GＧ]/.test(s))return '住協建設';
+  const sp=s.search(/[ 　]/);
   if(sp<0)return '住協建設';
   const prefix=s.slice(0,sp).trim();
   if(!prefix)return '住協建設';
-  return COMPANY_MAP[prefix]||prefix; // 対応表になければ略称そのまま
+  // 対応表にあれば正式名称、なければ住協建設
+  return COMPANY_MAP[prefix]||'住協建設';
 }
 function getSiteShort(siteName){
   const s=(siteName||'').trim();
@@ -1557,6 +1562,11 @@ function openSiteEdit(nameEnc){
     <button onclick="showSiteDetail('${encodeURIComponent(name)}')" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:12px">← 戻る</button>
     <div style="background:#fff;border-radius:14px;padding:18px;border:1.5px solid #e0d8d0">
       <div style="font-size:16px;font-weight:800;margin-bottom:14px">✏️ ${getSiteShort(name)}</div>
+      <div class="field"><label class="lbl">取引会社</label>
+        <select id="site-company-input" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+          ${['住協建設','住協メンテ',...Object.values(COMPANY_MAP)].filter((v,i,a)=>a.indexOf(v)===i).map(c=>`<option ${getCompanyName(name)===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
       <div class="field"><label class="lbl">面積（㎡）</label>
         <input type="number" step="0.1" id="site-area-input" value="${meta.area||''}" placeholder="例: 45.5" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
       </div>
@@ -1571,9 +1581,10 @@ async function saveSiteMeta(nameEnc){
   const name=decodeURIComponent(nameEnc);
   const area=document.getElementById('site-area-input').value.trim();
   const memo=document.getElementById('site-memo-input').value.trim();
+  const company=document.getElementById('site-company-input').value;
   const key=name.replace(/[.#$/\[\]]/g,'_');
   try{
-    const data={area,memo,name};
+    const data={area,memo,name,company};
     await fetch(DB+'/siteMeta/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     siteMeta[name]=data;
     alert('保存しました！');
