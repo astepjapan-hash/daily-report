@@ -412,8 +412,8 @@ textarea { resize: vertical; }
   <div class="view" id="view-stats">
     <div class="wrap">
       <div class="stats-seg">
-        <button class="stats-seg-btn active" id="seg-total" onclick="setStatsSeg('total')">材料</button>
-        <button class="stats-seg-btn" id="seg-site" onclick="setStatsSeg('site')">現場</button>
+        <button class="stats-seg-btn active" id="seg-site" onclick="setStatsSeg('site')">現場</button>
+        <button class="stats-seg-btn" id="seg-total" onclick="setStatsSeg('total')">材料</button>
       </div>
       <div id="stats-content"></div>
     </div>
@@ -505,7 +505,7 @@ let leaveSettings = {}; // スタッフごとの付与日数
 let absences = {}; // 休み申請
 
 let selectedWeather='', siteCount=0, reports={}, leaves={};
-let searchQuery='', filterName='', statsSeg='total', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
+let searchQuery='', filterName='', statsSeg='site', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
 let kyukaSeg='status', adminLoggedIn=false, prevView='form';
 
 document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -1451,6 +1451,22 @@ function aggregateSites(){
   return sites;
 }
 
+let siteStaffFilters=[];
+function toggleSiteStaffFilter(name){
+  if(!name){siteStaffFilters=[];}
+  else{
+    const i=siteStaffFilters.indexOf(name);
+    if(i>=0)siteStaffFilters.splice(i,1);
+    else siteStaffFilters.push(name);
+  }
+  const row=document.getElementById('site-staff-filter-row');
+  if(row){
+    row.innerHTML=`<button class="filter-btn ${siteStaffFilters.length===0?'active':''}" onclick="toggleSiteStaffFilter('')">全員</button>
+      ${MEMBERS.map(m=>`<button class="filter-btn ${siteStaffFilters.includes(m)?'active':''}" onclick="toggleSiteStaffFilter('${m}')">${SURNAME_MAP[m]||m}</button>`).join('')}`;
+  }
+  renderSiteListInner();
+}
+
 function renderSiteList(){
   const content=document.getElementById('stats-content');
   const allSites=aggregateSites();
@@ -1458,8 +1474,12 @@ function renderSiteList(){
   const completed=Object.values(allSites).filter(s=>s.completed);
 
   // 検索
-  const searchHtml=`<div style="position:relative;margin-bottom:14px">
+  const searchHtml=`<div style="position:relative;margin-bottom:10px">
     <input type="text" id="site-search" placeholder="🔍 会社名・現場名で検索" oninput="renderSiteListInner()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+  </div>
+  <div class="filter-row" id="site-staff-filter-row">
+    <button class="filter-btn ${siteStaffFilters.length===0?'active':''}" onclick="toggleSiteStaffFilter('')">全員</button>
+    ${MEMBERS.map(m=>`<button class="filter-btn ${siteStaffFilters.includes(m)?'active':''}" onclick="toggleSiteStaffFilter('${m}')">${SURNAME_MAP[m]||m}</button>`).join('')}
   </div>`;
 
   content.innerHTML=searchHtml+'<div id="site-list-inner"></div>';
@@ -1476,6 +1496,7 @@ function renderSiteListInner(){
   // 会社ごとにグループ化
   const groups={};
   completed.forEach(s=>{
+    if(siteStaffFilters.length&&!siteStaffFilters.some(m=>s.workers[m]))return;
     if(kw){
       const hit=(s.company||'').toLowerCase().includes(kw)||(s.name||'').toLowerCase().includes(kw);
       if(!hit)return;
@@ -1483,7 +1504,11 @@ function renderSiteListInner(){
     if(!groups[s.company])groups[s.company]=[];
     groups[s.company].push(s);
   });
-  const companies=Object.keys(groups).sort();
+  const FIXED_BOTTOM_ORDER = ['直し','直し是正','手直し','手直し是正'];
+  const normalCompanies = Object.keys(groups).filter(c=>!FIXED_BOTTOM_ORDER.includes(c))
+    .sort((a,b)=>groups[b].length-groups[a].length);
+  const fixedCompanies = FIXED_BOTTOM_ORDER.filter(c=>groups[c]);
+  const companies = [...normalCompanies, ...fixedCompanies];
   if(!companies.length){
     el.innerHTML=kw?'<div class="empty">該当する現場がありません</div>':'<div class="empty">完了した現場がありません</div>';
     return;
