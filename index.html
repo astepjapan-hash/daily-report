@@ -487,6 +487,15 @@ const PROCESSES = ['現調','下地','マット切り','プライマー','1ply',
 const MATERIALS = [{label:'プライマー',field:'primerKg'},{label:'トップ',field:'topKg'}];
 const SHITAJI = ['湿気なし','湿気あり','バーナー未使用','バーナー小','バーナー大'];
 const KAN_KG = {primerKg:16, topKg:15}; // 1缶あたりのkg
+// 現場名の先頭略称 → 取引会社の正式名称
+const COMPANY_MAP = {
+  'タカラ':'MIRARTHアーキテクト','藤和':'藤和建設','グランディ':'グランディハウス',
+  '阿蘇':'阿蘇工業','タクト':'タクトホーム','小笠原':'小笠原工業','CMI':'シーエムアイ',
+  '内沢':'内沢工業','相馬':'相馬建装','住友':'住友不動産','久保田':'久保田工務店',
+  '大新':'大新工務店','三浦':'三浦工務店','吉野':'吉野建設','トガワ':'トガワ建設サービス',
+  'メンテ':'メンテナンス工事','新栄':'新栄サービス','笹森':'笹森工務店',
+  'モリタ':'モリタ工務店','ポンユ':'ポンユー興業'
+};
 const RESIN_KG_PER_KAN = 18; // 樹脂1缶あたりkg
 const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
 const MEMBERS = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
@@ -1382,7 +1391,9 @@ function getCompanyName(siteName){
   const s=(siteName||'').trim();
   const sp=s.search(/[ 　]/); // 半角/全角スペース
   if(sp<0)return '住協建設';
-  return s.slice(0,sp).trim()||'住協建設';
+  const prefix=s.slice(0,sp).trim();
+  if(!prefix)return '住協建設';
+  return COMPANY_MAP[prefix]||prefix; // 対応表になければ略称そのまま
 }
 function getSiteShort(siteName){
   const s=(siteName||'').trim();
