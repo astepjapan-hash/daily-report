@@ -412,10 +412,7 @@ textarea { resize: vertical; }
   <div class="view" id="view-stats">
     <div class="wrap">
       <div class="stats-seg">
-        <button class="stats-seg-btn active" id="seg-day" onclick="setStatsSeg('day')">日別</button>
-        <button class="stats-seg-btn" id="seg-month" onclick="setStatsSeg('month')">月別</button>
-        <button class="stats-seg-btn" id="seg-person" onclick="setStatsSeg('person')">個人別</button>
-        <button class="stats-seg-btn" id="seg-total" onclick="setStatsSeg('total')">合算</button>
+        <button class="stats-seg-btn active" id="seg-total" onclick="setStatsSeg('total')">材料</button>
         <button class="stats-seg-btn" id="seg-site" onclick="setStatsSeg('site')">現場</button>
       </div>
       <div id="stats-content"></div>
@@ -506,7 +503,7 @@ let leaveSettings = {}; // スタッフごとの付与日数
 let absences = {}; // 休み申請
 
 let selectedWeather='', siteCount=0, reports={}, leaves={};
-let searchQuery='', filterName='', statsSeg='day', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
+let searchQuery='', filterName='', statsSeg='total', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
 let kyukaSeg='status', adminLoggedIn=false, prevView='form';
 
 document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
@@ -1600,16 +1597,26 @@ async function saveSiteMeta(nameEnc){
   }catch(e){alert('保存に失敗しました。');}
 }
 
+let totalStaffFilter='';
+function setTotalStaffFilter(name){totalStaffFilter=name;renderTotalStats();}
+
 function renderTotalStats(){
   const content=document.getElementById('stats-content');
   const from=document.getElementById('total-date-from')?.value||'';
   const to=document.getElementById('total-date-to')?.value||'';
   let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let filtered=from&&to?allList.filter(([,r])=>r.date>=from&&r.date<=to):allList;
+  if(totalStaffFilter)filtered=filtered.filter(([,r])=>r.staffName===totalStaffFilter);
   const t=calcTotals(filtered);
   const lbl=from&&to?`${from} 〜 ${to}`:`全期間`;
 
+  const staffChips=`<div class="filter-row">
+    <button class="filter-btn ${totalStaffFilter===''?'active':''}" onclick="setTotalStaffFilter('')">全員</button>
+    ${MEMBERS.map(m=>`<button class="filter-btn ${totalStaffFilter===m?'active':''}" onclick="setTotalStaffFilter('${m}')">${m}</button>`).join('')}
+  </div>`;
+
   content.innerHTML=`
+    ${staffChips}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <input type="date" id="total-date-from" value="${from}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
       <span style="color:#aaa">〜</span>
@@ -1618,13 +1625,13 @@ function renderTotalStats(){
     </div>
     <div class="section-title">${lbl}（${filtered.length}件）</div>
     <div class="stats-row">${matGridHtml(t)}</div>
-    <div style="margin-top:16px">
+    ${totalStaffFilter===''?`<div style="margin-top:16px">
       <div class="section-title">個人別 合計</div>
       ${MEMBERS.filter(m=>filtered.some(([,r])=>r.staffName===m)).map(m=>{
         const ml=filtered.filter(([,r])=>r.staffName===m);
         return statsRowHtml(m,ml.length,calcTotals(ml));
       }).join('')||'<div class="empty">データなし</div>'}
-    </div>`;
+    </div>`:''}`;
 }
 
 function changeMonth(m){if(m){statsMonth=m;renderStats();}}
