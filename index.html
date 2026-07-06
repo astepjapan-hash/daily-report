@@ -496,6 +496,7 @@ const COMPANY_MAP = {
 const RESIN_KG_PER_KAN = 18; // 樹脂1缶あたりkg
 const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
 const MEMBERS = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
+const SURNAME_MAP = {'加藤瑞樹':'加藤','山内浩一':'山内','森田義則':'森田','富山裕貴':'富山','外注':'外注'};
 const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
 const STAFF_LEAVE = ['加藤瑞樹','山内浩一','森田義則','富山裕貴']; // 有給・休み対象（外注除く）
 const ADMIN_PASS = '2431'; // ← 管理者パスワード（変更可）
@@ -1597,26 +1598,48 @@ async function saveSiteMeta(nameEnc){
   }catch(e){alert('保存に失敗しました。');}
 }
 
-let totalStaffFilter='';
-function setTotalStaffFilter(name){totalStaffFilter=name;renderTotalStats();}
+let totalStaffFilters=[];
+function toggleTotalStaffFilter(name){
+  if(!name){totalStaffFilters=[];renderTotalStats();return;}
+  const i=totalStaffFilters.indexOf(name);
+  if(i>=0)totalStaffFilters.splice(i,1);
+  else totalStaffFilters.push(name);
+  renderTotalStats();
+}
+function setTotalMonth(){
+  const mv=document.getElementById('total-month')?.value;
+  if(!mv)return;
+  const [y,m]=mv.split('-');
+  const lastDay=new Date(parseInt(y),parseInt(m),0).getDate();
+  const fromEl=document.getElementById('total-date-from');
+  const toEl=document.getElementById('total-date-to');
+  if(fromEl)fromEl.value=mv+'-01';
+  if(toEl)toEl.value=mv+'-'+String(lastDay).padStart(2,'0');
+  renderTotalStats();
+}
 
 function renderTotalStats(){
   const content=document.getElementById('stats-content');
   const from=document.getElementById('total-date-from')?.value||'';
   const to=document.getElementById('total-date-to')?.value||'';
+  const monthVal=document.getElementById('total-month')?.value||'';
   let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let filtered=from&&to?allList.filter(([,r])=>r.date>=from&&r.date<=to):allList;
-  if(totalStaffFilter)filtered=filtered.filter(([,r])=>r.staffName===totalStaffFilter);
+  if(totalStaffFilters.length)filtered=filtered.filter(([,r])=>totalStaffFilters.includes(r.staffName));
   const t=calcTotals(filtered);
   const lbl=from&&to?`${from} 〜 ${to}`:`全期間`;
 
   const staffChips=`<div class="filter-row">
-    <button class="filter-btn ${totalStaffFilter===''?'active':''}" onclick="setTotalStaffFilter('')">全員</button>
-    ${MEMBERS.map(m=>`<button class="filter-btn ${totalStaffFilter===m?'active':''}" onclick="setTotalStaffFilter('${m}')">${m}</button>`).join('')}
+    <button class="filter-btn ${totalStaffFilters.length===0?'active':''}" onclick="toggleTotalStaffFilter('')">全員</button>
+    ${MEMBERS.map(m=>`<button class="filter-btn ${totalStaffFilters.includes(m)?'active':''}" onclick="toggleTotalStaffFilter('${m}')">${SURNAME_MAP[m]||m}</button>`).join('')}
   </div>`;
 
   content.innerHTML=`
     ${staffChips}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <input type="month" id="total-month" value="${monthVal}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+      <button onclick="setTotalMonth()" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">月で検索</button>
+    </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <input type="date" id="total-date-from" value="${from}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
       <span style="color:#aaa">〜</span>
@@ -1625,7 +1648,7 @@ function renderTotalStats(){
     </div>
     <div class="section-title">${lbl}（${filtered.length}件）</div>
     <div class="stats-row">${matGridHtml(t)}</div>
-    ${totalStaffFilter===''?`<div style="margin-top:16px">
+    ${totalStaffFilters.length===0?`<div style="margin-top:16px">
       <div class="section-title">個人別 合計</div>
       ${MEMBERS.filter(m=>filtered.some(([,r])=>r.staffName===m)).map(m=>{
         const ml=filtered.filter(([,r])=>r.staffName===m);
