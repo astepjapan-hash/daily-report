@@ -1402,9 +1402,17 @@ function getCompanyName(siteName){
 }
 function getSiteShort(siteName){
   const s=(siteName||'').trim();
+  // 手動で会社を設定済みなら現場名はそのまま表示
+  if(siteMeta[s]&&siteMeta[s].company)return s;
+  // Ｇ始まりは住協建設扱いなので現場名はそのまま表示
+  if(/^[GＧ]/.test(s))return s;
   const sp=s.search(/[ 　]/);
   if(sp<0)return s;
-  return s.slice(sp+1).trim()||s;
+  const prefix=s.slice(0,sp).trim();
+  if(!prefix)return s;
+  // COMPANY_MAPに登録された正式な略称の場合のみ接頭辞を削除
+  if(COMPANY_MAP[prefix])return s.slice(sp+1).trim()||s;
+  return s;
 }
 
 function aggregateSites(){
