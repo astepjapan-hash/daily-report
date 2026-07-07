@@ -742,6 +742,7 @@ let drafts={};
 let notices={};
 let guides={};
 let siteMeta={};
+let siteAliases={};
 const GUIDE_COMPANIES = []; // 固定会社リスト（変更可）
 
 function kgToKanWari(kg, kanKg){
@@ -988,9 +989,26 @@ function renderListSearch(q){
     r.date?.includes(q)
   ).sort((a,b)=>b[1].createdAt-a[1].createdAt);
 
-  if(!list.length){el.innerHTML='<div style="text-align:center;padding:32px;color:#aaa;font-size:14px">🔍 該当する日報がありません</div>';return;}
+  const schedList=Object.entries(schedules).filter(([,s])=>
+    s.site?.toLowerCase().includes(ql)||
+    s.task?.toLowerCase().includes(ql)||
+    s.address?.toLowerCase().includes(ql)||
+    s.date?.includes(q)
+  ).sort((a,b)=>(b[1].date||'').localeCompare(a[1].date||''));
 
-  el.innerHTML=`<div class="search-result-title">検索結果 ${list.length}件</div>`+
+  if(!list.length&&!schedList.length){el.innerHTML='<div style="text-align:center;padding:32px;color:#aaa;font-size:14px">🔍 該当する日報・予定がありません</div>';return;}
+
+  const schedHtml=schedList.length?`<div class="search-result-title">📅 予定 ${schedList.length}件</div>`+
+    schedList.map(([key,s])=>`
+      <div class="schedule-card" onclick="openEditSchedule('${key}')" style="cursor:pointer;padding-right:44px;">
+        <div class="schedule-badge">📅 ${hl(s.date,q)}</div>
+        <div class="schedule-site">📍 ${hl(s.site,q)}</div>
+        ${s.address?`<div class="schedule-content">🗺️ ${hl(s.address,q)}</div>`:''}
+        ${s.task?`<div class="schedule-content">🔧 ${hl(s.task,q)}</div>`:''}
+        <button class="schedule-delete" onclick="deleteSchedule('${key}',event)">🗑</button>
+      </div>`).join(''):'';
+
+  const reportHtml=list.length?`<div class="search-result-title">📋 日報 ${list.length}件</div>`+
     list.map(([key,r])=>`
       <div class="report-card">
         <div style="cursor:pointer" onclick="showDetail('${key}')">
@@ -1000,7 +1018,9 @@ function renderListSearch(q){
           <span class="report-arrow">›</span>
         </div>
         <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
-      </div>`).join('');
+      </div>`).join(''):'';
+
+  el.innerHTML=schedHtml+reportHtml;
 }
 
 async function loadReports(){
@@ -1012,6 +1032,7 @@ async function loadReports(){
     drafts=await dRes.json()||{};
     notices=await nRes.json()||{};
     try{const smRes=await fetch(DB+'/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
+    try{const saRes=await fetch(DB+'/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){siteAliases={};}
     const todayStr=new Date().toLocaleDateString('sv');
     const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
     document.getElementById('badge').textContent=todayCount||'';
@@ -1351,7 +1372,11 @@ async function deleteReport(key,name,e){
 function setStatsSeg(seg){statsSeg=seg;document.querySelectorAll('.stats-seg-btn').forEach(b=>b.classList.remove('active'));document.getElementById('seg-'+seg).classList.add('active');renderStats();}
 async function loadStats(){
   document.getElementById('stats-content').innerHTML='<div class="loading">読み込み中...</div>';
-  try{const res=await fetch(DB+'/reports.json');reports=await res.json()||{};renderStats();}
+  try{
+    const res=await fetch(DB+'/reports.json');reports=await res.json()||{};
+    try{const saRes=await fetch(DB+'/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){}
+    renderStats();
+  }
   catch(e){document.getElementById('stats-content').innerHTML='<div class="loading">読み込みに失敗しました</div>';}
 }
 function statsRowHtml(label,count,totals){
@@ -1419,8 +1444,9 @@ function aggregateSites(){
   const sites={};
   Object.entries(reports).forEach(([key,r])=>{
     (r.sites||[]).forEach(s=>{
-      const name=(s.name||'').trim();
-      if(!name)return;
+      const rawName=(s.name||'').trim();
+      if(!rawName)return;
+      const name=siteAliases[rawName]||rawName;
       if(!sites[name])sites[name]={name,company:getCompanyName(name),completed:false,completedDate:'',workers:{},history:[],primerKg:0,resinKan:0,resinWari:0,topKg:0,shitaji:new Set(),burner:new Set()};
       const site=sites[name];
       const procs=s.processes||[];
@@ -1474,12 +1500,14 @@ function renderSiteList(){
   const completed=Object.values(allSites).filter(s=>s.completed);
 
   // 検索
-  const searchHtml=`<div style="position:relative;margin-bottom:10px">
+  const searchHtml=`<div style="position:sticky;top:56px;z-index:50;background:#f5f0ea;padding-top:2px;margin:0 -20px;padding-left:20px;padding-right:20px">
+  <div style="position:relative;margin-bottom:10px">
     <input type="text" id="site-search" placeholder="🔍 会社名・現場名で検索" oninput="renderSiteListInner()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
   </div>
   <div class="filter-row" id="site-staff-filter-row">
     <button class="filter-btn ${siteStaffFilters.length===0?'active':''}" onclick="toggleSiteStaffFilter('')">全員</button>
     ${MEMBERS.map(m=>`<button class="filter-btn ${siteStaffFilters.includes(m)?'active':''}" onclick="toggleSiteStaffFilter('${m}')">${SURNAME_MAP[m]||m}</button>`).join('')}
+  </div>
   </div>`;
 
   content.innerHTML=searchHtml+'<div id="site-list-inner"></div>';
@@ -1909,8 +1937,8 @@ async function renderAdminContent(){
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const [rRes,lRes,sRes,aRes,nRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/notices.json')]);
-    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};
+    const [rRes,lRes,sRes,aRes,nRes,saRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/notices.json'),fetch(DB+'/siteAliases.json')]);
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};
   }catch(e){}
 
   // 作業時間・日数集計（全期間）
@@ -2025,6 +2053,25 @@ async function renderAdminContent(){
       </div>
       </div>
 
+      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-alias')">🔗 現場名の統合 <span class="collapse-arrow" id="arrow-collapse-alias">▶</span></div>
+      <div class="card collapse-body" id="collapse-alias" style="margin-bottom:20px">
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px">同じ現場でも入力ゆれ（例：施工面積の「○p」違いなど）で別現場として集計されてしまう場合、統合先の現場名にまとめられます。</div>
+        <div class="field"><label class="lbl">統合したい現場名（重複している方）</label>
+          <input type="text" id="alias-from" placeholder="例: G田島2丁目1期 7p">
+        </div>
+        <div class="field"><label class="lbl">統合先の現場名（正式にしたい方）</label>
+          <input type="text" id="alias-to" placeholder="例: G田島2丁目1期">
+        </div>
+        <button class="btn-primary" onclick="addSiteAlias()">統合する</button>
+        <div style="margin-top:14px">
+          ${Object.entries(siteAliases).map(([from,to])=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
+              <span style="font-size:13px;color:#2d2a26">${from} → <b>${to}</b></span>
+              <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">🗑</button>
+            </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
+        </div>
+      </div>
+
       <div class="section-title" style="margin-top:16px">休み申請 承認待ち（${pendingAbsences.length}件）</div>
       ${pendingAbsences.length?pendingAbsences.map(([key,a])=>`
         <div class="yasumi-card">
@@ -2084,6 +2131,33 @@ function toggleCollapse(id){
   if(!body)return;
   const open=body.classList.toggle('open');
   if(arrow)arrow.classList.toggle('open',open);
+}
+
+async function addSiteAlias(){
+  const from=document.getElementById('alias-from').value.trim();
+  const to=document.getElementById('alias-to').value.trim();
+  if(!from||!to){alert('両方の現場名を入力してください');return;}
+  if(from===to){alert('同じ現場名は統合できません');return;}
+  const key=from.replace(/[.#$/\[\]]/g,'_');
+  try{
+    await fetch(DB+'/siteAliases/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(to)});
+    siteAliases[from]=to;
+    document.getElementById('alias-from').value='';
+    document.getElementById('alias-to').value='';
+    alert('統合しました！');
+    renderAdminContent();
+  }catch(e){alert('保存に失敗しました。');}
+}
+
+async function deleteSiteAlias(fromEnc){
+  const from=decodeURIComponent(fromEnc);
+  if(!confirm(from+'の統合設定を削除しますか？'))return;
+  const key=from.replace(/[.#$/\[\]]/g,'_');
+  try{
+    await fetch(DB+'/siteAliases/'+encodeURIComponent(key)+'.json',{method:'DELETE'});
+    delete siteAliases[from];
+    renderAdminContent();
+  }catch(e){alert('削除に失敗しました。');}
 }
 
 async function postNotice(){
