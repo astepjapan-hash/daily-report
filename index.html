@@ -502,6 +502,7 @@ const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外�
 const STAFF_LEAVE = ['加藤瑞樹','山内浩一','森田義則','富山裕貴']; // 有給・休み対象（外注除く）
 const ADMIN_PASS = '2431'; // ← 管理者パスワード（変更可）
 let leaveSettings = {}; // スタッフごとの付与日数
+let salarySettings = {}; // スタッフごとの日給単価
 let absences = {}; // 休み申請
 
 let selectedWeather='', siteCount=0, reports={}, leaves={};
@@ -1937,8 +1938,8 @@ async function renderAdminContent(){
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const [rRes,lRes,sRes,aRes,nRes,saRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/notices.json'),fetch(DB+'/siteAliases.json')]);
-    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};
+    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/notices.json'),fetch(DB+'/siteAliases.json'),fetch(DB+'/salarySettings.json')]);
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salarySettings=await slRes.json()||{};
   }catch(e){}
 
   // 作業時間・日数集計（全期間）
@@ -2004,6 +2005,31 @@ async function renderAdminContent(){
       </div>
       <div id="work-stats-label" style="font-size:12px;color:#aaa;margin-bottom:10px;font-weight:600"></div>
       <div class="admin-stats-grid" id="work-stats-grid"></div>
+
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-salary')">💰 給料明細 <span class="collapse-arrow" id="arrow-collapse-salary">▶</span></div>
+      <div class="card collapse-body" id="collapse-salary" style="margin-bottom:20px">
+        <div class="section-title">日給単価設定</div>
+        ${STAFF_LEAVE.map(m=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:14px;font-weight:600;color:#2d2a26;">${m}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="number" min="0" step="100" value="${salarySettings[m]||''}" placeholder="0" id="sal-rate-${m.replace(/\s/g,'_')}" style="width:90px;padding:6px 8px;border-radius:7px;border:1.5px solid #e0d8d0;font-size:14px;text-align:right;font-family:inherit;">
+              <span style="font-size:13px;color:#aaa;">円/日</span>
+              <button onclick="saveSalaryRate('${m}')" style="padding:6px 12px;background:#e07b4f;color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;">保存</button>
+            </div>
+          </div>`).join('')}
+        <div style="border-top:1px solid #f0ebe4;margin:14px 0;padding-top:14px">
+          <div class="section-title">明細作成</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <input type="month" id="salary-month" value="${new Date().toLocaleDateString('sv').slice(0,7)}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+            <select id="salary-staff" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit;background:#fff">
+              ${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}
+            </select>
+          </div>
+          <button class="btn-primary" onclick="openSalaryForm()">明細を作成する</button>
+          <div id="salary-form-area" style="margin-top:14px"></div>
+        </div>
+      </div>
 
       <div class="section-title" style="margin-top:8px">有給 付与日数設定</div>
       <div class="card" style="margin-bottom:16px">
@@ -2115,6 +2141,132 @@ async function renderAdminContent(){
       </div>`:''}
     </div>`;
 }
+// ── 給料明細 ─────────────────────
+async function saveSalaryRate(name){
+  const id='sal-rate-'+name.replace(/\s/g,'_');
+  const val=parseInt(document.getElementById(id)?.value)||0;
+  try{
+    await fetch(DB+'/salarySettings/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});
+    salarySettings[name]=val;
+    alert(name+'の日給を'+val.toLocaleString()+'円に設定しました');
+  }catch(e){alert('保存に失敗しました。');}
+}
+
+const SALARY_ALLOWANCES=[['transport','交通費'],['other_allow','その他手当']];
+const SALARY_DEDUCTIONS=[['health','健康保険'],['pension','厚生年金'],['employment','雇用保険'],['income_tax','所得税'],['resident_tax','住民税'],['other_deduct','その他控除']];
+
+async function openSalaryForm(){
+  const month=document.getElementById('salary-month').value;
+  const name=document.getElementById('salary-staff').value;
+  if(!month||!name){alert('対象月とスタッフを選択してください');return;}
+  const rate=salarySettings[name]||0;
+  if(!rate){alert(name+'の日給単価が未設定です。先に日給単価を保存してください。');return;}
+
+  // 作業日数（日報からユニーク日数）
+  const workDays=new Set(Object.values(reports).filter(r=>r.staffName===name&&r.date?.startsWith(month)).map(r=>r.date)).size;
+  // 有給日数（承認済み）
+  const kyukaDays=Object.values(leaves).filter(l=>l.staffName===name&&l.status==='approved'&&l.date?.startsWith(month)).length;
+
+  // 保存済みデータの読み込み
+  let saved={};
+  try{
+    const res=await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
+    saved=await res.json()||{};
+  }catch(e){}
+
+  const area=document.getElementById('salary-form-area');
+  const [y,m]=month.split('-');
+  area.innerHTML=`
+    <div style="background:#faf8f5;border-radius:12px;padding:14px">
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px">${y}年${parseInt(m)}月分 ─ ${name}</div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+        <span>作業日数（日報より）</span>
+        <span><input type="number" id="sal-days" value="${saved.workDays!==undefined?saved.workDays:workDays}" min="0" style="width:60px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit"> 日</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+        <span>有給日数（承認済み）</span>
+        <span><input type="number" id="sal-kyuka" value="${saved.kyukaDays!==undefined?saved.kyukaDays:kyukaDays}" min="0" style="width:60px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit"> 日</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
+        <span>日給単価</span><span>${rate.toLocaleString()}円</span>
+      </div>
+      <div class="section-title">手当</div>
+      ${SALARY_ALLOWANCES.map(([key,label])=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:6px">
+          <span>${label}</span>
+          <span><input type="number" id="sal-${key}" value="${saved[key]||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit"> 円</span>
+        </div>`).join('')}
+      <div class="section-title" style="margin-top:10px">控除</div>
+      ${SALARY_DEDUCTIONS.map(([key,label])=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:6px">
+          <span>${label}</span>
+          <span><input type="number" id="sal-${key}" value="${saved[key]||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit"> 円</span>
+        </div>`).join('')}
+      <button class="btn-primary" style="margin-top:12px" onclick="saveSalaryData('${month}','${name}',${rate})">保存する</button>
+      <button class="btn-excel" style="margin-top:8px" onclick="exportSalaryExcel('${month}','${name}',${rate})">📥 明細Excelをダウンロード</button>
+    </div>`;
+}
+
+function collectSalaryInputs(){
+  const data={
+    workDays:parseInt(document.getElementById('sal-days')?.value)||0,
+    kyukaDays:parseInt(document.getElementById('sal-kyuka')?.value)||0
+  };
+  [...SALARY_ALLOWANCES,...SALARY_DEDUCTIONS].forEach(([key])=>{
+    data[key]=parseInt(document.getElementById('sal-'+key)?.value)||0;
+  });
+  return data;
+}
+
+async function saveSalaryData(month,name,rate){
+  const data=collectSalaryInputs();
+  data.rate=rate;
+  try{
+    await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    alert('保存しました！');
+  }catch(e){alert('保存に失敗しました。');}
+}
+
+function exportSalaryExcel(month,name,rate){
+  const d=collectSalaryInputs();
+  const [y,m]=month.split('-');
+  const label=`${y}年${parseInt(m)}月`;
+  const paidDays=d.workDays+d.kyukaDays;
+  const base=paidDays*rate;
+  const allowTotal=SALARY_ALLOWANCES.reduce((s,[key])=>s+(d[key]||0),0);
+  const deductTotal=SALARY_DEDUCTIONS.reduce((s,[key])=>s+(d[key]||0),0);
+  const gross=base+allowTotal;
+  const net=gross-deductTotal;
+
+  const rows=[
+    [`給料明細書`],
+    [],
+    ['対象月',label],
+    ['氏名',name],
+    [],
+    ['【勤怠】'],
+    ['作業日数',d.workDays,'日'],
+    ['有給日数',d.kyukaDays,'日'],
+    ['支給対象日数',paidDays,'日'],
+    [],
+    ['【支給】'],
+    ['基本給（日給×日数）',base,'円',`${rate.toLocaleString()}円 × ${paidDays}日`],
+    ...SALARY_ALLOWANCES.filter(([key])=>d[key]>0).map(([key,label2])=>[label2,d[key],'円']),
+    ['支給合計',gross,'円'],
+    [],
+    ['【控除】'],
+    ...SALARY_DEDUCTIONS.filter(([key])=>d[key]>0).map(([key,label2])=>[label2,d[key],'円']),
+    ['控除合計',deductTotal,'円'],
+    [],
+    ['【差引支給額】',net,'円']
+  ];
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:22},{wch:12},{wch:6},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,ws,'給料明細');
+  XLSX.writeFile(wb,`給料明細_${name}_${label}.xlsx`);
+}
+
 async function saveLeaveSettings(name){
   const id='ls-'+name.replace(/ /g,'_');
   const val=parseInt(document.getElementById(id)?.value)||0;
