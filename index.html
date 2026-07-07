@@ -2024,6 +2024,7 @@ async function renderAdminContent(){
             </select>
           </div>
           <button class="btn-primary" onclick="openSalaryForm()">明細を作成する</button>
+          <button class="btn-excel" style="margin-top:8px" onclick="exportSalaryPdfAll()">📄 4人分の明細PDFを作成</button>
           <div id="salary-form-area" style="margin-top:14px"></div>
         </div>
       </div>
@@ -2219,7 +2220,6 @@ async function openSalaryForm(){
       </div>
       <div id="salary-preview" style="border-top:1px dashed #e0d8d0;padding-top:10px;font-size:13px"></div>
       <button class="btn-primary" style="margin-top:12px" onclick="saveSalaryData('${month}','${name}')">保存する</button>
-      <button class="btn-excel" style="margin-top:8px" onclick="exportSalaryExcel('${month}','${name}')">📥 明細Excelをダウンロード</button>
     </div>`;
   updateSalaryPreview(name);
 }
@@ -2269,47 +2269,109 @@ async function saveSalaryData(month,name){
   }catch(e){alert('保存に失敗しました。');}
 }
 
-function exportSalaryExcel(month,name){
-  const c=calcSalary(name);
+// 純粋な給与計算（保存データ＋固定項目から）
+function calcSalaryFromData(name,d){
+  const p=salaryProfiles[name]||{};
+  const workDays=d.workDays||0;
+  const kyukaDays=d.kyukaDays||0;
+  const halfDays=d.halfDays||0;
+  const incomeTax=d.incomeTax||0;
+  const paidDays=workDays+kyukaDays;
+  const base=paidDays*(p.dailyRate||0);
+  const halfAllow=halfDays*(p.halfRate||0);
+  const gross=base+halfAllow+(p.commute||0)+(p.family||0);
+  const employment=Math.round(gross*6/1000);
+  const deductTotal=(p.health||0)+(p.pension||0)+employment+incomeTax+(p.residentTax||0)+(p.union||0);
+  const net=gross-deductTotal;
+  return {p,workDays,kyukaDays,halfDays,incomeTax,paidDays,base,halfAllow,gross,employment,deductTotal,net};
+}
+
+async function exportSalaryPdfAll(){
+  const month=document.getElementById('salary-month').value;
+  if(!month){alert('対象月を選択してください');return;}
   const [y,m]=month.split('-');
   const label=`${y}年${parseInt(m)}月`;
 
-  const rows=[
-    ['給料明細書'],
-    [],
-    ['対象月',label],
-    ['氏名',name],
-    [],
-    ['【勤怠】'],
-    ['作業日数',c.workDays,'日'],
-    ['有給日数',c.kyukaDays,'日'],
-    ['支給対象日数',c.paidDays,'日'],
-    ...(c.halfDays?[['半日日数',c.halfDays,'日']]:[]),
-    [],
-    ['【支給】'],
-    ['基本給',c.base,'円',`${(c.p.dailyRate||0).toLocaleString()}円 × ${c.paidDays}日`],
-    ...(c.halfAllow?[['半日手当',c.halfAllow,'円',`${(c.p.halfRate||0).toLocaleString()}円 × ${c.halfDays}日`]]:[]),
-    ...(c.p.commute?[['通勤手当',c.p.commute,'円']]:[]),
-    ...(c.p.family?[['家族手当',c.p.family,'円']]:[]),
-    ['支給合計',c.gross,'円'],
-    [],
-    ['【控除】'],
-    ...(c.p.health?[['健康保険',c.p.health,'円']]:[]),
-    ...(c.p.pension?[['厚生年金',c.p.pension,'円']]:[]),
-    ['雇用保険',c.employment,'円','支給額×6/1000'],
-    ...(c.incomeTax?[['所得税',c.incomeTax,'円']]:[]),
-    ...(c.p.residentTax?[['市県民税',c.p.residentTax,'円']]:[]),
-    ...(c.p.union?[['土建組合費',c.p.union,'円']]:[]),
-    ['控除合計',c.deductTotal,'円'],
-    [],
-    ['【差引支給額】',c.net,'円']
-  ];
-  const wb=XLSX.utils.book_new();
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:22},{wch:12},{wch:6},{wch:22}];
-  XLSX.utils.book_append_sheet(wb,ws,'給料明細');
-  XLSX.writeFile(wb,`給料明細_${name}_${label}.xlsx`);
+  // 各スタッフの保存済みデータを取得（なければ自動集計）
+  const slips=[];
+  for(const name of STAFF_LEAVE){
+    const p=salaryProfiles[name]||{};
+    if(!p.dailyRate)continue; // 単価未設定はスキップ
+    let d={};
+    try{
+      const res=await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
+      d=await res.json()||{};
+    }catch(e){}
+    if(d.workDays===undefined){
+      d.workDays=new Set(Object.values(reports).filter(r=>r.staffName===name&&r.date?.startsWith(month)).map(r=>r.date)).size;
+    }
+    if(d.kyukaDays===undefined){
+      d.kyukaDays=Object.values(leaves).filter(l=>l.staffName===name&&l.status==='approved'&&l.date?.startsWith(month)).length;
+    }
+    slips.push({name,c:calcSalaryFromData(name,d)});
+  }
+  if(!slips.length){alert('日給単価が設定されているスタッフがいません');return;}
+
+  const row=(lbl,val,minus)=>`<tr><td>${lbl}</td><td style="text-align:right">${minus?'−':''}${val.toLocaleString()}円</td></tr>`;
+  const pages=slips.map(({name,c})=>`
+    <div class="slip">
+      <h1>給料明細書</h1>
+      <div class="slip-head">
+        <span>${label}分</span><span class="slip-name">${name} 様</span>
+      </div>
+      <table>
+        <tr class="sec"><td colspan="2">勤怠</td></tr>
+        <tr><td>作業日数</td><td style="text-align:right">${c.workDays}日</td></tr>
+        <tr><td>有給日数</td><td style="text-align:right">${c.kyukaDays}日</td></tr>
+        <tr><td>支給対象日数</td><td style="text-align:right">${c.paidDays}日</td></tr>
+        ${c.halfDays?`<tr><td>半日日数</td><td style="text-align:right">${c.halfDays}日</td></tr>`:''}
+        <tr class="sec"><td colspan="2">支給</td></tr>
+        <tr><td>基本給（${(c.p.dailyRate||0).toLocaleString()}円 × ${c.paidDays}日）</td><td style="text-align:right">${c.base.toLocaleString()}円</td></tr>
+        ${c.halfAllow?row(`半日手当（${(c.p.halfRate||0).toLocaleString()}円 × ${c.halfDays}日）`,c.halfAllow):''}
+        ${c.p.commute?row('通勤手当',c.p.commute):''}
+        ${c.p.family?row('家族手当',c.p.family):''}
+        <tr class="total"><td>支給合計</td><td style="text-align:right">${c.gross.toLocaleString()}円</td></tr>
+        <tr class="sec"><td colspan="2">控除</td></tr>
+        ${c.p.health?row('健康保険',c.p.health,true):''}
+        ${c.p.pension?row('厚生年金',c.p.pension,true):''}
+        ${row('雇用保険（支給額×6/1000）',c.employment,true)}
+        ${c.incomeTax?row('所得税',c.incomeTax,true):''}
+        ${c.p.residentTax?row('市県民税',c.p.residentTax,true):''}
+        ${c.p.union?row('土建組合費',c.p.union,true):''}
+        <tr class="total"><td>控除合計</td><td style="text-align:right">−${c.deductTotal.toLocaleString()}円</td></tr>
+        <tr class="net"><td>差引支給額</td><td style="text-align:right">${c.net.toLocaleString()}円</td></tr>
+      </table>
+    </div>`).join('');
+
+  const w=window.open('','_blank');
+  if(!w){alert('ポップアップがブロックされました。ポップアップを許可してください。');return;}
+  w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>給料明細_${label}</title>
+  <style>
+    body{font-family:'Hiragino Kaku Gothic ProN',sans-serif;color:#222;margin:0;padding:0}
+    .slip{padding:40px 48px;page-break-after:always;max-width:640px;margin:0 auto}
+    .slip:last-child{page-break-after:auto}
+    h1{font-size:22px;text-align:center;margin:0 0 20px;letter-spacing:0.2em}
+    .slip-head{display:flex;justify-content:space-between;font-size:15px;margin-bottom:16px}
+    .slip-name{font-size:17px;font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    td{padding:7px 10px;border-bottom:1px solid #ddd}
+    tr.sec td{background:#f0ede8;font-weight:700;border-bottom:1px solid #ccc;padding:6px 10px;font-size:13px}
+    tr.total td{font-weight:700;border-bottom:2px solid #999}
+    tr.net td{font-weight:800;font-size:17px;border-bottom:none;padding-top:14px}
+    @media print{
+      .noprint{display:none}
+      .slip{padding:24px 32px}
+    }
+  </style></head><body>
+  <div class="noprint" style="padding:16px;text-align:center;background:#fdf0e8">
+    <button onclick="window.print()" style="padding:12px 32px;background:#e07b4f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">🖨 印刷 / PDFに保存</button>
+    <div style="font-size:12px;color:#888;margin-top:8px">印刷画面で「PDFとして保存」を選ぶとPDFになります（${slips.length}人分・1人1ページ）</div>
+  </div>
+  ${pages}
+  </body></html>`);
+  w.document.close();
 }
+
 
 async function saveLeaveSettings(name){
   const id='ls-'+name.replace(/ /g,'_');
