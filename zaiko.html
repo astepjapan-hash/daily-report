@@ -1184,64 +1184,6 @@ function onItemChange() {
   document.getElementById('move-unit-label').textContent = item ? item.unit : '―';
 }
 
-async function submitMove() {
-  const staff = document.getElementById('move-staff').value;
-  const date = document.getElementById('move-date').value;
-  const itemId = document.getElementById('move-item').value;
-  const qty = parseFloat(document.getElementById('move-qty').value);
-  const note = document.getElementById('move-note').value.trim();
-
-  if (!staff) { alert('スタッフを選択してください'); return; }
-  if (!itemId) { alert('品目を選択してください'); return; }
-  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
-
-  const item = ITEMS_MASTER.find(i => i.id === itemId);
-  const currentQty = getQty(itemId);
-
-  if (moveType === 'out' && qty > currentQty) {
-    if (!confirm(`在庫（${currentQty}${item.unit}）より多い数量です。続けますか？`)) return;
-  }
-
-  const movement = {
-    type: moveType,
-    itemId,
-    itemName: item.name,
-    unit: item.unit,
-    qty,
-    staff,
-    date,
-    note,
-    createdAt: Date.now()
-  };
-
-  // 在庫更新
-  const newQty = moveType === 'in' ? currentQty + qty : currentQty - qty;
-
-  try {
-    await Promise.all([
-      fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) }),
-      fetch(DB + '/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(Math.max(0, newQty)) })
-    ]);
-    inventory[itemId] = Math.max(0, newQty);
-    movements['_' + Date.now()] = movement;
-
-    // フォームリセット
-    document.getElementById('move-staff').value = '';
-    document.getElementById('move-item').value = '';
-    document.getElementById('move-qty').value = '';
-    document.getElementById('move-note').value = '';
-    document.getElementById('move-unit-label').textContent = '―';
-
-    showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
-
-    // 品目セレクトを更新
-    const sel = document.getElementById('move-item');
-    while (sel.options.length > 1) sel.remove(1);
-    buildItemSelectInner(sel);
-
-  } catch(e) { alert('登録に失敗しました。'); }
-}
-
 // ── 一括持ち出し ──
 function showBulkModal() {
   document.getElementById('bulk-date').value = getToday();
@@ -1567,14 +1509,10 @@ async function deleteMovement(key, e) {
   if (!m) return;
   if (!confirm(`「${m.itemName}」の${m.type === 'in' ? '入庫' : '持ち出し'}記録を削除しますか？\n在庫数も元に戻ります。`)) return;
   try {
-    // 在庫を逆算して戻す
-    const currentQty = getQty(m.itemId);
-    const restoredQty = m.type === 'in' ? currentQty - m.qty : currentQty + m.qty;
-    await Promise.all([
-      fetch(DB + '/movements/' + key + '.json', { method: 'DELETE' }),
-      fetch(DB + '/inventory/' + m.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(Math.max(0, restoredQty)) })
-    ]);
-    inventory[m.itemId] = Math.max(0, restoredQty);
+    // 削除時は逆方向に増減（最新値を取得してから計算）
+    const delta = m.type === 'in' ? -m.qty : m.qty;
+    await safeAdjustInventory(m.itemId, delta);
+    await fetch(DB + '/movements/' + key + '.json', { method: 'DELETE' });
     delete movements[key];
     showToast('削除しました');
     renderHistory();
