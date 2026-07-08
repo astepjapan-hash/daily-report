@@ -2218,6 +2218,10 @@ async function openSalaryForm(){
         <span>所得税</span>
         <span><input type="number" id="sal-income-tax" value="${saved.incomeTax||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 円</span>
       </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
+        <span>経費支払い分</span>
+        <span><input type="number" id="sal-expense" value="${saved.expense||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 円</span>
+      </div>
       <div id="salary-preview" style="border-top:1px dashed #e0d8d0;padding-top:10px;font-size:13px"></div>
       <button class="btn-primary" style="margin-top:12px" onclick="saveSalaryData('${month}','${name}')">保存する</button>
     </div>`;
@@ -2230,14 +2234,15 @@ function calcSalary(name){
   const kyukaDays=parseInt(document.getElementById('sal-kyuka')?.value)||0;
   const halfDays=parseInt(document.getElementById('sal-half')?.value)||0;
   const incomeTax=parseInt(document.getElementById('sal-income-tax')?.value)||0;
+  const expense=parseInt(document.getElementById('sal-expense')?.value)||0;
   const paidDays=workDays+kyukaDays;
   const base=paidDays*(p.dailyRate||0);
   const halfAllow=halfDays*(p.halfRate||0);
-  const gross=base+halfAllow+(p.commute||0)+(p.family||0);
+  const gross=base+halfAllow+(p.commute||0)+(p.family||0)+expense;
   const employment=Math.round(gross*6/1000);
   const deductTotal=(p.health||0)+(p.pension||0)+employment+incomeTax+(p.residentTax||0)+(p.union||0);
   const net=gross-deductTotal;
-  return {p,workDays,kyukaDays,halfDays,incomeTax,paidDays,base,halfAllow,gross,employment,deductTotal,net};
+  return {p,workDays,kyukaDays,halfDays,incomeTax,expense,paidDays,base,halfAllow,gross,employment,deductTotal,net};
 }
 
 function updateSalaryPreview(name){
@@ -2249,6 +2254,7 @@ function updateSalaryPreview(name){
     ${c.halfAllow?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>半日手当（${(c.p.halfRate||0).toLocaleString()}円×${c.halfDays}日）</span><b>${c.halfAllow.toLocaleString()}円</b></div>`:''}
     ${c.p.commute?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>通勤手当</span><b>${c.p.commute.toLocaleString()}円</b></div>`:''}
     ${c.p.family?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>家族手当</span><b>${c.p.family.toLocaleString()}円</b></div>`:''}
+    ${c.expense?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>経費支払い分</span><b>${c.expense.toLocaleString()}円</b></div>`:''}
     <div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#e07b4f"><span>支給合計</span><b>${c.gross.toLocaleString()}円</b></div>
     ${c.p.health?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>健康保険</span><span>−${c.p.health.toLocaleString()}円</span></div>`:''}
     ${c.p.pension?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>厚生年金</span><span>−${c.p.pension.toLocaleString()}円</span></div>`:''}
@@ -2262,7 +2268,7 @@ function updateSalaryPreview(name){
 
 async function saveSalaryData(month,name){
   const c=calcSalary(name);
-  const data={workDays:c.workDays,kyukaDays:c.kyukaDays,halfDays:c.halfDays,incomeTax:c.incomeTax};
+  const data={workDays:c.workDays,kyukaDays:c.kyukaDays,halfDays:c.halfDays,incomeTax:c.incomeTax,expense:c.expense};
   try{
     await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     alert('保存しました！');
@@ -2276,14 +2282,15 @@ function calcSalaryFromData(name,d){
   const kyukaDays=d.kyukaDays||0;
   const halfDays=d.halfDays||0;
   const incomeTax=d.incomeTax||0;
+  const expense=d.expense||0;
   const paidDays=workDays+kyukaDays;
   const base=paidDays*(p.dailyRate||0);
   const halfAllow=halfDays*(p.halfRate||0);
-  const gross=base+halfAllow+(p.commute||0)+(p.family||0);
+  const gross=base+halfAllow+(p.commute||0)+(p.family||0)+expense;
   const employment=Math.round(gross*6/1000);
   const deductTotal=(p.health||0)+(p.pension||0)+employment+incomeTax+(p.residentTax||0)+(p.union||0);
   const net=gross-deductTotal;
-  return {p,workDays,kyukaDays,halfDays,incomeTax,paidDays,base,halfAllow,gross,employment,deductTotal,net};
+  return {p,workDays,kyukaDays,halfDays,incomeTax,expense,paidDays,base,halfAllow,gross,employment,deductTotal,net};
 }
 
 async function exportSalaryPdfAll(){
@@ -2330,6 +2337,7 @@ async function exportSalaryPdfAll(){
         ${c.halfAllow?row(`半日手当（${(c.p.halfRate||0).toLocaleString()}円 × ${c.halfDays}日）`,c.halfAllow):''}
         ${c.p.commute?row('通勤手当',c.p.commute):''}
         ${c.p.family?row('家族手当',c.p.family):''}
+        ${c.expense?row('経費支払い分',c.expense):''}
         <tr class="total"><td>支給合計</td><td style="text-align:right">${c.gross.toLocaleString()}円</td></tr>
         <tr class="sec"><td colspan="2">控除</td></tr>
         ${c.p.health?row('健康保険',c.p.health,true):''}
