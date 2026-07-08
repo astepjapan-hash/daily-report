@@ -1481,6 +1481,25 @@ function aggregateSites(){
 }
 
 let siteStaffFilters=[];
+let siteViewMode='company'; // 'company'（会社別）| 'month'（月別）
+let siteSortMode='dateDesc'; // 'dateDesc' | 'dateAsc' | 'name'
+let siteCompanyOrder='count'; // 'count'（件数順）| 'name'（名前順）
+let siteMonthSel='';
+
+function setSiteViewMode(m){
+  siteViewMode=m;
+  document.getElementById('sview-company')?.classList.toggle('active',m==='company');
+  document.getElementById('sview-month')?.classList.toggle('active',m==='month');
+  renderSiteListInner();
+}
+function setSiteSortMode(v){siteSortMode=v;renderSiteListInner();}
+function toggleSiteCompanyOrder(){
+  siteCompanyOrder=siteCompanyOrder==='count'?'name':'count';
+  const b=document.getElementById('site-company-order-btn');
+  if(b)b.textContent=siteCompanyOrder==='count'?'会社: 件数順':'会社: 名前順';
+  renderSiteListInner();
+}
+function changeSiteMonth(m){if(m){siteMonthSel=m;renderSiteListInner();}}
 function toggleSiteStaffFilter(name){
   if(!name){siteStaffFilters=[];}
   else{
@@ -1504,8 +1523,20 @@ function renderSiteList(){
 
   // 検索
   const searchHtml=`<div style="position:sticky;top:56px;z-index:50;background:#f5f0ea;padding-top:2px;margin:0 -20px;padding-left:20px;padding-right:20px">
-  <div style="position:relative;margin-bottom:10px">
-    <input type="text" id="site-search" placeholder="🔍 会社名・現場名で検索" oninput="renderSiteListInner()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+  <div style="position:relative;margin-bottom:8px">
+    <input type="text" id="site-search" placeholder="🔍 会社名・現場名・施工者・年月で検索" oninput="renderSiteListInner()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+  </div>
+  <div class="stats-seg" style="margin-bottom:8px">
+    <button class="stats-seg-btn ${siteViewMode==='company'?'active':''}" id="sview-company" onclick="setSiteViewMode('company')">🏢 会社別</button>
+    <button class="stats-seg-btn ${siteViewMode==='month'?'active':''}" id="sview-month" onclick="setSiteViewMode('month')">📅 月別</button>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+    <select onchange="setSiteSortMode(this.value)" style="flex:1;padding:8px 10px;border-radius:10px;border:1.5px solid #e0d8d0;font-size:12px;font-family:inherit;background:#fff;color:#555">
+      <option value="dateDesc" ${siteSortMode==='dateDesc'?'selected':''}>完了日が新しい順</option>
+      <option value="dateAsc" ${siteSortMode==='dateAsc'?'selected':''}>完了日が古い順</option>
+      <option value="name" ${siteSortMode==='name'?'selected':''}>現場名順</option>
+    </select>
+    <button class="filter-btn" id="site-company-order-btn" onclick="toggleSiteCompanyOrder()" style="padding:8px 12px">${siteCompanyOrder==='count'?'会社: 件数順':'会社: 名前順'}</button>
   </div>
   <div class="filter-row" id="site-staff-filter-row">
     <button class="filter-btn ${siteStaffFilters.length===0?'active':''}" onclick="toggleSiteStaffFilter('')">全員</button>
@@ -1521,46 +1552,97 @@ function renderSiteList(){
 function renderSiteListInner(){
   const el=document.getElementById('site-list-inner');
   if(!el)return;
-  const completed=window._completedSites||[];
   const kw=(document.getElementById('site-search')?.value||'').trim().toLowerCase();
+
+  // 絞り込み（スタッフ・キーワード：会社名/現場名/施工者/完了年月）
+  let list=(window._completedSites||[]).filter(s=>{
+    if(siteStaffFilters.length&&!siteStaffFilters.some(m=>s.workers[m]))return false;
+    if(kw){
+      const hit=(s.company||'').toLowerCase().includes(kw)
+        ||(s.name||'').toLowerCase().includes(kw)
+        ||Object.keys(s.workers).some(w=>w.toLowerCase().includes(kw))
+        ||(s.completedDate||'').includes(kw);
+      if(!hit)return false;
+    }
+    return true;
+  });
+
+  // 月別ビュー：月ナビ＋その月の材料合計
+  let headerHtml='';
+  if(siteViewMode==='month'){
+    const months=[...new Set(list.map(s=>(s.completedDate||'').slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].sort((a,b)=>b.localeCompare(a));
+    if(!months.length){el.innerHTML='<div class="empty">該当する現場がありません</div>';return;}
+    if(!months.includes(siteMonthSel))siteMonthSel=months[0];
+    const idx=months.indexOf(siteMonthSel);
+    const [y,mo]=siteMonthSel.split('-');
+    list=list.filter(s=>(s.completedDate||'').slice(0,7)===siteMonthSel);
+    let pk=0,rk=0,rw=0,tk=0;
+    list.forEach(s=>{pk+=s.primerKg;rk+=s.resinKan;rw+=s.resinWari;tk+=s.topKg;});
+    rk+=Math.floor(rw/10);rw=rw%10;
+    const resinKg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
+    headerHtml=`<div class="month-nav" style="margin-bottom:8px">
+      <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx+1]||''}')" ${!months[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
+      <span class="month-nav-label" style="font-size:15px">${y}年${parseInt(mo)}月 完了 ${list.length}件</span>
+      <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx-1]||''}')" ${!months[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <span class="material-chip">プライマー ${Math.round(pk*10)/10}kg</span>
+      <span class="material-chip">樹脂 ${rk}缶${rw}割（${resinKg}kg）</span>
+      <span class="material-chip">トップ ${Math.round(tk*10)/10}kg</span>
+    </div>`;
+  }
 
   // 会社ごとにグループ化
   const groups={};
-  completed.forEach(s=>{
-    if(siteStaffFilters.length&&!siteStaffFilters.some(m=>s.workers[m]))return;
-    if(kw){
-      const hit=(s.company||'').toLowerCase().includes(kw)||(s.name||'').toLowerCase().includes(kw);
-      if(!hit)return;
-    }
+  list.forEach(s=>{
     if(!groups[s.company])groups[s.company]=[];
     groups[s.company].push(s);
   });
   const FIXED_BOTTOM_ORDER = ['直し','直し是正','手直し','手直し是正'];
   const normalCompanies = Object.keys(groups).filter(c=>!FIXED_BOTTOM_ORDER.includes(c))
-    .sort((a,b)=>groups[b].length-groups[a].length);
+    .sort((a,b)=>siteCompanyOrder==='name'?a.localeCompare(b,'ja'):groups[b].length-groups[a].length);
   const fixedCompanies = FIXED_BOTTOM_ORDER.filter(c=>groups[c]);
   const companies = [...normalCompanies, ...fixedCompanies];
   if(!companies.length){
-    el.innerHTML=kw?'<div class="empty">該当する現場がありません</div>':'<div class="empty">完了した現場がありません</div>';
+    el.innerHTML=headerHtml+(kw?'<div class="empty">該当する現場がありません</div>':'<div class="empty">完了した現場がありません</div>');
     return;
   }
-  const forceOpen=!!kw;
-  el.innerHTML=companies.map(company=>{
-    const items=groups[company].sort((a,b)=>(b.completedDate||'').localeCompare(a.completedDate||''));
+  // 現場の並び順
+  const sortFn=(a,b)=>{
+    if(siteSortMode==='name')return getSiteShort(a.name).localeCompare(getSiteShort(b.name),'ja');
+    if(siteSortMode==='dateAsc')return (a.completedDate||'').localeCompare(b.completedDate||'');
+    return (b.completedDate||'').localeCompare(a.completedDate||'');
+  };
+  const forceOpen=!!kw||siteViewMode==='month';
+  el.innerHTML=headerHtml+companies.map(company=>{
+    const items=groups[company].sort(sortFn);
     const open=forceOpen||_openSiteCompanies[company];
+    // 会社別・日付順・5件以上のときは月見出しを挟む
+    const useMonthHeaders=siteViewMode==='company'&&siteSortMode!=='name'&&items.length>=5;
+    let lastMonth='';
+    const itemsHtml=items.map(s=>{
+      let head='';
+      if(useMonthHeaders){
+        const mo=(s.completedDate||'').slice(0,7);
+        if(mo&&mo!==lastMonth){
+          lastMonth=mo;
+          const [yy,mm]=mo.split('-');
+          head=`<div style="font-size:11px;font-weight:700;color:#c97a1f;margin:10px 2px 6px">── ${yy}年${parseInt(mm)}月 ──</div>`;
+        }
+      }
+      return head+`
+          <div onclick="showSiteDetail('${encodeURIComponent(s.name)}')" style="background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
+            <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}</div>
+            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}</div>
+          </div>`;
+    }).join('');
     return `
     <div style="margin-bottom:10px">
       <div onclick="toggleSiteCompany('${company.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;cursor:pointer;font-weight:700;font-size:15px">
         <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span></span>
         <span class="collapse-arrow ${open?'open':''}">▶</span>
       </div>
-      ${open?`<div style="padding:8px 0 0 8px">
-        ${items.map(s=>`
-          <div onclick="showSiteDetail('${encodeURIComponent(s.name)}')" style="background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
-            <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}</div>
-            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}</div>
-          </div>`).join('')}
-      </div>`:''}
+      ${open?`<div style="padding:8px 0 0 8px">${itemsHtml}</div>`:''}
     </div>`;
   }).join('');
 }
