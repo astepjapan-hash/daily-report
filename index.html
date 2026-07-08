@@ -1364,7 +1364,10 @@ async function deleteReport(key,name,e){
   if(!confirm(name+'の日報を削除しますか？\nこの操作は取り消せません。'))return;
   try{
     await fetch(DB+'/reports/'+key+'.json',{method:'DELETE'});
-    delete reports[key];document.getElementById('badge').textContent=Object.keys(reports).length;renderList();
+    delete reports[key];document.getElementById('badge').textContent=Object.keys(reports).length;
+    renderCalendar();
+    const q=document.getElementById('list-search-input').value.trim();
+    if(q)renderListSearch(q);
   }catch(e){alert('削除に失敗しました。');}
 }
 
