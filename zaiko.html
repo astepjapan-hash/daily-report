@@ -585,7 +585,6 @@ async function init() {
   const moveDateEl = document.getElementById('move-date-top');
   if (moveDateEl) moveDateEl.value = getToday();
   await loadAll();
-buildItemSelect();
   renderStock();
   renderMoveList();
   updateAdminBadge();
@@ -713,7 +712,7 @@ function renderStock() {
       const isEmpty = qty <= 0;
       const cls = isEmpty ? 'empty-stock' : isLow ? 'low' : '';
       const icon = isEmpty ? '❌' : isLow ? '⚠️' : getItemIcon(item.category);
-      html += `<div class="stock-item ${cls}" onclick="quickMove('${item.id}')">
+      html += `<div class="stock-item ${cls}">
         <div class="stock-icon ${cls}">${icon}</div>
         <div class="stock-info">
           <div class="stock-name">${item.name}</div>
@@ -733,14 +732,6 @@ function renderStock() {
 function getItemIcon(cat) {
   const icons = { frp: '🪣', drain: '🔩', tool: '🛠', consume: '📦' };
   return icons[cat] || '📦';
-}
-
-function quickMove(itemId) {
-  const item = ITEMS_MASTER.find(i => i.id === itemId);
-  if (!item) return;
-  document.getElementById('move-item').value = itemId;
-  document.getElementById('move-unit-label').textContent = item.unit;
-  showView('move');
 }
 
 // ── 入出庫 ──
@@ -1137,51 +1128,6 @@ async function submitItemMove() {
     document.getElementById('in-step2').style.display = 'none';
     renderMoveList();
   } catch(e) { alert('登録に失敗しました。'); }
-}
-
-function buildItemSelect() {
-  const sel = document.getElementById('move-item');
-  const cats = ['frp', 'sub', 'drain', 'tool', 'consume'];
-  cats.forEach(cat => {
-    const group = document.createElement('optgroup');
-    group.label = CAT_LABELS[cat];
-    ITEMS_MASTER.filter(i => i.category === cat).forEach(item => {
-      const opt = document.createElement('option');
-      opt.value = item.id;
-      opt.textContent = `${item.name}（現在: ${getQty(item.id)}${item.unit}）`;
-      group.appendChild(opt);
-    });
-    sel.appendChild(group);
-  });
-}
-
-function refreshItemSelect() {
-  const sel = document.getElementById('move-item');
-  const current = sel.value;
-  while (sel.options.length > 1) sel.remove(1);
-  buildItemSelectInner(sel);
-  sel.value = current;
-}
-
-function buildItemSelectInner(sel) {
-  const cats = ['frp', 'sub', 'drain', 'tool', 'consume'];
-  cats.forEach(cat => {
-    const group = document.createElement('optgroup');
-    group.label = CAT_LABELS[cat];
-    ITEMS_MASTER.filter(i => i.category === cat).forEach(item => {
-      const opt = document.createElement('option');
-      opt.value = item.id;
-      opt.textContent = `${item.name}（現在: ${getQty(item.id)}${item.unit}）`;
-      group.appendChild(opt);
-    });
-    sel.appendChild(group);
-  });
-}
-
-function onItemChange() {
-  const id = document.getElementById('move-item').value;
-  const item = ITEMS_MASTER.find(i => i.id === id);
-  document.getElementById('move-unit-label').textContent = item ? item.unit : '―';
 }
 
 // ── 一括持ち出し ──
