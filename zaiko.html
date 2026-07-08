@@ -656,6 +656,20 @@ function getQty(itemId) {
   return parseFloat(inventory[itemId]) || 0;
 }
 
+// Firebaseから最新の在庫値を取得してから増減させる（同時操作対策）
+async function safeAdjustInventory(itemId, delta) {
+  const res = await fetch(DB + '/inventory/' + itemId + '.json');
+  const latestQty = parseFloat(await res.json()) || 0;
+  const newQty = Math.max(0, latestQty + delta);
+  await fetch(DB + '/inventory/' + itemId + '.json', {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(newQty)
+  });
+  inventory[itemId] = newQty;
+  return newQty;
+}
+
 function renderStock() {
   buildCatFilter();
   let items = catFilter === 'all' ? ITEMS_MASTER : ITEMS_MASTER.filter(i => i.category === catFilter);
@@ -999,18 +1013,13 @@ async function submitBulkOut() {
   if (!staff || !date) { alert('スタッフと日付を確認してください'); return; }
   if (!confirmEntries.length) { alert('品目がありません'); return; }
 
-  const promises = [];
-  confirmEntries.forEach(entry => {
-    const currentQty = getQty(entry.itemId);
-    const newQty = Math.max(0, currentQty - entry.qty);
-    const movement = { type: 'out', itemId: entry.itemId, itemName: entry.itemName, unit: entry.unit, qty: entry.qty, staff, date, note: '', createdAt: Date.now() };
-    inventory[entry.itemId] = newQty;
-    promises.push(fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) }));
-    promises.push(fetch(DB + '/inventory/' + entry.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newQty) }));
-  });
-
   try {
-    await Promise.all(promises);
+    // 品目ごとに「最新値を取得→更新」を順番に実行（同時操作対策）
+    for (const entry of confirmEntries) {
+      await safeAdjustInventory(entry.itemId, -entry.qty);
+      const movement = { type: 'out', itemId: entry.itemId, itemName: entry.itemName, unit: entry.unit, qty: entry.qty, staff, date, note: '', createdAt: Date.now() };
+      await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+    }
     showToast('📤 ' + confirmEntries.length + '品目を登録しました！');
     confirmEntries = [];
     outQtyMap = {};
@@ -1117,14 +1126,11 @@ async function submitItemMove() {
   }
 
   const movement = { type: moveType, itemId: currentItemId, itemName: item.name, unit: item.unit, qty, staff, date, note, createdAt: Date.now() };
-  const newQty = moveType === 'in' ? currentQty + qty : currentQty - qty;
+  const delta = moveType === 'in' ? qty : -qty;
 
   try {
-    await Promise.all([
-      fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) }),
-      fetch(DB + '/inventory/' + currentItemId + '.json', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(Math.max(0, newQty)) })
-    ]);
-    inventory[currentItemId] = Math.max(0, newQty);
+    await safeAdjustInventory(currentItemId, delta);
+    await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) });
     closeItemMoveModal();
     showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
     document.getElementById('in-step1').style.display = 'block';
@@ -1268,17 +1274,12 @@ async function submitBulk() {
 
   if (!entries.length) { alert('数量を1つ以上入力してください'); return; }
 
-  const promises = [];
-  entries.forEach(({ item, qty }) => {
-    const movement = { type: 'out', itemId: item.id, itemName: item.name, unit: item.unit, qty, staff, date, note: '一括持ち出し', createdAt: Date.now() };
-    const newQty = Math.max(0, getQty(item.id) - qty);
-    inventory[item.id] = newQty;
-    promises.push(fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) }));
-    promises.push(fetch(DB + '/inventory/' + item.id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newQty) }));
-  });
-
   try {
-    await Promise.all(promises);
+    for (const { item, qty } of entries) {
+      await safeAdjustInventory(item.id, -qty);
+      const movement = { type: 'out', itemId: item.id, itemName: item.name, unit: item.unit, qty, staff, date, note: '一括持ち出し', createdAt: Date.now() };
+      await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+    }
     closeBulkModal();
     showToast(`📤 ${entries.length}品目を一括登録しました！`);
     await loadAll();
