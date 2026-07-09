@@ -1614,7 +1614,7 @@ function renderSiteListInner(){
     if(siteSortMode==='dateAsc')return (a.completedDate||'').localeCompare(b.completedDate||'');
     return (b.completedDate||'').localeCompare(a.completedDate||'');
   };
-  const forceOpen=!!kw||siteViewMode==='month';
+  const forceOpen=!!kw;
   el.innerHTML=headerHtml+companies.map(company=>{
     const items=groups[company].sort(sortFn);
     const open=forceOpen||_openSiteCompanies[company];
@@ -1637,13 +1637,26 @@ function renderSiteListInner(){
             <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}</div>
           </div>`;
     }).join('');
+    // 月別ビュー：会社ごとの材料合計（その月に完了した現場の累計）
+    let matHtml='';
+    if(siteViewMode==='month'&&open){
+      let pk=0,rk=0,rw=0,tk=0;
+      items.forEach(s=>{pk+=s.primerKg;rk+=s.resinKan;rw+=s.resinWari;tk+=s.topKg;});
+      rk+=Math.floor(rw/10);rw=rw%10;
+      const rkg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
+      matHtml=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 8px 2px">
+        <span class="material-chip" style="font-size:11px;padding:3px 8px">プライマー ${Math.round(pk*10)/10}kg</span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px">樹脂 ${rk}缶${rw}割（${rkg}kg）</span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px">トップ ${Math.round(tk*10)/10}kg</span>
+      </div>`;
+    }
     return `
     <div style="margin-bottom:10px">
       <div onclick="toggleSiteCompany('${company.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;cursor:pointer;font-weight:700;font-size:15px">
         <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span></span>
         <span class="collapse-arrow ${open?'open':''}">▶</span>
       </div>
-      ${open?`<div style="padding:8px 0 0 8px">${itemsHtml}</div>`:''}
+      ${open?`<div style="padding:8px 0 0 8px">${matHtml}${itemsHtml}</div>`:''}
     </div>`;
   }).join('');
 }
