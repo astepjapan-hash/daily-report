@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Astep">
@@ -396,6 +396,12 @@ label.lbl { display: block; font-weight: 600; font-size: 14px; color: #2d2a26; m
 #view-zaiko .cat-consume { background: #e8fdf0; color: #1a7a42; }
 #view-zaiko .cat-drain { background: #fdf4e8; color: #a05010; }
 #view-zaiko .cat-other { background: #f0ede8; color: #666; }
+
+/* ピンチズーム有効化にともなう誤操作防止:
+   ボタン・入力欄のダブルタップで画面がズームしないようにする（ピンチ拡大縮小は全画面で有効） */
+button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-seg-btn, .month-nav-btn, .collapse-arrow, .cal-day, .weather-btn {
+  touch-action: manipulation;
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -1431,7 +1437,7 @@ function renderListSearch(q){
         <div style="cursor:pointer" onclick="showDetail('${key}')">
           <div class="report-card-top"><span class="report-date">${hl(r.dateLabel||r.date,q)}</span><span>${WEATHERS[r.weather]||''}</span></div>
           <div class="report-name">${hl(r.staffName,q)}</div>
-          <div class="report-sites" style="padding-right:40px">📍 ${r.sites?.map(s=>hl(s.name,q)).join('　')||''}</div>
+          <div class="report-sites" style="padding-right:40px">${r.sites?.map(s=>siteLineHtml(s,hl(s.name,q))).join('')||''}</div>
           <span class="report-arrow">›</span>
         </div>
         <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
@@ -1517,6 +1523,12 @@ function selectCalDate(dateStr){
   renderCalendar();
 }
 
+function siteLineHtml(s, nameHtml){
+  const hasTime = s.timeIn || s.timeOut;
+  const t = hasTime ? `<span style="color:#8a97a8;font-size:12px;font-weight:400;white-space:nowrap">🕐 ${s.timeIn||'--:--'}〜${s.timeOut||'--:--'}</span>` : '';
+  return `<div style="margin-bottom:3px">📍 ${nameHtml}${t?'　'+t:''}</div>`;
+}
+
 function renderDayReports(dateStr){
   const content=document.getElementById('cal-day-content');
   const list=Object.entries(reports).filter(([,r])=>r.date===dateStr).sort((a,b)=>b[1].createdAt-a[1].createdAt);
@@ -1560,7 +1572,7 @@ function renderDayReports(dateStr){
     <div class="report-card">
       <div style="cursor:pointer" onclick="showDetail('${key}')">
         <div class="report-card-top"><span class="report-date">${r.staffName}${hasNote?'<span style="margin-left:6px;background:#fff0d8;color:#c97a1f;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">📝 備考あり</span>':''}</span><span>${WEATHERS[r.weather]||''}</span></div>
-        <div class="report-sites" style="padding-right:40px">📍 ${r.sites.map(s=>s.name).join('　')}</div>
+        <div class="report-sites" style="padding-right:40px">${r.sites.map(s=>siteLineHtml(s,s.name)).join('')}</div>
         <span class="report-arrow">›</span>
       </div>
       <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
