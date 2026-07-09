@@ -2223,7 +2223,9 @@ function renderTotalStats(){
         const ml=filtered.filter(([,r])=>r.staffName===m);
         return statsRowHtml(m,ml.length,calcTotals(ml));
       }).join('')||'<div class="empty">データなし</div>'}
-    </div>`:''}`;
+    </div>`:''}
+    <div id="tsukiawase-card"></div>`;
+  renderTsukiawase(from,to);
 }
 
 function changeMonth(m){if(m){statsMonth=m;renderStats();}}
@@ -3328,6 +3330,78 @@ function showDetail(key){
   showView('detail');
 }
 
+
+// ══════════ 使用量と出庫量の突き合わせ ══════════
+const TSUKIAWASE_START='2026-07-10'; // 運用開始日（これ以降のデータのみ比較対象）
+const TSUKI_CATS=[
+  {label:'プライマー系', ids:['primer','primer_r','primer_x','primer3']},
+  {label:'樹脂系', ids:['resin','resin3']},
+  {label:'トップ系', ids:['top','ivory3','gray3']},
+];
+let _tsukiMovements=null,_tsukiFetchedAt=0;
+async function renderTsukiawase(from,to){
+  const el=document.getElementById('tsukiawase-card');
+  if(!el)return;
+  // 比較期間: 指定範囲と運用開始日(TSUKIAWASE_START)の重なり
+  const start=(from&&from>TSUKIAWASE_START)?from:TSUKIAWASE_START;
+  const end=to||'9999-12-31';
+  if(end<start){el.innerHTML='';return;}
+  try{
+    if(!_tsukiMovements||Date.now()-_tsukiFetchedAt>60000){
+      const res=await fetch(DB+'/movements.json');
+      _tsukiMovements=await res.json()||{};
+      _tsukiFetchedAt=Date.now();
+    }
+  }catch(e){el.innerHTML='';return;}
+  const inRange=d=>d>=start&&d<=end;
+  const staffOk=name=>totalStaffFilters.length===0||totalStaffFilters.includes(name);
+  // 在庫出庫（缶）: カテゴリ別に合算
+  const out={};TSUKI_CATS.forEach(c=>out[c.label]=0);
+  Object.values(_tsukiMovements).forEach(mv=>{
+    if(!mv||mv.type!=='out')return;
+    if(!inRange(mv.date||''))return;
+    if(!staffOk(mv.staff||''))return;
+    for(const c of TSUKI_CATS){if(c.ids.includes(mv.itemId)){out[c.label]+=Number(mv.qty)||0;break;}}
+  });
+  // 日報使用（kg→缶換算）
+  let pk=0,rKan=0,rWari=0,tk=0;
+  Object.values(reports).forEach(r=>{
+    if(!inRange(r.date||''))return;
+    if(!staffOk(r.staffName||''))return;
+    (r.sites||[]).forEach(s=>{pk+=Number(s.primerKg)||0;rKan+=Number(s.resinKan)||0;rWari+=Number(s.resinWari)||0;tk+=Number(s.topKg)||0;});
+  });
+  const use={
+    'プライマー系':pk/KAN_KG.primerKg,
+    '樹脂系':rKan+rWari/10,
+    'トップ系':tk/KAN_KG.topKg,
+  };
+  const rows=TSUKI_CATS.map(c=>{
+    const u=Math.round(use[c.label]*10)/10;
+    const o=Math.round(out[c.label]*10)/10;
+    const diff=Math.round((u-o)*10)/10;
+    return {label:c.label,u,o,diff,warn:Math.abs(diff)>1};
+  });
+  const warns=rows.filter(r=>r.warn);
+  const clipped=(!from||from<TSUKIAWASE_START);
+  const label=`${start} 〜 ${to||'今日'}`;
+  el.innerHTML=`<div style="margin-top:16px">
+    <div class="section-title">⚖️ 出庫との突き合わせ</div>
+    <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px">
+      <div style="font-size:11px;color:#aaa;margin-bottom:8px">${label} の日報使用量と在庫出庫量を缶数で比較（差1缶超で⚠️）</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <tr style="color:#aaa;font-size:11px"><td></td><td style="text-align:right;padding:2px 0">日報使用</td><td style="text-align:right;padding:2px 0">在庫出庫</td><td style="text-align:right;padding:2px 0">差</td></tr>
+        ${rows.map(r=>`<tr style="border-top:1px solid #f0ebe4">
+          <td style="padding:8px 0;font-weight:700;color:#2d2a26">${r.label}</td>
+          <td style="text-align:right;color:#555">${r.u}缶</td>
+          <td style="text-align:right;color:#555">${r.o}缶</td>
+          <td style="text-align:right;font-weight:700;color:${r.warn?'#c0392b':'#5a8a5a'}">${r.diff>0?'+':''}${r.diff} ${r.warn?'⚠️':'✅'}</td>
+        </tr>`).join('')}
+      </table>
+      ${warns.length?`<div style="background:#fdf3e7;color:#a4610f;border-radius:8px;padding:9px 11px;margin-top:10px;font-size:11px;line-height:1.6">⚠️ ${warns.map(w=>w.label).join('・')}がズレています。日報の書き漏れ、または出庫の登録漏れの可能性があります。<br><span style="opacity:0.75">※期間またぎの持ち出しや積み置き分でも多少のズレは出ます</span></div>`:''}
+      ${clipped?`<div style="font-size:10px;color:#b5aca0;margin-top:8px">※ 突き合わせは2026年7月10日以降のデータが対象です</div>`:''}
+    </div>
+  </div>`;
+}
 
 // ══════════ 在庫アプリ統合グルー ══════════
 let _zaikoInited = false;
