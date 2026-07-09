@@ -1597,9 +1597,9 @@ function renderSiteListInner(){
       <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx-1]||''}')" ${!months[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-      <span class="material-chip">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}（${Math.round(pk*10)/10}kg）</span>
-      <span class="material-chip">樹脂 ${rk}缶${rw}割（${resinKg}kg）</span>
-      <span class="material-chip">トップ ${kgToKanText(tk,KAN_KG.topKg)}（${Math.round(tk*10)/10}kg）</span>
+      <span class="material-chip" style="text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
+      <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
+      <span class="material-chip" style="text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
     </div>`;
   }
 
@@ -1655,9 +1655,9 @@ function renderSiteListInner(){
       rk+=Math.floor(rw/10);rw=rw%10;
       const rkg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
       matHtml=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 8px 2px">
-        <span class="material-chip" style="font-size:11px;padding:3px 8px">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}（${Math.round(pk*10)/10}kg）</span>
-        <span class="material-chip" style="font-size:11px;padding:3px 8px">樹脂 ${rk}缶${rw}割（${rkg}kg）</span>
-        <span class="material-chip" style="font-size:11px;padding:3px 8px">トップ ${kgToKanText(tk,KAN_KG.topKg)}（${Math.round(tk*10)/10}kg）</span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${rkg}kg</span></span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
       </div>`;
     }
     return `
@@ -1698,9 +1698,9 @@ function showSiteDetail(nameEnc){
 
       <div class="detail-section-label">🧪 材料使用量（合計）</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-        <span class="material-chip">プライマー ${kgToKanText(s.primerKg,KAN_KG.primerKg)}（${Math.round(s.primerKg*10)/10}kg）</span>
-        <span class="material-chip">樹脂 ${s.resinKan}缶${s.resinWari}割（${resinKg}kg）</span>
-        <span class="material-chip">トップ ${kgToKanText(s.topKg,KAN_KG.topKg)}（${Math.round(s.topKg*10)/10}kg）</span>
+        <span class="material-chip" style="text-align:center">プライマー ${kgToKanText(s.primerKg,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(s.primerKg*10)/10}kg</span></span>
+        <span class="material-chip" style="text-align:center">樹脂 ${s.resinKan}缶${s.resinWari}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
+        <span class="material-chip" style="text-align:center">トップ ${kgToKanText(s.topKg,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(s.topKg*10)/10}kg</span></span>
       </div>
 
       <div class="detail-section-label">🌡️ 下地状況</div>
