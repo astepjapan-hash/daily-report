@@ -288,8 +288,8 @@ textarea { resize: vertical; }
     <div class="tabs">
       <button class="tab active" id="tab-list" onclick="showView('list')">一覧<span class="badge" id="badge">0</span></button>
       <button class="tab" id="tab-form" onclick="showView('form')">入力</button>
-      <button class="tab" id="tab-guide" onclick="showView('guide')">案内図</button>
       <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
+      <button class="tab" id="tab-guide" onclick="showView('guide')">案内図</button>
       <button class="tab" id="tab-kyuka" onclick="showView('kyuka')">有給</button>
       <button class="tab" id="tab-admin" onclick="showView('admin')">管理<span id="admin-badge" style="display:none;background:#e07b4f;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:3px;vertical-align:middle"></span></button>
     </div>
@@ -1482,7 +1482,7 @@ function aggregateSites(){
 }
 
 let siteStaffFilters=[];
-let siteViewMode='company'; // 'company'（会社別）| 'month'（月別）
+let siteViewMode='month'; // 'month'（月別）| 'company'（会社別）
 let siteSortMode='dateDesc'; // 'dateDesc' | 'dateAsc' | 'name'
 let siteCompanyOrder='count'; // 'count'（件数順）| 'name'（名前順）
 let siteMonthSel='';
@@ -1528,8 +1528,8 @@ function renderSiteList(){
     <input type="text" id="site-search" placeholder="🔍 会社名・現場名・施工者・年月で検索" oninput="renderSiteListInner()" style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
   </div>
   <div class="stats-seg" style="margin-bottom:8px">
-    <button class="stats-seg-btn ${siteViewMode==='company'?'active':''}" id="sview-company" onclick="setSiteViewMode('company')">🏢 会社別</button>
     <button class="stats-seg-btn ${siteViewMode==='month'?'active':''}" id="sview-month" onclick="setSiteViewMode('month')">📅 月別</button>
+    <button class="stats-seg-btn ${siteViewMode==='company'?'active':''}" id="sview-company" onclick="setSiteViewMode('company')">🏢 会社別</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
     <select onchange="setSiteSortMode(this.value)" style="flex:1;padding:8px 10px;border-radius:10px;border:1.5px solid #e0d8d0;font-size:12px;font-family:inherit;background:#fff;color:#555">
