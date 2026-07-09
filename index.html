@@ -746,6 +746,16 @@ let siteMeta={};
 let siteAliases={};
 const GUIDE_COMPANIES = []; // 固定会社リスト（変更可）
 
+function kgToKanText(kg, kanKg){
+  if(!kg||kg===0)return '0缶';
+  const total=Math.round(kg/kanKg*10);
+  const kan=Math.floor(total/10);
+  const wari=total%10;
+  if(kan===0)return `${wari}割`;
+  if(wari===0)return `${kan}缶`;
+  return `${kan}缶${wari}割`;
+}
+
 function kgToKanWari(kg, kanKg){
   if(!kg||kg===0)return '0';
   const total=Math.round(kg/kanKg*10);
@@ -1587,9 +1597,9 @@ function renderSiteListInner(){
       <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx-1]||''}')" ${!months[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-      <span class="material-chip">プライマー ${Math.round(pk*10)/10}kg</span>
+      <span class="material-chip">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}（${Math.round(pk*10)/10}kg）</span>
       <span class="material-chip">樹脂 ${rk}缶${rw}割（${resinKg}kg）</span>
-      <span class="material-chip">トップ ${Math.round(tk*10)/10}kg</span>
+      <span class="material-chip">トップ ${kgToKanText(tk,KAN_KG.topKg)}（${Math.round(tk*10)/10}kg）</span>
     </div>`;
   }
 
@@ -1645,9 +1655,9 @@ function renderSiteListInner(){
       rk+=Math.floor(rw/10);rw=rw%10;
       const rkg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
       matHtml=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 8px 2px">
-        <span class="material-chip" style="font-size:11px;padding:3px 8px">プライマー ${Math.round(pk*10)/10}kg</span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}（${Math.round(pk*10)/10}kg）</span>
         <span class="material-chip" style="font-size:11px;padding:3px 8px">樹脂 ${rk}缶${rw}割（${rkg}kg）</span>
-        <span class="material-chip" style="font-size:11px;padding:3px 8px">トップ ${Math.round(tk*10)/10}kg</span>
+        <span class="material-chip" style="font-size:11px;padding:3px 8px">トップ ${kgToKanText(tk,KAN_KG.topKg)}（${Math.round(tk*10)/10}kg）</span>
       </div>`;
     }
     return `
@@ -1688,9 +1698,9 @@ function showSiteDetail(nameEnc){
 
       <div class="detail-section-label">🧪 材料使用量（合計）</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-        <span class="material-chip">プライマー ${Math.round(s.primerKg*10)/10}kg</span>
+        <span class="material-chip">プライマー ${kgToKanText(s.primerKg,KAN_KG.primerKg)}（${Math.round(s.primerKg*10)/10}kg）</span>
         <span class="material-chip">樹脂 ${s.resinKan}缶${s.resinWari}割（${resinKg}kg）</span>
-        <span class="material-chip">トップ ${Math.round(s.topKg*10)/10}kg</span>
+        <span class="material-chip">トップ ${kgToKanText(s.topKg,KAN_KG.topKg)}（${Math.round(s.topKg*10)/10}kg）</span>
       </div>
 
       <div class="detail-section-label">🌡️ 下地状況</div>
