@@ -2018,6 +2018,7 @@ function renderSiteListInner(){
       <span class="material-chip" style="text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
       <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
       <span class="material-chip" style="text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
+      ${(()=>{const a=list.reduce((sum,s)=>sum+(parseFloat(siteMeta[s.name]?.area)||0),0);const miss=list.filter(s=>!(parseFloat(siteMeta[s.name]?.area)>0)).length;return `<span class="material-chip" style="text-align:center">数量 ${Math.round(a*10)/10}㎡${miss?`<br><span style="font-size:10px;color:#c49a6a;font-weight:500">未入力${miss}件</span>`:`<br><span style="font-size:10px;color:#7d967d;font-weight:500">${list.length}現場</span>`}</span>`;})()}
     </div>`;
   }
 
@@ -2062,7 +2063,7 @@ function renderSiteListInner(){
       return head+`
           <div onclick="showSiteDetail('${encodeURIComponent(s.name)}')" style="background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
             <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}</div>
-            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}</div>
+            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}${parseFloat(siteMeta[s.name]?.area)>0?`　<span style="color:#7d967d;font-weight:700">📐 ${siteMeta[s.name].area}㎡</span>`:''}</div>
           </div>`;
     }).join('');
     // 月別ビュー：会社ごとの材料合計（その月に完了した現場の累計）
@@ -2076,6 +2077,7 @@ function renderSiteListInner(){
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${rkg}kg</span></span>
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
+        ${(()=>{const a=items.reduce((sum,s)=>sum+(parseFloat(siteMeta[s.name]?.area)||0),0);const miss=items.filter(s=>!(parseFloat(siteMeta[s.name]?.area)>0)).length;return `<span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">数量 ${Math.round(a*10)/10}㎡${miss?`<br><span style="font-size:10px;color:#c49a6a;font-weight:500">未入力${miss}件</span>`:''}</span>`;})()}
       </div>`;
     }
     return `
