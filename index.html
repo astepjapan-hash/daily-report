@@ -2546,7 +2546,7 @@ async function renderAdminContent(){
       <div class="page-sub">作業状況・有給承認</div>
 
       <div class="export-section">
-        <div class="export-title">📊 Excelで出力</div>
+        <div class="export-title">📄 PDFで出力</div>
         <div class="export-row">
           <span class="export-label">対象月</span>
           <select class="export-select" id="export-month">${
@@ -2557,7 +2557,7 @@ async function renderAdminContent(){
             }).join('')
           }</select>
         </div>
-        <button class="btn-excel" onclick="exportExcel()">📥 Excelをダウンロード</button>
+        <button class="btn-excel" onclick="exportExcel()">📄 PDFで出力</button>
       </div>
 
       <div class="section-title">作業時間・作業日数</div>
@@ -3115,13 +3115,13 @@ function exportExcel(){
     kyukaData.push([l.staffName,l.date,l.reason||'',l.status==='approved'?'承認済':l.status==='rejected'?'却下':'申請中']);
   });
 
-  // Excelブック作成
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(kintaiData),'勤怠');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(materialData),'材料使用量');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(genbaData),'現場・工程');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(kyukaData),'有給履歴');
-  XLSX.writeFile(wb,`日報_${label}.xlsx`);
+  // PDF出力（印刷ビュー）
+  const inner=`<h1>日報 月次レポート</h1><div class="sub">${label}</div>
+    <h2>勤怠（作業日数・作業時間）</h2>${pdfTableHtml(kintaiData)}
+    <h2>材料使用量</h2>${pdfTableHtml(materialData)}
+    <h2>現場・工程</h2>${pdfTableHtml(genbaData)}
+    <h2>有給取得履歴</h2>${pdfTableHtml(kyukaData)}`;
+  openPdfWindow(`日報_${label}`, inner);
 }
 
 async function submitYasumi(){
@@ -3475,6 +3475,35 @@ async function renderTsukiawase(from,to){
       ${clipped?`<div style="font-size:10px;color:#b5aca0;margin-top:8px">※ 突き合わせは2026年7月10日以降のデータが対象です</div>`:''}
     </div>
   </div>`;
+}
+
+// ══════════ PDF出力の共通部品（印刷ビュー方式） ══════════
+function openPdfWindow(title, inner){
+  const pw=window.open('','_blank');
+  if(!pw){alert('ポップアップがブロックされました。ブラウザの設定で許可してください。');return;}
+  pw.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+  <style>
+    body{font-family:'Hiragino Sans','Yu Gothic',sans-serif;margin:24px;color:#222}
+    h1{font-size:20px;margin:0 0 2px}
+    h2{font-size:15px;margin:22px 0 8px;border-left:4px solid #e07b4f;padding-left:8px}
+    table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:8px}
+    th,td{border:1px solid #bbb;padding:5px 8px;text-align:left}
+    th{background:#f5f0ea}
+    .sub{color:#888;font-size:12px;margin-bottom:14px}
+    .no-print{margin:18px 0}
+    @media print{.no-print{display:none}body{margin:8mm}h2{page-break-after:avoid}tr{page-break-inside:avoid}}
+  </style></head><body>
+  ${inner}
+  <div class="no-print" style="text-align:center">
+    <button onclick="window.print()" style="padding:12px 32px;background:#e07b4f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">🖨 印刷 / PDFに保存</button>
+  </div>
+  </body></html>`);
+  pw.document.close();
+}
+function pdfTableHtml(aoa){
+  return '<table><tr>'+aoa[0].map(h=>'<th>'+h+'</th>').join('')+'</tr>'+
+    aoa.slice(1).map(row=>'<tr>'+row.map(c=>'<td>'+(c===0?0:(c??''))+'</td>').join('')+'</tr>').join('')+
+    '</table>'+(aoa.length===1?'<div class="sub">データなし</div>':'');
 }
 
 // ══════════ 加工・小分け（品目の変換） ══════════
@@ -4834,12 +4863,11 @@ function renderTableStats() {
   el.innerHTML = `
     ${tableHtml}
     <div style="margin-top:12px">
-      <button class="btn-primary" onclick="exportTableExcel('${zkStatsMonth}','${moveType}')">📥 Excelで出力</button>
+      <button class="btn-primary" onclick="exportTableExcel('${zkStatsMonth}','${moveType}')">📄 PDFで出力</button>
     </div>`;
 }
 
 async function exportTableExcel(month, moveType = 'out') {
-  if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリが読み込まれていません'); return; }
   const [y, mo] = month.split('-');
   const label = y + '年' + parseInt(mo) + '月';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
@@ -4863,9 +4891,8 @@ async function exportTableExcel(month, moveType = 'out') {
     const d = byItemStaff[item.id];
     data.push([item.name, d.staff['加藤瑞樹']||'', d.staff['山内浩一']||'', d.staff['森田義則']||'', d.staff['富山裕貴']||'', d.total||'']);
   });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), label+typeLabel+'表');
-  XLSX.writeFile(wb, typeLabel+'表_'+label+'.xlsx');
+  const inner='<h1>'+typeLabel+'表</h1><div class="sub">'+label+'</div>'+pdfTableHtml(data);
+  openPdfWindow(typeLabel+'表_'+label, inner);
 }
 
 function zkSetStatsSeg(seg) {
