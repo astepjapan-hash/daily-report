@@ -3420,11 +3420,18 @@ async function renderTsukiawase(from,to){
 // ══════════ 在庫アプリ統合グルー ══════════
 let _zaikoInited = false;
 let currentZkView = 'move';
-function enterZaiko(){
+let _zkLastLoad = 0;
+async function enterZaiko(){
   if(!_zaikoInited){
     _zaikoInited = true;
-    zkInit();
+    await zkInit();
+    _zkLastLoad = Date.now();
   }else{
+    // タブを開くたびに最新データを再読込（他の端末での操作を反映）
+    if(Date.now() - _zkLastLoad > 15000){
+      await loadAll();
+      _zkLastLoad = Date.now();
+    }
     zkShowView(currentZkView);
   }
 }
@@ -3745,11 +3752,17 @@ function selectMoveType(t) {
   renderMoveList();
 }
 
-function goToMoveList(t) {
+async function goToMoveList(t) {
   const staff = document.getElementById('move-staff-top').value;
   const date = document.getElementById('move-date-top').value;
   if (!staff) { alert('スタッフを選択してください'); return; }
   if (!date) { alert('日付を入力してください'); return; }
+  // 操作開始前に在庫を最新化（表示と実データのズレ防止）
+  try{
+    const invRes = await fetch(DB + '/inventory.json');
+    inventory = await invRes.json() || {};
+    _zkLastLoad = Date.now();
+  }catch(e){}
   moveType = t;
   document.getElementById('move-step1').style.display = 'none';
   document.getElementById('move-step2').style.display = 'block';
@@ -3994,11 +4007,13 @@ function confirmAddItem() {
 }
 
 async function submitBulkOut() {
+  if (window._zkBusy) return; 
   const staff = document.getElementById('move-staff-top').value;
   const date = document.getElementById('move-date-top').value;
   if (!staff || !date) { alert('スタッフと日付を確認してください'); return; }
   if (!confirmEntries.length) { alert('品目がありません'); return; }
 
+  window._zkBusy = true;
   try {
     // 品目ごとに「最新値を取得→更新」を順番に実行（同時操作対策）
     for (const entry of confirmEntries) {
@@ -4017,6 +4032,7 @@ async function submitBulkOut() {
     document.getElementById('move-staff-top').value = '';
     document.getElementById('move-date-top').value = getToday();
   } catch(e) { alert('登録に失敗しました。'); }
+  finally { window._zkBusy = false; }
 }
 
 function openItemMoveModal(itemId) {
@@ -4094,6 +4110,7 @@ function changeQty(delta) {
 }
 
 async function submitItemMove() {
+  if (window._zkBusy) return; 
   const staff = document.getElementById('move-staff-top').value;
   const date = document.getElementById('move-date-top').value;
   const qty = parseFloat(document.getElementById('item-move-qty').value);
@@ -4114,6 +4131,7 @@ async function submitItemMove() {
   const movement = { type: moveType, itemId: currentItemId, itemName: item.name, unit: item.unit, qty, staff, date, note, createdAt: Date.now() };
   const delta = moveType === 'in' ? qty : -qty;
 
+  window._zkBusy = true;
   try {
     await safeAdjustInventory(currentItemId, delta);
     await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) });
@@ -4123,6 +4141,7 @@ async function submitItemMove() {
     document.getElementById('in-step2').style.display = 'none';
     renderMoveList();
   } catch(e) { alert('登録に失敗しました。'); }
+  finally { window._zkBusy = false; }
 }
 
 // ── 一括持ち出し ──
@@ -4145,6 +4164,7 @@ function closeBulkModal() {
 }
 
 async function submitBulk() {
+  if (window._zkBusy) return; 
   const staff = document.getElementById('bulk-staff').value;
   const date = document.getElementById('bulk-date').value;
   if (!staff) { alert('スタッフを選択してください'); return; }
@@ -4157,6 +4177,7 @@ async function submitBulk() {
 
   if (!entries.length) { alert('数量を1つ以上入力してください'); return; }
 
+  window._zkBusy = true;
   try {
     for (const { item, qty } of entries) {
       await safeAdjustInventory(item.id, -qty);
@@ -4168,6 +4189,7 @@ async function submitBulk() {
     await loadAll();
     renderStock();
   } catch(e) { alert('登録に失敗しました。'); }
+  finally { window._zkBusy = false; }
 }
 
 // ── 履歴 ──
@@ -4445,10 +4467,12 @@ function renderHistory() {
 }
 
 async function deleteMovement(key, e) {
+  if (window._zkBusy) return; 
   e.stopPropagation();
   const m = movements[key];
   if (!m) return;
   if (!confirm(`「${m.itemName}」の${m.type === 'in' ? '入庫' : '持ち出し'}記録を削除しますか？\n在庫数も元に戻ります。`)) return;
+  window._zkBusy = true;
   try {
     // 削除時は逆方向に増減（最新値を取得してから計算）
     const delta = m.type === 'in' ? -m.qty : m.qty;
@@ -4458,6 +4482,7 @@ async function deleteMovement(key, e) {
     showToast('削除しました');
     renderHistory();
   } catch(e) { alert('削除に失敗しました。'); }
+  finally { window._zkBusy = false; }
 }
 
 // ── 集計 ──
@@ -4664,6 +4689,8 @@ function changeStatsMonth(m) { if (m) { zkStatsMonth = m; zkRenderStats(); } }
 
 // ── 管理 ──
 function zkShowAdmin() {
+  // 前回の編集途中の値を持ち越さない（古い値での上書き保存を防止）
+  adminQtyMap = {}; adminAlertMap = {};
   const el = document.getElementById('zk-admin-content');
   if (!adminLoggedIn) {
     el.innerHTML = `<div class="admin-lock">
