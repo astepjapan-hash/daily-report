@@ -613,6 +613,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         </div>
         <button class="btn-secondary" style="margin-top:8px" onclick="showBulkModal()">📋 一括持ち出し（表から入力）</button>
         <button class="btn-secondary" style="margin-top:8px" onclick="openHandoverModal()">🔄 受け渡し（スタッフ間で材料を渡す）</button>
+        <button class="btn-secondary" style="margin-top:8px" onclick="openProcessModal()">✂️ 加工・小分け（切り出し・詰め替え）</button>
       </div>
 
       <!-- STEP2: 品目リスト -->
@@ -864,6 +865,27 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
       <div style="display:flex;gap:8px;margin-top:14px">
         <button class="btn-secondary" style="flex:1" onclick="closeHandoverModal()">キャンセル</button>
         <button class="btn-primary" style="flex:1;background:#5b7fb5" onclick="submitHandover()">登録する</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="process-modal" style="display:none">
+    <div class="modal-box" style="max-height:88vh;overflow-y:auto">
+      <div style="font-size:17px;font-weight:700;color:#2d2a26;margin-bottom:4px">✂️ 加工・小分け登録</div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:14px">材料を切り出し・詰め替えたときに登録します。元の品目が減り、出来上がりの品目が増えます。</div>
+      <div class="field"><label class="lbl">加工の種類</label>
+        <select id="process-preset"><option value="">選択してください</option></select></div>
+      <div class="field"><label class="lbl">担当者</label>
+        <select id="process-staff"><option value="">選択してください</option>
+          <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option><option>外注</option></select></div>
+      <div class="field"><label class="lbl">元の数量 <span id="process-from-unit" style="color:#aaa;font-weight:400">―</span></label>
+        <input type="number" id="process-from-qty" min="0" step="0.1" placeholder="例: 1"></div>
+      <div class="field"><label class="lbl">出来上がり <span id="process-to-unit" style="color:#aaa;font-weight:400">―</span> <span style="color:#b5aca0;font-weight:400;font-size:11px">（自動計算・手直しOK）</span></label>
+        <input type="number" id="process-to-qty" min="0" step="0.1" placeholder="自動計算されます"></div>
+      <div class="field"><label class="lbl">日付</label>
+        <input type="date" id="process-date"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn-secondary" style="flex:1" onclick="closeProcessModal()">キャンセル</button>
+        <button class="btn-primary" style="flex:1;background:#7a9a5b" onclick="submitProcess()">登録する</button>
       </div>
     </div>
   </div>
@@ -3371,7 +3393,8 @@ function showDetail(key){
 // ══════════ 使用量と出庫量の突き合わせ ══════════
 const TSUKIAWASE_START='2026-07-10'; // 運用開始日（これ以降のデータのみ比較対象）
 const TSUKI_CATS=[
-  {label:'プライマー系', ids:['primer','primer_r','primer_x','primer3']},
+  // kg: 品目ごとの1単位あたり重量（未指定はbaseKg換算）。缶相当=kg合計÷baseKg
+  {label:'プライマー系', ids:['primer','primer_r','primer_x','primer_x_big','primer3'], kg:{primer:16,primer_r:16,primer_x:3,primer_x_big:17,primer3:16}, baseKg:16},
   {label:'樹脂系', ids:['resin','resin3']},
   {label:'トップ系', ids:['top','ivory3','gray3']},
 ];
@@ -3398,12 +3421,21 @@ async function renderTsukiawase(from,to){
     if(!mv)return;
     if(!inRange(mv.date||''))return;
     if(!staffOk(mv.staff||''))return;
+    // 加工・小分けは倉庫内の変換なので突き合わせ対象外
+    if(mv.processing)return;
     // 出庫は加算。受け渡しの入庫（渡した人）は差し引く → 全体合計は受け渡しで変化しない
     let sign=0;
     if(mv.type==='out')sign=1;
     else if(mv.type==='in'&&mv.handover)sign=-1;
     if(!sign)return;
-    for(const c of TSUKI_CATS){if(c.ids.includes(mv.itemId)){out[c.label]+=sign*(Number(mv.qty)||0);break;}}
+    for(const c of TSUKI_CATS){
+      if(c.ids.includes(mv.itemId)){
+        const q=Number(mv.qty)||0;
+        const units=c.kg?q*(c.kg[mv.itemId]||c.baseKg)/c.baseKg:q;
+        out[c.label]+=sign*units;
+        break;
+      }
+    }
   });
   // 日報使用（kg→缶換算）
   let pk=0,rKan=0,rWari=0,tk=0;
@@ -3443,6 +3475,75 @@ async function renderTsukiawase(from,to){
       ${clipped?`<div style="font-size:10px;color:#b5aca0;margin-top:8px">※ 突き合わせは2026年7月10日以降のデータが対象です</div>`:''}
     </div>
   </div>`;
+}
+
+// ══════════ 加工・小分け（品目の変換） ══════════
+const PROCESS_PRESETS=[
+  {id:'vp25_of',  label:'VP25 → オーバーフロー（1本で9個）',        from:'vp25',        to:'overflow', ratio:9},
+  {id:'parmec',   label:'パーメック大 → パーメック小（1本で5本）',  from:'parmec_big',  to:'parmec',   ratio:5},
+  {id:'s1x',      label:'プライマーＳ-１Ｘ大 → 小（17kg→3kg缶）',   from:'primer_x_big',to:'primer_x', ratio:17/3},
+];
+function openProcessModal(){
+  const sel=document.getElementById('process-preset');
+  sel.innerHTML='<option value="">選択してください</option>'+PROCESS_PRESETS.map(p=>`<option value="${p.id}">${p.label}</option>`).join('');
+  const fromQty=document.getElementById('process-from-qty');
+  const toQty=document.getElementById('process-to-qty');
+  const calc=()=>{
+    const p=PROCESS_PRESETS.find(x=>x.id===sel.value);
+    if(!p)return;
+    const q=parseFloat(fromQty.value)||0;
+    toQty.value=q>0?Math.round(q*p.ratio*10)/10:'';
+  };
+  sel.onchange=function(){
+    const p=PROCESS_PRESETS.find(x=>x.id===this.value);
+    const fi=p?ITEMS_MASTER.find(i=>i.id===p.from):null;
+    const ti=p?ITEMS_MASTER.find(i=>i.id===p.to):null;
+    document.getElementById('process-from-unit').textContent=fi?fi.name+'（'+fi.unit+'）／在庫 '+getQty(fi.id)+fi.unit:'―';
+    document.getElementById('process-to-unit').textContent=ti?ti.name+'（'+ti.unit+'）':'―';
+    fromQty.step=(fi&&fi.step)||1;
+    calc();
+  };
+  fromQty.oninput=calc;
+  document.getElementById('process-staff').value='';
+  fromQty.value='';toQty.value='';
+  document.getElementById('process-date').value=getToday();
+  document.getElementById('process-modal').style.display='flex';
+}
+function closeProcessModal(){
+  document.getElementById('process-modal').style.display='none';
+}
+async function submitProcess(){
+  if(window._zkBusy)return;
+  const presetId=document.getElementById('process-preset').value;
+  const staff=document.getElementById('process-staff').value;
+  const fromQty=Math.round((parseFloat(document.getElementById('process-from-qty').value)||0)*10)/10;
+  const toQty=Math.round((parseFloat(document.getElementById('process-to-qty').value)||0)*10)/10;
+  const date=document.getElementById('process-date').value;
+  const p=PROCESS_PRESETS.find(x=>x.id===presetId);
+  if(!p){alert('加工の種類を選択してください');return;}
+  if(!staff){alert('担当者を選択してください');return;}
+  if(!fromQty||fromQty<=0){alert('元の数量を入力してください');return;}
+  if(!toQty||toQty<=0){alert('出来上がりの数量を入力してください');return;}
+  if(!date){alert('日付を入力してください');return;}
+  const fi=ITEMS_MASTER.find(i=>i.id===p.from);
+  const ti=ITEMS_MASTER.find(i=>i.id===p.to);
+  if(fromQty>getQty(fi.id)){
+    if(!confirm(fi.name+'の在庫（'+getQty(fi.id)+fi.unit+'）を超えています。このまま登録しますか？'))return;
+  }
+  window._zkBusy=true;
+  try{
+    const now=Date.now();
+    await safeAdjustInventory(fi.id,-fromQty);
+    await fetch(DB+'/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'out',itemId:fi.id,itemName:fi.name,unit:fi.unit,qty:fromQty,staff,date,note:'加工 → '+ti.name,processing:true,createdAt:now})});
+    await safeAdjustInventory(ti.id,toQty);
+    await fetch(DB+'/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'in',itemId:ti.id,itemName:ti.name,unit:ti.unit,qty:toQty,staff,date,note:'加工 ← '+fi.name,processing:true,createdAt:now+1})});
+    closeProcessModal();
+    showToast('✂️ 加工を登録しました！');
+    renderMoveList();
+  }catch(e){alert('登録に失敗しました。');}
+  finally{window._zkBusy=false;}
 }
 
 // ══════════ 受け渡し（スタッフ間の材料移動） ══════════
@@ -3529,7 +3630,8 @@ const ITEMS_MASTER = [
   // FRP防水材料
   {id:'primer',      name:'プライマーＳ-１',   unit:'缶',    category:'frp',     alert:3},
   {id:'primer_r',    name:'プライマーＳ-１Ｒ', unit:'缶',    category:'frp',     alert:3},
-  {id:'primer_x',    name:'プライマーＳ-１Ｘ', unit:'缶',    category:'frp',     alert:3},
+  {id:'primer_x',    name:'プライマーＳ-１Ｘ小', unit:'缶',    category:'frp',     alert:3},
+  {id:'primer_x_big', name:'プライマーＳ-１Ｘ大', unit:'缶',    category:'frp',     alert:1},
   {id:'resin',       name:'ポリルーフ樹脂',  unit:'缶',    category:'frp',     alert:3},
   {id:'top',         name:'ポリルーフトップ', unit:'缶',   category:'frp',     alert:3},
   {id:'primer3',     name:'三井プライマー',  unit:'缶',    category:'frp',     alert:3},
