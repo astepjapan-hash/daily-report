@@ -2414,7 +2414,7 @@ async function loadKyuka(){
     const [lRes,sRes,aRes,rRes]=await Promise.all([fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/leaveResetDate.json')]);
     leaves=await lRes.json()||{};
     leaveSettings=await sRes.json()||{};
-    leaveResetDate=await rRes.json()||'';
+    const _lrd1=await rRes.json();leaveResetDate=(typeof _lrd1==='string')?_lrd1:'';
     absences=await aRes.json()||{};
   }catch(e){leaves={};leaveSettings={};absences={};}
   renderKyuka();
@@ -2546,7 +2546,7 @@ async function renderAdminContent(){
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
     const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/notices.json'),fetch(DB+'/siteAliases.json'),fetch(DB+'/salaryProfiles.json'),fetch(DB+'/leaveResetDate.json')]);
-    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};leaveResetDate=await lrRes.json()||'';
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';
   }catch(e){}
 
   // 作業時間・日数集計（全期間）
