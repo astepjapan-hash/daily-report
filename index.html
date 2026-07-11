@@ -1262,6 +1262,7 @@ function renderNotices(){
 }
 
 let _pinViewOpen=false;
+let _pinViewMonth='';
 function togglePinView(){
   _pinViewOpen=!_pinViewOpen;
   const el=document.getElementById('pin-list');
@@ -1273,24 +1274,37 @@ function togglePinView(){
   }
   btn.textContent='📌 ピン留めを閉じる';
   el.style.display='block';
-  // 月ごとにグループ化
+  renderPinView();
+}
+function changePinMonth(m){if(m){_pinViewMonth=m;renderPinView();}}
+function renderPinView(){
+  const el=document.getElementById('pin-list');
+  if(!el)return;
   const pinned=Object.entries(notices).filter(([,n])=>n.pinned).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   if(!pinned.length){el.innerHTML='<div class="notice-empty">ピン留めはありません</div>';return;}
-  const groups={};
-  pinned.forEach(([key,n])=>{
-    const ym=(n.date||'').slice(0,7);
-    const label=ym?`${ym.slice(0,4)}年${parseInt(ym.slice(5,7))}月`:'その他';
-    if(!groups[label])groups[label]=[];
-    groups[label].push([key,n]);
-  });
-  el.innerHTML=Object.entries(groups).map(([month,items])=>`
-    <div style="font-size:12px;font-weight:700;color:#c97a1f;margin:12px 0 6px">📌 ${month}</div>
-    ${items.map(([key,n])=>`
+  const cardHtml=([key,n])=>`
       <div class="notice-card" style="background:#faf6ee;border-color:#e0d0a8">
         <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
         <div class="notice-body">${n.body||''}</div>
-      </div>`).join('')}
-  `).join('');
+      </div>`;
+  const months=[...new Set(pinned.map(([,n])=>(n.date||'').slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].sort((a,b)=>b.localeCompare(a));
+  const noDate=pinned.filter(([,n])=>!/^\d{4}-\d{2}/.test(n.date||''));
+  if(!months.length){
+    el.innerHTML=noDate.map(cardHtml).join('');
+    return;
+  }
+  if(!months.includes(_pinViewMonth))_pinViewMonth=months[0];
+  const idx=months.indexOf(_pinViewMonth);
+  const [y,mo]=_pinViewMonth.split('-');
+  const items=pinned.filter(([,n])=>(n.date||'').startsWith(_pinViewMonth));
+  el.innerHTML=`
+    <div class="month-nav" style="margin:8px 0">
+      <button class="month-nav-btn" onclick="changePinMonth('${months[idx+1]||''}')" ${!months[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
+      <span class="month-nav-label" style="font-size:14px">📌 ${y}年${parseInt(mo)}月（${items.length}件）</span>
+      <button class="month-nav-btn" onclick="changePinMonth('${months[idx-1]||''}')" ${!months[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
+    </div>
+    ${items.map(cardHtml).join('')}
+    ${noDate.length?`<div style="font-size:12px;font-weight:700;color:#c97a1f;margin:12px 0 6px">📌 日付なし</div>${noDate.map(cardHtml).join('')}`:''}`;
 }
 
 // ── 案内図 ─────────────────────
@@ -3512,7 +3526,13 @@ const PROCESS_PRESETS=[
   {id:'parmec',   label:'パーメック大 → パーメック小（1本で5本）',  from:'parmec_big',  to:'parmec',   ratio:5},
   {id:'s1x',      label:'プライマーＳ-１Ｘ大 → 小（17kg→3kg缶）',   from:'primer_x_big',to:'primer_x', ratio:17/3},
 ];
-function openProcessModal(){
+async function openProcessModal(){
+  // 最新在庫を取得してから開く（在庫チェックを正確にするため）
+  try{
+    const invRes=await fetch(DB+'/inventory.json');
+    inventory=await invRes.json()||{};
+    _zkLastLoad=Date.now();
+  }catch(e){}
   const sel=document.getElementById('process-preset');
   sel.innerHTML='<option value="">選択してください</option>'+PROCESS_PRESETS.map(p=>`<option value="${p.id}">${p.label}</option>`).join('');
   const fromQty=document.getElementById('process-from-qty');
@@ -3520,7 +3540,10 @@ function openProcessModal(){
   const calc=()=>{
     const p=PROCESS_PRESETS.find(x=>x.id===sel.value);
     if(!p)return;
-    const q=parseFloat(fromQty.value)||0;
+    // 在庫数を超えたら自動で在庫数に切り詰め
+    const stock=getQty(p.from);
+    let q=parseFloat(fromQty.value)||0;
+    if(q>stock){q=stock;fromQty.value=stock;}
     toQty.value=q>0?Math.round(q*p.ratio*10)/10:'';
   };
   sel.onchange=function(){
@@ -3530,6 +3553,7 @@ function openProcessModal(){
     document.getElementById('process-from-unit').textContent=fi?fi.name+'（'+fi.unit+'）／在庫 '+getQty(fi.id)+fi.unit:'―';
     document.getElementById('process-to-unit').textContent=ti?ti.name+'（'+ti.unit+'）':'―';
     fromQty.step=(fi&&fi.step)||1;
+    fromQty.max=fi?getQty(fi.id):'';
     calc();
   };
   fromQty.oninput=calc;
@@ -3557,7 +3581,8 @@ async function submitProcess(){
   const fi=ITEMS_MASTER.find(i=>i.id===p.from);
   const ti=ITEMS_MASTER.find(i=>i.id===p.to);
   if(fromQty>getQty(fi.id)){
-    if(!confirm(fi.name+'の在庫（'+getQty(fi.id)+fi.unit+'）を超えています。このまま登録しますか？'))return;
+    alert(fi.name+'の在庫（'+getQty(fi.id)+fi.unit+'）を超えています。在庫数までの数量で入力してください。');
+    return;
   }
   window._zkBusy=true;
   try{
@@ -3797,7 +3822,7 @@ let histFilter = 'all';
 let zkStatsSeg = 'out';
 let catFilter = 'all';
 let summaryFilter = 'all'; // 'all' / 'low' / 'out'
-let zkStatsMonth = new Date().toISOString().slice(0, 7);
+let zkStatsMonth = new Date().toLocaleDateString('sv').slice(0, 7);
 let currentItemId = '';
 
 // 初期化
@@ -4421,8 +4446,8 @@ let histCatFilter = 'all';
 let histStaffFilter = 'all';
 let histSearchQuery = '';
 let histSeg = 'day';
-let histDayMonth = new Date().toISOString().slice(0,7); // 日別で表示中の月
-let histYearMonth = new Date().toISOString().slice(0,7); // 月別
+let histDayMonth = new Date().toLocaleDateString('sv').slice(0,7); // 日別で表示中の月
+let histYearMonth = new Date().toLocaleDateString('sv').slice(0,7); // 月別
 
 let histSelectedDate = '';
 
@@ -4735,52 +4760,17 @@ function clearStatsSearch() {
 }
 
 
-function renderTableStats() {
-  const el = document.getElementById('zk-stats-content');
-  const list = Object.entries(movements).sort((a,b) => b[1].createdAt - a[1].createdAt);
-  const allMonths = [...new Set(list.map(([,m]) => (m.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  if (!allMonths.length) { el.innerHTML = '<div class="empty">データがありません</div>'; return; }
-  if (!allMonths.includes(zkStatsMonth)) zkStatsMonth = allMonths[0];
-  const idx = allMonths.indexOf(zkStatsMonth);
-  const [y, mo] = zkStatsMonth.split('-');
-  const moveType = zkStatsSeg === 'in' ? 'in' : 'out';
-  const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
-
-  // 持ち出し：スタッフ4名（外注は持ち出しがある場合のみ追加）、入庫：外注のみ
+// 持ち出し表／入庫表の集計ロジック（画面表示・PDF出力で共通利用）
+// 加工・小分け（倉庫内変換）は現場への持ち出しではないため常に除外する
+function computeMoveStats(list, moveType, dateFilter){
   const BASE_STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
-  const BASE_STAFF_SHORT = ['加藤','山内','森田','富山'];
+  const hasGaichuOut = moveType === 'out' && list.some(([,m]) => m.type === 'out' && m.staff === '外注' && !m.processing && dateFilter(m));
+  const STAFF = moveType === 'out' ? (hasGaichuOut ? [...BASE_STAFF, '外注'] : BASE_STAFF) : ['外注'];
 
-  // 外注の持ち出しがあるか確認（期間フィルター適用後）
-  const rangeFrom = document.getElementById('stats-range-from')?.value || '';
-  const rangeTo = document.getElementById('stats-range-to')?.value || '';
-  const inDateFilter2 = (m) => {
-    if (statsPeriod === 'range') return rangeFrom && rangeTo && m.date >= rangeFrom && m.date <= rangeTo;
-    return (m.date||'').startsWith(zkStatsMonth);
-  };
-  const hasGaichuOut = moveType === 'out' && list.some(([,m]) => m.type === 'out' && m.staff === '外注' && inDateFilter2(m));
+  const outList = list.filter(([,m]) => m.type === 'out' && !m.processing && STAFF.includes(m.staff) && dateFilter(m));
+  const inListNonGaicyu = list.filter(([,m]) => m.type === 'in' && !m.processing && m.staff !== '外注' && dateFilter(m));
+  const inListGaicyu = list.filter(([,m]) => m.type === 'in' && !m.processing && m.staff === '外注' && dateFilter(m));
 
-  const STAFF = moveType === 'out'
-    ? (hasGaichuOut ? [...BASE_STAFF, '外注'] : BASE_STAFF)
-    : ['外注'];
-  const STAFF_SHORT = moveType === 'out'
-    ? (hasGaichuOut ? [...BASE_STAFF_SHORT, '外注'] : BASE_STAFF_SHORT)
-    : ['外注'];
-
-  const inDateFilter = (m) => {
-    if (statsPeriod === 'range') return rangeFrom && rangeTo && m.date >= rangeFrom && m.date <= rangeTo;
-    return (m.date||'').startsWith(zkStatsMonth);
-  };
-
-  // 持ち出しリスト
-  const outList = list.filter(([,m]) => m.type === 'out' && STAFF.includes(m.staff) && inDateFilter2(m));
-  // 外注以外の入庫リスト（持ち出しから相殺用）
-  const inListNonGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff !== '外注' && inDateFilter2(m));
-  // 入庫表用：外注の入庫のみ
-  const inListGaicyu = list.filter(([,m]) => m.type === 'in' && m.staff === '外注' && inDateFilter2(m));
-
-  const monthList = moveType === 'out' ? outList : inListGaicyu;
-
-  // 品目×スタッフ集計
   const byItemStaff = {};
   ITEMS_MASTER.forEach(item => {
     byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0};
@@ -4788,13 +4778,12 @@ function renderTableStats() {
   });
 
   if (moveType === 'out') {
-    // 持ち出しを加算
     outList.forEach(([,m]) => {
       if (!byItemStaff[m.itemId] || !STAFF.includes(m.staff)) return;
       byItemStaff[m.itemId].staff[m.staff] += m.qty;
       byItemStaff[m.itemId].total += m.qty;
     });
-    // 外注以外の入庫を相殺（持ち出しから引く）
+    // 実際の返却・受け渡しによる相殺（持ち出しから引く）
     inListNonGaicyu.forEach(([,m]) => {
       if (!byItemStaff[m.itemId] || !STAFF.includes(m.staff)) return;
       byItemStaff[m.itemId].staff[m.staff] -= m.qty;
@@ -4807,11 +4796,38 @@ function renderTableStats() {
       byItemStaff[m.itemId].total += m.qty;
     });
   }
+  return { STAFF, byItemStaff };
+}
+
+function renderTableStats() {
+  const el = document.getElementById('zk-stats-content');
+  const list = Object.entries(movements).sort((a,b) => b[1].createdAt - a[1].createdAt);
+  const allMonths = [...new Set(list.map(([,m]) => (m.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  if (!allMonths.length) { el.innerHTML = '<div class="empty">データがありません</div>'; return; }
+  if (!allMonths.includes(zkStatsMonth)) zkStatsMonth = allMonths[0];
+  const idx = allMonths.indexOf(zkStatsMonth);
+  const [y, mo] = zkStatsMonth.split('-');
+  const moveType = zkStatsSeg === 'in' ? 'in' : 'out';
+  const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
+
+  const BASE_STAFF_SHORT = ['加藤','山内','森田','富山'];
+  const rangeFrom = document.getElementById('stats-range-from')?.value || '';
+  const rangeTo = document.getElementById('stats-range-to')?.value || '';
+  const dateFilter = (m) => {
+    if (statsPeriod === 'range') return rangeFrom && rangeTo && m.date >= rangeFrom && m.date <= rangeTo;
+    return (m.date||'').startsWith(zkStatsMonth);
+  };
+
+  const { STAFF, byItemStaff } = computeMoveStats(list, moveType, dateFilter);
+  const STAFF_SHORT = STAFF.map(s => s === '外注' ? '外注' : BASE_STAFF_SHORT[['加藤瑞樹','山内浩一','森田義則','富山裕貴'].indexOf(s)]);
 
   // データある品目のみ＋検索フィルター
   const statsQuery = (document.getElementById('stats-search-input')?.value || '').trim().toLowerCase();
   const activeItems = ITEMS_MASTER.filter(item => {
-    if (!byItemStaff[item.id] || byItemStaff[item.id].total === 0) return false;
+    const d = byItemStaff[item.id];
+    if (!d) return false;
+    const hasAny = d.total !== 0 || Object.values(d.staff).some(v => v !== 0);
+    if (!hasAny) return false;
     if (statsQuery && !item.name.toLowerCase().includes(statsQuery)) return false;
     return true;
   });
@@ -4871,25 +4887,15 @@ async function exportTableExcel(month, moveType = 'out') {
   const [y, mo] = month.split('-');
   const label = y + '年' + parseInt(mo) + '月';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
-  const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
-  const staffList = moveType === 'out' ? ['加藤瑞樹','山内浩一','森田義則','富山裕貴'] : ['外注'];
-  const list = Object.values(movements).filter(m => {
-    if (!(m.date||'').startsWith(month)) return false;
-    if (m.type !== moveType) return false;
-    if (moveType === 'in' && m.staff !== '外注') return false;
-    return true;
-  });
-  const byItemStaff = {};
-  ITEMS_MASTER.forEach(item => { byItemStaff[item.id] = {name:item.name, unit:item.unit, staff:{}, total:0}; staffList.forEach(s => byItemStaff[item.id].staff[s]=0); });
-  list.forEach(m => {
-    if (!byItemStaff[m.itemId]) return;
-    if (staffList.includes(m.staff)) { byItemStaff[m.itemId].staff[m.staff] += m.qty; byItemStaff[m.itemId].total += m.qty; }
-  });
-  const activeItems = ITEMS_MASTER.filter(item => byItemStaff[item.id]?.total > 0);
-  const data = [['品目','加藤瑞樹','山内浩一','森田義則','富山裕貴','計']];
+  const list = Object.entries(movements);
+  const dateFilter = m => (m.date||'').startsWith(month);
+  // 画面の持ち出し/入庫表と同じ集計関数を使うことで数字を完全一致させる
+  const { STAFF, byItemStaff } = computeMoveStats(list, moveType, dateFilter);
+  const activeItems = ITEMS_MASTER.filter(item => { const d = byItemStaff[item.id]; return d && (d.total !== 0 || Object.values(d.staff).some(v => v !== 0)); });
+  const data = [['品目', ...STAFF, '計']];
   activeItems.forEach(item => {
     const d = byItemStaff[item.id];
-    data.push([item.name, d.staff['加藤瑞樹']||'', d.staff['山内浩一']||'', d.staff['森田義則']||'', d.staff['富山裕貴']||'', d.total||'']);
+    data.push([item.name, ...STAFF.map(s => d.staff[s] !== 0 ? (d.staff[s]%1===0?d.staff[s]:d.staff[s].toFixed(1)) : ''), d.total !== 0 ? (d.total%1===0?d.total:d.total.toFixed(1)) : '0']);
   });
   const inner='<h1>'+typeLabel+'表</h1><div class="sub">'+label+'</div>'+pdfTableHtml(data);
   openPdfWindow(typeLabel+'表_'+label, inner);
