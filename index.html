@@ -95,8 +95,8 @@ textarea { resize: vertical; }
 .report-card { width: 100%; background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; border: 1.5px solid #ede8e2; text-align: left; cursor: default; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.04); display: block; font-family: inherit; }
 .report-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .report-date { font-size: 12px; color: #aaa; }
-.report-name { font-size: 16px; font-weight: 700; color: #2d2a26; margin-bottom: 4px; }
-.report-sites { font-size: 13px; color: #888; padding-right: 40px; }
+.report-name { font-size: 16px; font-weight: 700; color: #000; margin-bottom: 4px; }
+.report-sites { font-size: 13px; color: #000; padding-right: 40px; }
 .report-arrow { position: absolute; right: 44px; top: 50%; transform: translateY(-50%); color: #ccc; font-size: 22px; }
 .delete-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ddd; font-size: 20px; cursor: pointer; padding: 4px; font-family: inherit; }
 .highlight { background: #fff3cd; border-radius: 2px; }
@@ -216,7 +216,7 @@ textarea { resize: vertical; }
 .weather-tag { background: #fdf0e8; color: #e07b4f; border-radius: 20px; padding: 5px 14px; font-size: 14px; font-weight: 600; display: inline-block; }
 .site-result { background: #faf8f5; border-radius: 10px; padding: 12px; margin-bottom: 8px; }
 .site-result-name { font-size: 14px; font-weight: 700; color: #2d2a26; margin-bottom: 6px; }
-.time-result-row { font-size: 13px; color: #888; margin-bottom: 8px; }
+.time-result-row { font-size: 13px; color: #000; margin-bottom: 8px; }
 .process-result-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
 .proc-chip { border-radius: 6px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
 .proc-chip.done { background: #e07b4f; color: #fff; }
@@ -704,6 +704,8 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         <button class="filter-btn active" onclick="setHistTypeFilter('all',this)">すべて</button>
         <button class="filter-btn" onclick="setHistTypeFilter('out',this)">📤 持ち出し</button>
         <button class="filter-btn" onclick="setHistTypeFilter('in',this)">📥 入庫</button>
+        <button class="filter-btn" onclick="setHistTypeFilter('handover',this)">🔄 受け渡し</button>
+        <button class="filter-btn" onclick="setHistTypeFilter('process',this)">✂️ 加工</button>
       </div>
       <div class="filter-row" id="hist-cat-filter-row" style="margin-bottom:6px"></div>
       <div class="filter-row" id="hist-staff-filter-row" style="margin-bottom:10px">
@@ -1585,7 +1587,7 @@ function selectCalDate(dateStr){
 
 function siteLineHtml(s, nameHtml){
   const hasTime = s.timeIn || s.timeOut;
-  const t = hasTime ? `<span style="color:#8a97a8;font-size:12px;font-weight:400;white-space:nowrap">🕐 ${s.timeIn||'--:--'}〜${s.timeOut||'--:--'}</span>` : '';
+  const t = hasTime ? `<span style="color:#000;font-size:12px;font-weight:500;white-space:nowrap">🕐 ${s.timeIn||'--:--'}〜${s.timeOut||'--:--'}</span>` : '';
   return `<div style="margin-bottom:3px">📍 ${nameHtml}${t?'　'+t:''}</div>`;
 }
 
@@ -1631,7 +1633,7 @@ function renderDayReports(dateStr){
     return `
     <div class="report-card">
       <div style="cursor:pointer" onclick="showDetail('${key}')">
-        <div class="report-card-top"><span class="report-date">${r.staffName}${hasNote?'<span style="margin-left:6px;background:#fff0d8;color:#c97a1f;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">📝 備考あり</span>':''}</span><span>${WEATHERS[r.weather]||''}</span></div>
+        <div class="report-card-top"><span class="report-name" style="margin-bottom:0">${r.staffName}${hasNote?'<span style="margin-left:6px;background:#fff0d8;color:#c97a1f;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">📝 備考あり</span>':''}</span><span>${WEATHERS[r.weather]||''}</span></div>
         <div class="report-sites" style="padding-right:40px">${r.sites.map(s=>siteLineHtml(s,s.name)).join('')}</div>
         <span class="report-arrow">›</span>
       </div>
@@ -4467,6 +4469,17 @@ async function submitBulk() {
 
 // ── 履歴 ──
 let histTypeFilter = 'all';
+// 履歴のタイプ絞り込み判定（受け渡し・加工はフラグで判定し、持ち出し/入庫は純粋な移動のみ）
+function histTypeMatch(m){
+  switch(histTypeFilter){
+    case 'all': return true;
+    case 'handover': return !!m.handover;
+    case 'process': return !!m.processing;
+    case 'out': return m.type==='out' && !m.handover && !m.processing;
+    case 'in': return m.type==='in' && !m.handover && !m.processing;
+    default: return true;
+  }
+}
 let histCatFilter = 'all';
 let histStaffFilter = 'all';
 let histSearchQuery = '';
@@ -4570,7 +4583,7 @@ function renderHistDayContent() {
     .filter(([,m]) => m.date === histSelectedDate)
     .sort((a,b) => b[1].createdAt - a[1].createdAt);
 
-  if (histTypeFilter !== 'all') list = list.filter(([,m]) => m.type === histTypeFilter);
+  list = list.filter(([,m]) => histTypeMatch(m));
   if (histStaffFilter !== 'all') list = list.filter(([,m]) => m.staff === histStaffFilter);
   if (histCatFilter !== 'all') list = list.filter(([,m]) => {
     const item = ITEMS_MASTER.find(i => i.id === m.itemId);
@@ -4675,7 +4688,7 @@ function renderHistory() {
   }
 
   // 共通フィルター
-  if (histTypeFilter !== 'all') list = list.filter(([,m]) => m.type === histTypeFilter);
+  list = list.filter(([,m]) => histTypeMatch(m));
   if (histStaffFilter !== 'all') list = list.filter(([,m]) => m.staff === histStaffFilter);
   if (histCatFilter !== 'all') {
     list = list.filter(([,m]) => {
