@@ -422,6 +422,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
       <button class="tab" id="tab-zaiko" onclick="showView('zaiko')">在庫</button>
       <button class="tab" id="tab-stats" onclick="showView('stats')">集計</button>
       <button class="tab" id="tab-guide" onclick="showView('guide')">案内図</button>
+      <button class="tab" id="tab-expense" onclick="showView('expense')">経費</button>
       <button class="tab" id="tab-kyuka" onclick="showView('kyuka')">有給</button>
       <button class="tab" id="tab-admin" onclick="showView('admin')">管理<span id="admin-badge" style="display:none;background:#e07b4f;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:3px;vertical-align:middle"></span></button>
     </div>
@@ -548,6 +549,37 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         <button class="stats-seg-btn" id="seg-total" onclick="setStatsSeg('total')">材料</button>
       </div>
       <div id="stats-content"></div>
+    </div>
+  </div>
+
+  <!-- 経費 -->
+  <div class="view" id="view-expense">
+    <div class="wrap">
+      <div class="page-title">経費</div>
+      <div class="page-sub">立替経費の申請・確認</div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-top:0">✏️ 経費を申請</div>
+        <div class="field"><label class="lbl">日付</label>
+          <input type="date" id="exp-date"></div>
+        <div class="field"><label class="lbl">名前</label>
+          <select id="exp-staff"><option value="">選択してください</option>
+            <option>加藤瑞樹</option><option>山内浩一</option><option>森田義則</option><option>富山裕貴</option><option>外注</option></select></div>
+        <div class="field"><label class="lbl">金額（円）</label>
+          <input type="number" id="exp-amount" min="0" step="1" inputmode="numeric" placeholder="例: 1200"></div>
+        <div class="field"><label class="lbl">現場名 ／ 内容 ／ 目的</label>
+          <textarea id="exp-detail" rows="2" placeholder="例: ○○現場・○○パーキング"></textarea></div>
+        <button class="btn-primary" onclick="submitExpense()">申請する</button>
+      </div>
+
+      <div class="month-nav" style="margin-bottom:10px">
+        <button class="month-nav-btn" onclick="changeExpenseMonth(-1)">◀</button>
+        <span class="month-nav-label" id="exp-month-label">―</span>
+        <button class="month-nav-btn" onclick="changeExpenseMonth(1)">▶</button>
+      </div>
+      <div class="filter-row" id="exp-staff-filter" style="margin-bottom:10px"></div>
+      <div id="exp-list"></div>
+      <button class="btn-secondary" style="width:100%;margin-top:12px" onclick="exportExpensePdf()">📄 経費台帳をPDFで出力</button>
     </div>
   </div>
 
@@ -999,6 +1031,7 @@ function showView(name) {
   if(name==='guide') loadGuides();
   if(name==='stats') loadStats();
   if(name==='kyuka') loadKyuka();
+  if(name==='expense') loadExpenses();
   if(name==='admin') showAdmin();
   if(name==='zaiko') enterZaiko();
   if(name==='detail') prevView='list';
@@ -2505,8 +2538,193 @@ function renderKyuka(){
       </div>`).join('');
   }
 }
+// ══════════ 経費 ══════════
+let expenses = {};
+let expenseMonth = '';
+let expenseStaffFilter = '';
+
+async function loadExpenses(){
+  try{
+    const res = await fetch(DB + '/expenses.json');
+    expenses = await res.json() || {};
+  }catch(e){ expenses = {}; }
+  if(!expenseMonth) expenseMonth = new Date().toLocaleDateString('sv').slice(0,7);
+  const dEl = document.getElementById('exp-date');
+  if(dEl && !dEl.value) dEl.value = new Date().toLocaleDateString('sv');
+  renderExpense();
+}
+
+function changeExpenseMonth(delta){
+  const base = expenseMonth || new Date().toLocaleDateString('sv').slice(0,7);
+  const d = new Date(parseInt(base.slice(0,4)), parseInt(base.slice(5,7))-1+delta, 1);
+  expenseMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderExpense();
+}
+
+function setExpenseStaffFilter(name){
+  expenseStaffFilter = (expenseStaffFilter === name) ? '' : name;
+  renderExpense();
+}
+
+function renderExpense(){
+  const lb = document.getElementById('exp-month-label');
+  const el = document.getElementById('exp-list');
+  const fr = document.getElementById('exp-staff-filter');
+  if(!el || !lb) return;
+  lb.textContent = `${expenseMonth.slice(0,4)}年${parseInt(expenseMonth.slice(5,7))}月`;
+
+  // スタッフ絞り込みボタン
+  if(fr){
+    fr.innerHTML = `<button class="filter-btn ${!expenseStaffFilter?'active':''}" onclick="setExpenseStaffFilter('')">全員</button>` +
+      MEMBERS.map(m=>`<button class="filter-btn ${expenseStaffFilter===m?'active':''}" onclick="setExpenseStaffFilter('${m}')">${SURNAME_MAP[m]||m}</button>`).join('');
+  }
+
+  let list = Object.entries(expenses)
+    .filter(([,e]) => (e.date||'').startsWith(expenseMonth))
+    .filter(([,e]) => !expenseStaffFilter || e.staffName === expenseStaffFilter)
+    .sort((a,b) => (b[1].date||'').localeCompare(a[1].date||'') || b[1].createdAt - a[1].createdAt);
+
+  const approvedTotal = list.filter(([,e])=>e.status==='approved').reduce((s,[,e]) => s + (parseInt(e.amount)||0), 0);
+  const pendingTotal = list.filter(([,e])=>e.status!=='approved').reduce((s,[,e]) => s + (parseInt(e.amount)||0), 0);
+
+  el.innerHTML = `
+    <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;color:#000;font-weight:700">${expenseStaffFilter?SURNAME_MAP[expenseStaffFilter]:'全員'}・承認済み（${list.filter(([,e])=>e.status==='approved').length}件）</span>
+        <span style="font-size:19px;font-weight:700;color:#c05a2e">¥${approvedTotal.toLocaleString()}</span>
+      </div>
+      ${pendingTotal?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed #e8e0d8">
+        <span style="font-size:12px;color:#c97a1f;font-weight:700">⏳ 承認待ち（${list.filter(([,e])=>e.status!=='approved').length}件）</span>
+        <span style="font-size:14px;font-weight:700;color:#c97a1f">¥${pendingTotal.toLocaleString()}</span>
+      </div>`:''}
+    </div>` +
+    (list.length ? list.map(([key,e])=>`
+      <div class="report-card" style="padding:12px 14px;${e.status!=='approved'?'background:#fffaf2;border-color:#f0d8b0':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;color:#000">📅 ${e.date} ・ <b>${SURNAME_MAP[e.staffName]||e.staffName}</b>
+              ${e.status==='approved'?'<span style="color:#27ae60;font-weight:700;margin-left:4px">✅ 承認済み</span>':'<span style="color:#c97a1f;font-weight:700;margin-left:4px">⏳ 承認待ち</span>'}</div>
+            <div style="font-size:14px;color:#000;margin-top:3px;white-space:pre-wrap;word-break:break-word">${e.detail||''}</div>
+          </div>
+          <div style="text-align:right;flex:none">
+            <div style="font-size:16px;font-weight:700;color:#000">¥${(parseInt(e.amount)||0).toLocaleString()}</div>
+            <button onclick="deleteExpense('${key}')" style="margin-top:4px;background:none;border:none;color:#ddd;font-size:17px;cursor:pointer;padding:2px;font-family:inherit">🗑</button>
+          </div>
+        </div>
+      </div>`).join('')
+      : '<div class="empty">この月の経費はありません</div>');
+}
+
+async function submitExpense(){
+  if(window._expBusy) return;
+  const date = document.getElementById('exp-date').value;
+  const staffName = document.getElementById('exp-staff').value;
+  const amount = parseInt(document.getElementById('exp-amount').value) || 0;
+  const detail = document.getElementById('exp-detail').value.trim();
+  if(!date){ alert('日付を入力してください'); return; }
+  if(!staffName){ alert('名前を選択してください'); return; }
+  if(!amount || amount <= 0){ alert('金額を入力してください'); return; }
+  if(!detail){ alert('現場名・内容・目的を入力してください'); return; }
+  window._expBusy = true;
+  try{
+    await fetch(DB + '/expenses.json', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ staffName, date, amount, detail, status:'pending', createdAt: Date.now() }) });
+    document.getElementById('exp-amount').value = '';
+    document.getElementById('exp-detail').value = '';
+    expenseMonth = date.slice(0,7);
+    await loadExpenses();
+    showToast('💰 経費を申請しました！（承認待ち）');
+  }catch(e){ alert('登録に失敗しました。'); }
+  finally{ window._expBusy = false; }
+}
+
+async function deleteExpense(key, fromAdmin){
+  if(window._expBusy) return;
+  if(!confirm(fromAdmin ? 'この経費申請を却下（削除）しますか？' : 'この経費を削除しますか？')) return;
+  window._expBusy = true;
+  try{
+    await fetch(DB + '/expenses/' + key + '.json', { method:'DELETE' });
+    delete expenses[key];
+    if(fromAdmin){
+      alert('却下しました');
+      renderAdminContent();
+    }else{
+      await loadExpenses();
+      showToast('削除しました');
+    }
+  }catch(e){ alert('削除に失敗しました。'); }
+  finally{ window._expBusy = false; }
+}
+
+// 経費の承認・取り消し（管理者ページから使用）
+async function setExpenseStatus(key, status){
+  if(window._expBusy) return;
+  if(status === 'approved' && !confirm('この経費を承認しますか？')) return;
+  if(status === 'pending' && !confirm('承認を取り消しますか？')) return;
+  window._expBusy = true;
+  try{
+    await fetch(DB + '/expenses/' + key + '/status.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(status) });
+    if(expenses[key]) expenses[key].status = status;
+    alert(status === 'approved' ? '承認しました' : '承認を取り消しました');
+    renderAdminContent();
+  }catch(e){ alert('更新に失敗しました。'); }
+  finally{ window._expBusy = false; }
+}
+
+// 指定月・指定スタッフの承認済み経費の合計（給料明細で使用）
+function getApprovedExpenseTotal(name, month){
+  return Object.values(expenses)
+    .filter(e => e.staffName === name && (e.date||'').startsWith(month) && e.status === 'approved')
+    .reduce((s,e) => s + (parseInt(e.amount)||0), 0);
+}
+
+// 紙の台帳と同じ体裁（1人1表）でPDF出力
+function exportExpensePdf(){
+  const [y, mo] = expenseMonth.split('-');
+  const label = `${y}年${parseInt(mo)}月`;
+  const MIN_ROWS = 8;
+  const staffList = STAFF_LEAVE.concat(
+    Object.values(expenses).some(e => e.staffName === '外注' && (e.date||'').startsWith(expenseMonth) && e.status === 'approved') ? ['外注'] : []
+  );
+  let grand = 0;
+  const tables = staffList.map(name=>{
+    const rows = Object.values(expenses)
+      .filter(e => e.staffName === name && (e.date||'').startsWith(expenseMonth) && e.status === 'approved')
+      .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    const sum = rows.reduce((s,e)=>s+(parseInt(e.amount)||0),0);
+    grand += sum;
+    const body = rows.map(e=>`<tr>
+        <td style="text-align:center">${parseInt(e.date.slice(5,7))} / ${parseInt(e.date.slice(8,10))}</td>
+        <td></td>
+        <td style="text-align:right">${(parseInt(e.amount)||0).toLocaleString()}</td>
+        <td>${(e.detail||'').replace(/</g,'&lt;')}</td>
+      </tr>`).join('');
+    const blanks = Array.from({length: Math.max(0, MIN_ROWS - rows.length)}, ()=>
+      '<tr><td style="text-align:center;color:#bbb">／</td><td></td><td></td><td></td></tr>').join('');
+    return `<table class="exp">
+      <tr class="hd">
+        <th style="width:14%">年月日</th>
+        <th style="width:16%">${name}</th>
+        <th style="width:16%">金　額</th>
+        <th>現場名　／　内容　／　目的</th>
+      </tr>
+      ${body}${blanks}
+      <tr class="sum"><td colspan="2" style="text-align:center">合計</td><td style="text-align:right">${sum.toLocaleString()}</td><td></td></tr>
+    </table>`;
+  }).join('');
+  const inner = `<h1>経費台帳</h1><div class="sub">${label}　／　総合計 ¥${grand.toLocaleString()}</div>
+    <style>
+      table.exp{margin-bottom:22px}
+      table.exp .hd th{background:#fff;text-align:center;font-weight:700}
+      table.exp td{height:24px}
+      table.exp .sum td{background:#f5f0ea;font-weight:700}
+    </style>
+    ${tables}`;
+  openPdfWindow(`経費台帳_${label}`, inner);
+}
+
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings'];
+const BACKUP_PATHS=['reports','leaves','absences','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses'];
 
 async function backupAllData(){
   if(window._backupBusy)return;
@@ -2621,6 +2839,8 @@ function checkPass(){
   else{alert('パスワードが違います');}
 }
 async function renderAdminContent(){
+  // 経費データを最新化（承認セクション・給料明細で使用）
+  try{ const _eRes = await fetch(DB+'/expenses.json'); expenses = await _eRes.json() || {}; }catch(e){}
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
@@ -2648,6 +2868,8 @@ async function renderAdminContent(){
   },0);
 
   // 有給申請（承認待ち）
+  const pendingExpenses=Object.entries(expenses).filter(([,e])=>e.status!=='approved').sort((a,b)=>(a[1].date||'').localeCompare(b[1].date||''));
+  const approvedExpenses=Object.entries(expenses).filter(([,e])=>e.status==='approved').sort((a,b)=>(b[1].date||'').localeCompare(a[1].date||''));
   const pendingLeaves=Object.entries(leaves).filter(([,l])=>l.status==='pending');
   const approvedLeaves=Object.entries(leaves).filter(([,l])=>l.status==='approved').sort((a,b)=>b[1].createdAt-a[1].createdAt);
   const pendingAbsences=Object.entries(absences).filter(([,a])=>a.status==='pending');
@@ -2742,6 +2964,41 @@ async function renderAdminContent(){
               <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">🗑</button>
             </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
         </div>
+      </div>
+
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-expense')">💴 経費 ${pendingExpenses.length?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingExpenses.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-expense">▶</span></div>
+      <div class="collapse-body" id="collapse-expense" style="margin-bottom:20px">
+
+        <div class="section-title" style="margin-top:8px">経費申請 承認待ち（${pendingExpenses.length}件）</div>
+        ${pendingExpenses.length?pendingExpenses.map(([key,e])=>`
+        <div class="kyuka-req-card">
+          <div class="kyuka-req-top">
+            <span class="kyuka-req-name">${e.staffName}</span>
+            <span style="font-size:17px;font-weight:800;color:#000">¥${(parseInt(e.amount)||0).toLocaleString()}</span>
+          </div>
+          <div class="kyuka-req-date">📅 ${e.date}</div>
+          <div style="font-size:13px;color:#000;margin:4px 0 8px;white-space:pre-wrap;word-break:break-word">${e.detail||''}</div>
+          <div class="kyuka-req-actions">
+            <button class="btn-approve" onclick="setExpenseStatus('${key}','approved')">✓ 承認</button>
+            <button class="btn-reject" onclick="deleteExpense('${key}',true)">✕ 却下（削除）</button>
+          </div>
+        </div>`).join(''):'<div class="empty">承認待ちの経費はありません✓</div>'}
+
+        ${approvedExpenses.length?`
+        <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-exp-approved')">経費 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-exp-approved">▶</span></div>
+        <div class="collapse-body" id="collapse-exp-approved">
+          ${approvedExpenses.map(([key,e])=>`
+          <div class="kyuka-req-card" style="background:#f7faf7;border-color:#cfe3cf">
+            <div class="kyuka-req-top">
+              <span class="kyuka-req-name">${e.staffName}</span>
+              <span style="font-size:15px;font-weight:800;color:#000">¥${(parseInt(e.amount)||0).toLocaleString()}</span>
+            </div>
+            <div class="kyuka-req-date">📅 ${e.date}</div>
+            <div style="font-size:12px;color:#000;margin:4px 0 8px;white-space:pre-wrap;word-break:break-word">${e.detail||''}</div>
+            <button class="btn-reject" style="width:100%" onclick="setExpenseStatus('${key}','pending')">↩ 承認を取り消す</button>
+          </div>`).join('')}
+        </div>`:''}
+
       </div>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-kyuka')">🌴 有給・休み ${(pendingLeaves.length+pendingAbsences.length)?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingLeaves.length+pendingAbsences.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-kyuka">▶</span></div>
@@ -2935,6 +3192,8 @@ async function openSalaryForm(){
   const workDays=new Set(Object.values(reports).filter(r=>r.staffName===name&&r.date?.startsWith(month)).map(r=>r.date)).size;
   // 有給日数（承認済み）
   const kyukaDays=Object.values(leaves).filter(l=>l.staffName===name&&l.status==='approved'&&l.date?.startsWith(month)).length;
+  // 経費（承認済みの合計を自動反映）
+  const expTotal=getApprovedExpenseTotal(name, month);
 
   // 保存済みデータの読み込み
   let saved={};
@@ -2965,8 +3224,8 @@ async function openSalaryForm(){
         <span><input type="number" id="sal-income-tax" value="${saved.incomeTax||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 円</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
-        <span>経費支払い分</span>
-        <span><input type="number" id="sal-expense" value="${saved.expense||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 円</span>
+        <span>経費支払い分 <span style="font-size:10px;color:#7d967d">（承認済み ¥${expTotal.toLocaleString()}）</span></span>
+        <span><input type="number" id="sal-expense" value="${saved.expense!==undefined?saved.expense:expTotal||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 円</span>
       </div>
       <div id="salary-preview" style="border-top:1px dashed #e0d8d0;padding-top:10px;font-size:13px"></div>
       <button class="btn-primary" style="margin-top:12px" onclick="saveSalaryData('${month}','${name}')">保存する</button>
