@@ -405,6 +405,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
 
 /* 管理者ページ: 文字を黒く読みやすく */
 #view-admin .section-title, #view-admin .export-title, #view-admin .page-title { color: #000; }
+#view-admin .collapse-header { font-size: 17px; padding: 12px 4px; }
 #view-admin .page-sub, #view-admin .export-label { color: #333; }
 #view-admin .collapse-header { color: #000; }
 </style>
@@ -2632,6 +2633,11 @@ async function renderAdminContent(){
     const dt=document.getElementById('wseg-date-to');
     const dm=document.getElementById('wseg-month-val');
     if(df)df.value=_td;if(dt)dt.value=_td;if(dm)dm.value=_mth;
+    // 月別を初期表示（開いたらすぐ今月の集計が見える）
+    currentWorkSeg='month';
+    updateWorkMonthLabel();
+    calcWorkStats('month');
+    renderAdminNoticeList();
     renderSalaryProfileForm();
   },0);
 
@@ -2649,39 +2655,26 @@ async function renderAdminContent(){
       </div>
       <div class="page-sub">作業状況・有給承認</div>
 
-      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-pdf')">📄 PDFで出力 <span class="collapse-arrow" id="arrow-collapse-pdf">▶</span></div>
-      <div class="export-section collapse-body" id="collapse-pdf">
-        <div class="export-row">
-          <span class="export-label">対象月</span>
-          <select class="export-select" id="export-month">${
-            Array.from({length:12},(_,i)=>{
-              const d=new Date();d.setMonth(d.getMonth()-i);
-              const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');
-              return `<option value="${y}-${m}">${y}年${parseInt(m)}月</option>`;
-            }).join('')
-          }</select>
-        </div>
-        <button class="btn-excel" onclick="exportExcel()">📄 PDFで出力</button>
-      </div>
-
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-work')">⏱ 作業時間・作業日数 <span class="collapse-arrow" id="arrow-collapse-work">▶</span></div>
       <div class="collapse-body" id="collapse-work" style="margin-bottom:20px">
       <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:14px">
-        <button class="stats-seg-btn active" id="wseg-day" onclick="switchWorkSeg('day')">日付指定</button>
-        <button class="stats-seg-btn" id="wseg-month" onclick="switchWorkSeg('month')">月</button>
+        <button class="stats-seg-btn active" id="wseg-month" onclick="switchWorkSeg('month')">月別</button>
+        <button class="stats-seg-btn" id="wseg-day" onclick="switchWorkSeg('day')">日付指定</button>
       </div>
-      <div id="work-seg-day-picker" style="margin-bottom:12px">
+      <div id="work-seg-month-picker" style="margin-bottom:12px">
+        <div class="month-nav" style="margin-bottom:0">
+          <button class="month-nav-btn" onclick="changeWorkMonth(-1)">◀</button>
+          <span class="month-nav-label" id="work-month-label" style="font-size:15px">―</span>
+          <button class="month-nav-btn" onclick="changeWorkMonth(1)">▶</button>
+        </div>
+        <input type="month" id="wseg-month-val" style="display:none">
+      </div>
+      <div id="work-seg-day-picker" style="display:none;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <input type="date" id="wseg-date-from" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
           <span style="color:#aaa">〜</span>
           <input type="date" id="wseg-date-to" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
           <button onclick="calcWorkStats('day')" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
-        </div>
-      </div>
-      <div id="work-seg-month-picker" style="display:none;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="month" id="wseg-month-val" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
-          <button onclick="calcWorkStats('month')" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">表示</button>
         </div>
       </div>
       <div id="work-stats-label" style="font-size:12px;color:#aaa;margin-bottom:10px;font-weight:600"></div>
@@ -2712,11 +2705,37 @@ async function renderAdminContent(){
         </div>
       </div>
 
-      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-backup')">💾 データバックアップ <span class="collapse-arrow" id="arrow-collapse-backup">▶</span></div>
-      <div class="collapse-body" id="collapse-backup" style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
-        <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">日報・在庫・有給など全データを1つのファイルに保存します。月に1回の保存をおすすめします。ファイルはスマホの「ファイル」アプリやパソコンのダウンロードに保存されます。</div>
-        <button class="btn-secondary" style="width:100%;margin-bottom:8px" onclick="backupAllData()">💾 全データをバックアップ（保存）</button>
-        <button class="btn-secondary" style="width:100%;background:#fdf0f0;color:#a04040;border-color:#e0b0b0" onclick="restoreAllData()">⚠️ バックアップから復元（上書き）</button>
+      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-notice')">📢 お知らせ投稿 <span class="collapse-arrow" id="arrow-collapse-notice">▶</span></div>
+      <div class="card collapse-body" id="collapse-notice" style="margin-bottom:20px">
+        <div class="field"><label class="lbl">内容</label>
+          <textarea id="notice-body" rows="3" placeholder="スタッフへのお知らせを入力してください"></textarea>
+        </div>
+        <button class="btn-primary" onclick="postNotice()">投稿する</button>
+        <div class="month-nav" style="margin-top:14px;margin-bottom:8px">
+          <button class="month-nav-btn" onclick="changeAdminNoticeMonth(-1)">◀</button>
+          <span class="month-nav-label" id="admin-notice-month-label" style="font-size:15px">―</span>
+          <button class="month-nav-btn" onclick="changeAdminNoticeMonth(1)">▶</button>
+        </div>
+        <div style="margin-top:6px" id="admin-notice-list"></div>
+      </div>
+
+      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-alias')">🔗 現場名の統合 <span class="collapse-arrow" id="arrow-collapse-alias">▶</span></div>
+      <div class="card collapse-body" id="collapse-alias" style="margin-bottom:20px">
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px">同じ現場でも入力ゆれ（例：施工面積の「○p」違いなど）で別現場として集計されてしまう場合、統合先の現場名にまとめられます。</div>
+        <div class="field"><label class="lbl">統合したい現場名（重複している方）</label>
+          <input type="text" id="alias-from" placeholder="例: G田島2丁目1期 7p">
+        </div>
+        <div class="field"><label class="lbl">統合先の現場名（正式にしたい方）</label>
+          <input type="text" id="alias-to" placeholder="例: G田島2丁目1期">
+        </div>
+        <button class="btn-primary" onclick="addSiteAlias()">統合する</button>
+        <div style="margin-top:14px">
+          ${Object.entries(siteAliases).map(([from,to])=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
+              <span style="font-size:13px;color:#2d2a26">${from} → <b>${to}</b></span>
+              <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">🗑</button>
+            </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
+        </div>
       </div>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-kyuka')">🌴 有給・休み ${(pendingLeaves.length+pendingAbsences.length)?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingLeaves.length+pendingAbsences.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-kyuka">▶</span></div>
@@ -2806,48 +2825,60 @@ async function renderAdminContent(){
 
       </div>
 
-      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-notice')">📢 お知らせ投稿 <span class="collapse-arrow" id="arrow-collapse-notice">▶</span></div>
-      <div class="card collapse-body" id="collapse-notice" style="margin-bottom:20px">
-        <div class="field"><label class="lbl">内容</label>
-          <textarea id="notice-body" rows="3" placeholder="スタッフへのお知らせを入力してください"></textarea>
-        </div>
-        <button class="btn-primary" onclick="postNotice()">投稿する</button>
-        <div style="margin-top:14px" id="admin-notice-list">
-        ${Object.entries(notices).sort((a,b)=>b[1].createdAt-a[1].createdAt).map(([key,n])=>`
-          <div class="notice-card" style="${n.pinned?'background:#faf6ee;border-color:#e0d0a8':''}">
-            <div class="notice-date">📅 ${n.dateLabel||n.date||''} ${n.pinned?'<span style=\'color:#c97a1f;font-weight:700\'>📌 ピン留め中</span>':'<span style=\'color:#27ae60;font-weight:700\'>📢 表示中</span>'}</div>
-            <div class="notice-body" style="margin-bottom:10px">${n.body||''}</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${n.pinned
-                ?`<button onclick="setNoticePin('${key}',false)" style="flex:1;min-width:90px;padding:7px;background:#eafaf0;color:#27ae60;border:1.5px solid #27ae60;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📢 表示に戻す</button>`
-                :`<button onclick="setNoticePin('${key}',true)" style="flex:1;min-width:90px;padding:7px;background:#fff8ee;color:#c97a1f;border:1.5px solid #f0c040;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📌 ピン留めに移動</button>`}
-              <button onclick="deleteNotice('${key}')" style="flex:1;min-width:70px;padding:7px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🗑 削除</button>
-            </div>
-          </div>`).join('')||'<div class="notice-empty">投稿したお知らせはありません</div>'}
-      </div>
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-backup')">💾 データバックアップ <span class="collapse-arrow" id="arrow-collapse-backup">▶</span></div>
+      <div class="collapse-body" id="collapse-backup" style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">日報・在庫・有給など全データを1つのファイルに保存します。月に1回の保存をおすすめします。ファイルはスマホの「ファイル」アプリやパソコンのダウンロードに保存されます。</div>
+        <button class="btn-secondary" style="width:100%;margin-bottom:8px" onclick="backupAllData()">💾 全データをバックアップ（保存）</button>
+        <button class="btn-secondary" style="width:100%;background:#fdf0f0;color:#a04040;border-color:#e0b0b0" onclick="restoreAllData()">⚠️ バックアップから復元（上書き）</button>
       </div>
 
-      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-alias')">🔗 現場名の統合 <span class="collapse-arrow" id="arrow-collapse-alias">▶</span></div>
-      <div class="card collapse-body" id="collapse-alias" style="margin-bottom:20px">
-        <div style="font-size:12px;color:#aaa;margin-bottom:12px">同じ現場でも入力ゆれ（例：施工面積の「○p」違いなど）で別現場として集計されてしまう場合、統合先の現場名にまとめられます。</div>
-        <div class="field"><label class="lbl">統合したい現場名（重複している方）</label>
-          <input type="text" id="alias-from" placeholder="例: G田島2丁目1期 7p">
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-pdf')">📄 PDFで出力 <span class="collapse-arrow" id="arrow-collapse-pdf">▶</span></div>
+      <div class="export-section collapse-body" id="collapse-pdf">
+        <div class="export-row">
+          <span class="export-label">対象月</span>
+          <select class="export-select" id="export-month">${
+            Array.from({length:12},(_,i)=>{
+              const d=new Date();d.setMonth(d.getMonth()-i);
+              const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');
+              return `<option value="${y}-${m}">${y}年${parseInt(m)}月</option>`;
+            }).join('')
+          }</select>
         </div>
-        <div class="field"><label class="lbl">統合先の現場名（正式にしたい方）</label>
-          <input type="text" id="alias-to" placeholder="例: G田島2丁目1期">
-        </div>
-        <button class="btn-primary" onclick="addSiteAlias()">統合する</button>
-        <div style="margin-top:14px">
-          ${Object.entries(siteAliases).map(([from,to])=>`
-            <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
-              <span style="font-size:13px;color:#2d2a26">${from} → <b>${to}</b></span>
-              <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer">🗑</button>
-            </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
-        </div>
+        <button class="btn-excel" onclick="exportExcel()">📄 PDFで出力</button>
       </div>
 
     </div>`;
 }
+// ── 管理: お知らせ一覧（月ナビ） ──
+let adminNoticeMonth='';
+function changeAdminNoticeMonth(delta){
+  const base=adminNoticeMonth||new Date().toLocaleDateString('sv').slice(0,7);
+  const d=new Date(parseInt(base.slice(0,4)), parseInt(base.slice(5,7))-1+delta, 1);
+  adminNoticeMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderAdminNoticeList();
+}
+function renderAdminNoticeList(){
+  const el=document.getElementById('admin-notice-list');
+  const lb=document.getElementById('admin-notice-month-label');
+  if(!el||!lb)return;
+  if(!adminNoticeMonth)adminNoticeMonth=new Date().toLocaleDateString('sv').slice(0,7);
+  lb.textContent=`${adminNoticeMonth.slice(0,4)}年${parseInt(adminNoticeMonth.slice(5,7))}月`;
+  const list=Object.entries(notices)
+    .filter(([,n])=>(n.date||'').startsWith(adminNoticeMonth))
+    .sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  el.innerHTML=list.map(([key,n])=>`
+    <div class="notice-card" style="${n.pinned?'background:#faf6ee;border-color:#e0d0a8':''}">
+      <div class="notice-date">📅 ${n.dateLabel||n.date||''} ${n.pinned?'<span style="color:#c97a1f;font-weight:700">📌 ピン留め中</span>':'<span style="color:#27ae60;font-weight:700">📢 表示中</span>'}</div>
+      <div class="notice-body" style="margin-bottom:10px">${n.body||''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${n.pinned
+          ?`<button onclick="setNoticePin('${key}',false)" style="flex:1;min-width:90px;padding:7px;background:#eafaf0;color:#27ae60;border:1.5px solid #27ae60;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📢 表示に戻す</button>`
+          :`<button onclick="setNoticePin('${key}',true)" style="flex:1;min-width:90px;padding:7px;background:#fff8ee;color:#c97a1f;border:1.5px solid #f0c040;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📌 ピン留めに移動</button>`}
+        <button onclick="deleteNotice('${key}')" style="flex:1;min-width:70px;padding:7px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🗑 削除</button>
+      </div>
+    </div>`).join('')||'<div class="notice-empty">この月のお知らせはありません</div>';
+}
+
 // ── 給料明細 ─────────────────────
 let salaryProfiles = {}; // スタッフごとの固定項目
 
@@ -3418,8 +3449,31 @@ function switchWorkSeg(seg){
   document.getElementById('wseg-'+seg).classList.add('active');
   document.getElementById('work-seg-day-picker').style.display=seg==='day'?'block':'none';
   document.getElementById('work-seg-month-picker').style.display=seg==='month'?'block':'none';
-  document.getElementById('work-stats-grid').innerHTML='';
-  document.getElementById('work-stats-label').textContent='';
+  if(seg==='month'){
+    updateWorkMonthLabel();
+    calcWorkStats('month');
+  }else{
+    document.getElementById('work-stats-grid').innerHTML='';
+    document.getElementById('work-stats-label').textContent='';
+  }
+}
+
+// 作業時間の月ナビ（◀ 2026年7月 ▶）
+function updateWorkMonthLabel(){
+  const el=document.getElementById('wseg-month-val');
+  const lb=document.getElementById('work-month-label');
+  if(!el||!lb)return;
+  if(!el.value)el.value=new Date().toLocaleDateString('sv').slice(0,7);
+  lb.textContent=`${el.value.slice(0,4)}年${parseInt(el.value.slice(5,7))}月`;
+}
+function changeWorkMonth(delta){
+  const el=document.getElementById('wseg-month-val');
+  if(!el)return;
+  const base=el.value||new Date().toLocaleDateString('sv').slice(0,7);
+  const d=new Date(parseInt(base.slice(0,4)), parseInt(base.slice(5,7))-1+delta, 1);
+  el.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  updateWorkMonthLabel();
+  calcWorkStats('month');
 }
 
 function calcWorkStats(seg){
