@@ -402,6 +402,11 @@ label.lbl { display: block; font-weight: 600; font-size: 14px; color: #2d2a26; m
 button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-seg-btn, .month-nav-btn, .collapse-arrow, .cal-day, .weather-btn {
   touch-action: manipulation;
 }
+
+/* 管理者ページ: 文字を黒く読みやすく */
+#view-admin .section-title, #view-admin .export-title, #view-admin .page-title { color: #000; }
+#view-admin .page-sub, #view-admin .export-label { color: #333; }
+#view-admin .collapse-header { color: #000; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -2644,8 +2649,8 @@ async function renderAdminContent(){
       </div>
       <div class="page-sub">作業状況・有給承認</div>
 
-      <div class="export-section">
-        <div class="export-title">📄 PDFで出力</div>
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-pdf')">📄 PDFで出力 <span class="collapse-arrow" id="arrow-collapse-pdf">▶</span></div>
+      <div class="export-section collapse-body" id="collapse-pdf">
         <div class="export-row">
           <span class="export-label">対象月</span>
           <select class="export-select" id="export-month">${
@@ -2659,7 +2664,8 @@ async function renderAdminContent(){
         <button class="btn-excel" onclick="exportExcel()">📄 PDFで出力</button>
       </div>
 
-      <div class="section-title">作業時間・作業日数</div>
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-work')">⏱ 作業時間・作業日数 <span class="collapse-arrow" id="arrow-collapse-work">▶</span></div>
+      <div class="collapse-body" id="collapse-work" style="margin-bottom:20px">
       <div style="display:flex;gap:4px;background:#f5f0ea;border-radius:10px;padding:3px;margin-bottom:14px">
         <button class="stats-seg-btn active" id="wseg-day" onclick="switchWorkSeg('day')">日付指定</button>
         <button class="stats-seg-btn" id="wseg-month" onclick="switchWorkSeg('month')">月</button>
@@ -2680,6 +2686,8 @@ async function renderAdminContent(){
       </div>
       <div id="work-stats-label" style="font-size:12px;color:#aaa;margin-bottom:10px;font-weight:600"></div>
       <div class="admin-stats-grid" id="work-stats-grid"></div>
+
+      </div>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-salary')">💰 給料明細 <span class="collapse-arrow" id="arrow-collapse-salary">▶</span></div>
       <div class="card collapse-body" id="collapse-salary" style="margin-bottom:20px">
@@ -2704,34 +2712,15 @@ async function renderAdminContent(){
         </div>
       </div>
 
-      <div class="section-title" style="margin-top:8px">💾 データバックアップ</div>
-      <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-backup')">💾 データバックアップ <span class="collapse-arrow" id="arrow-collapse-backup">▶</span></div>
+      <div class="collapse-body" id="collapse-backup" style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
         <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">日報・在庫・有給など全データを1つのファイルに保存します。月に1回の保存をおすすめします。ファイルはスマホの「ファイル」アプリやパソコンのダウンロードに保存されます。</div>
         <button class="btn-secondary" style="width:100%;margin-bottom:8px" onclick="backupAllData()">💾 全データをバックアップ（保存）</button>
         <button class="btn-secondary" style="width:100%;background:#fdf0f0;color:#a04040;border-color:#e0b0b0" onclick="restoreAllData()">⚠️ バックアップから復元（上書き）</button>
       </div>
 
-      <div class="section-title" style="margin-top:8px">有給 年度リセット</div>
-      <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
-        <div style="font-size:12px;color:#888;margin-bottom:10px">
-          現在の集計期間：<b style="color:#2d2a26">${leaveResetDate?leaveResetDate.slice(0,4)+'年'+parseInt(leaveResetDate.slice(5,7))+'月'+parseInt(leaveResetDate.slice(8,10))+'日〜':'全期間（未リセット）'}</b>
-        </div>
-        <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">新年度（10月）が始まったらリセットしてください。過去の申請履歴は消えず、履歴タブでそのまま確認できます。残日数の集計だけがリセット日以降でカウントし直されます。</div>
-        <button class="btn-secondary" style="width:100%;background:#fdf3e7;color:#a4610f;border-color:#f0c890" onclick="resetKyukaYear()">🔄 有給をリセット（新年度を開始）</button>
-      </div>
-
-      <div class="section-title" style="margin-top:8px">有給 付与日数設定</div>
-      <div class="card" style="margin-bottom:16px">
-        ${STAFF_LEAVE.map(m=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="font-size:14px;font-weight:600;color:#2d2a26;">${m}</span>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <input type="number" min="0" max="99" value="${leaveSettings[m]||0}" id="ls-${m.replace(/\s/g,'_')}" style="width:60px;padding:6px 8px;border-radius:7px;border:1.5px solid #e0d8d0;font-size:14px;text-align:center;font-family:inherit;">
-              <span style="font-size:13px;color:#aaa;">日</span>
-              <button onclick="saveLeaveSettings('${m}')" style="padding:6px 12px;background:#e07b4f;color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;">保存</button>
-            </div>
-          </div>`).join('')}
-      </div>
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-kyuka')">🌴 有給・休み ${(pendingLeaves.length+pendingAbsences.length)?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingLeaves.length+pendingAbsences.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-kyuka">▶</span></div>
+      <div class="collapse-body" id="collapse-kyuka" style="margin-bottom:20px">
 
       <div class="section-title" style="margin-top:8px">有給申請 承認待ち（${pendingLeaves.length}件）</div>
       ${pendingLeaves.length?pendingLeaves.map(([key,l])=>`
@@ -2746,6 +2735,76 @@ async function renderAdminContent(){
             <button class="btn-reject" onclick="approveLeave('${key}','rejected')">✗ 却下</button>
           </div>
         </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
+
+
+      <div class="section-title" style="margin-top:16px">休み申請 承認待ち（${pendingAbsences.length}件）</div>
+      ${pendingAbsences.length?pendingAbsences.map(([key,a])=>`
+        <div class="yasumi-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
+            <span class="status-badge status-pending">申請中</span>
+          </div>
+          ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
+          <div class="approve-row">
+            <button class="btn-yasumi-approve" onclick="approveAbsence('${key}','approved')">✓ 承認</button>
+            <button class="btn-reject" onclick="approveAbsence('${key}','rejected')">✗ 却下</button>
+          </div>
+        </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
+
+
+      ${approvedLeaves.length?`
+      <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-leave-approved')">有給 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-leave-approved">▶</span></div>
+      <div class="collapse-body" id="collapse-leave-approved">
+      ${approvedLeaves.map(([key,l])=>`
+        <div class="apply-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${l.staffName}</div><div class="apply-date">📅 ${l.date}</div></div>
+            <span class="status-badge status-approved">承認済</span>
+          </div>
+          ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
+          <button class="btn-cancel-leave" onclick="cancelLeave('${key}')">✗ 取り消す</button>
+        </div>`).join('')}
+      </div>`:''}
+
+      ${approvedAbsences.length?`
+      <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-abs-approved')">休み申請 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-abs-approved">▶</span></div>
+      <div class="collapse-body" id="collapse-abs-approved">
+      ${approvedAbsences.map(([key,a])=>`
+        <div class="yasumi-card">
+          <div class="apply-top">
+            <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
+            <span class="status-badge status-approved">承認済</span>
+          </div>
+          ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
+          <button class="btn-cancel-leave" onclick="cancelAbsence('${key}')">✗ 取り消す</button>
+        </div>`).join('')}
+      </div>`:''}
+
+      <div class="section-title" style="margin-top:8px">有給 付与日数設定</div>
+      <div class="card" style="margin-bottom:16px">
+        ${STAFF_LEAVE.map(m=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:14px;font-weight:600;color:#2d2a26;">${m}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="number" min="0" max="99" value="${leaveSettings[m]||0}" id="ls-${m.replace(/\s/g,'_')}" style="width:60px;padding:6px 8px;border-radius:7px;border:1.5px solid #e0d8d0;font-size:14px;text-align:center;font-family:inherit;">
+              <span style="font-size:13px;color:#aaa;">日</span>
+              <button onclick="saveLeaveSettings('${m}')" style="padding:6px 12px;background:#e07b4f;color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;">保存</button>
+            </div>
+          </div>`).join('')}
+      </div>
+
+
+      <div class="section-title" style="margin-top:8px">有給 年度リセット</div>
+      <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:12px;color:#888;margin-bottom:10px">
+          現在の集計期間：<b style="color:#2d2a26">${leaveResetDate?leaveResetDate.slice(0,4)+'年'+parseInt(leaveResetDate.slice(5,7))+'月'+parseInt(leaveResetDate.slice(8,10))+'日〜':'全期間（未リセット）'}</b>
+        </div>
+        <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">新年度（10月）が始まったらリセットしてください。過去の申請履歴は消えず、履歴タブでそのまま確認できます。残日数の集計だけがリセット日以降でカウントし直されます。</div>
+        <button class="btn-secondary" style="width:100%;background:#fdf3e7;color:#a4610f;border-color:#f0c890" onclick="resetKyukaYear()">🔄 有給をリセット（新年度を開始）</button>
+      </div>
+
+
+      </div>
 
       <div class="section-title collapse-header" onclick="toggleCollapse('collapse-notice')">📢 お知らせ投稿 <span class="collapse-arrow" id="arrow-collapse-notice">▶</span></div>
       <div class="card collapse-body" id="collapse-notice" style="margin-bottom:20px">
@@ -2787,47 +2846,6 @@ async function renderAdminContent(){
         </div>
       </div>
 
-      <div class="section-title" style="margin-top:16px">休み申請 承認待ち（${pendingAbsences.length}件）</div>
-      ${pendingAbsences.length?pendingAbsences.map(([key,a])=>`
-        <div class="yasumi-card">
-          <div class="apply-top">
-            <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
-            <span class="status-badge status-pending">申請中</span>
-          </div>
-          ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
-          <div class="approve-row">
-            <button class="btn-yasumi-approve" onclick="approveAbsence('${key}','approved')">✓ 承認</button>
-            <button class="btn-reject" onclick="approveAbsence('${key}','rejected')">✗ 却下</button>
-          </div>
-        </div>`).join(''):'<div class="empty">承認待ちの申請はありません✓</div>'}
-
-      ${approvedLeaves.length?`
-      <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-leave-approved')">有給 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-leave-approved">▶</span></div>
-      <div class="collapse-body" id="collapse-leave-approved">
-      ${approvedLeaves.map(([key,l])=>`
-        <div class="apply-card">
-          <div class="apply-top">
-            <div><div class="apply-name">${l.staffName}</div><div class="apply-date">📅 ${l.date}</div></div>
-            <span class="status-badge status-approved">承認済</span>
-          </div>
-          ${l.reason?`<div class="apply-reason">📝 ${l.reason}</div>`:''}
-          <button class="btn-cancel-leave" onclick="cancelLeave('${key}')">✗ 取り消す</button>
-        </div>`).join('')}
-      </div>`:''}
-
-      ${approvedAbsences.length?`
-      <div class="section-title collapse-header" style="margin-top:16px" onclick="toggleCollapse('collapse-abs-approved')">休み申請 承認済み（取り消し可能） <span class="collapse-arrow" id="arrow-collapse-abs-approved">▶</span></div>
-      <div class="collapse-body" id="collapse-abs-approved">
-      ${approvedAbsences.map(([key,a])=>`
-        <div class="yasumi-card">
-          <div class="apply-top">
-            <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
-            <span class="status-badge status-approved">承認済</span>
-          </div>
-          ${a.reason?`<div class="apply-reason">📝 ${a.reason}</div>`:''}
-          <button class="btn-cancel-leave" onclick="cancelAbsence('${key}')">✗ 取り消す</button>
-        </div>`).join('')}
-      </div>`:''}
     </div>`;
 }
 // ── 給料明細 ─────────────────────
