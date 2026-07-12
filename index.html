@@ -118,9 +118,9 @@ textarea { resize: vertical; }
 .notice-empty { text-align: center; padding: 20px; color: #ccc; font-size: 14px; }
 
 /* 検索 */
-.search-wrap { position: relative; margin-bottom: 14px; }
-.search-inp { width: 100%; padding: 11px 36px 11px 40px; border-radius: 10px; border: 1.5px solid #e0d8d0; font-size: 14px; color: #2d2a26; background: #fff; outline: none; font-family: inherit; -webkit-appearance: none; }
-.search-ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 15px; pointer-events: none; }
+.search-wrap { position: relative; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; background: #fff; border: 1.5px solid #e0d8d0; border-radius: 10px; padding: 0 36px 0 13px; }
+.search-inp { flex: 1 1 auto; min-width: 0; width: 100%; padding: 11px 0; border: none; border-radius: 0; font-size: 14px; color: #000; background: transparent; outline: none; font-family: inherit; -webkit-appearance: none; }
+.search-ico { flex: 0 0 auto; font-size: 15px; line-height: 1; pointer-events: none; }
 .search-clr { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 0; display: none; font-family: inherit; }
 .search-result-title { font-size: 12px; font-weight: 600; color: #aaa; margin-bottom: 10px; letter-spacing: 0.05em; }
 .highlight { background: #fff3cd; border-radius: 2px; }
@@ -1447,12 +1447,16 @@ async function loadSchedules(){
 function onListSearch(input){
   const q=input.value.trim();
   document.getElementById('list-search-clear').style.display=q?'block':'none';
+  const notice=document.getElementById('notice-section');
   if(!q){
     document.getElementById('list-search-results').style.display='none';
     document.getElementById('list-calendar-area').style.display='block';
+    if(notice)notice.style.display='block';
     return;
   }
+  // 検索中はカレンダーとお知らせを隠して結果だけ表示する
   document.getElementById('list-calendar-area').style.display='none';
+  if(notice)notice.style.display='none';
   document.getElementById('list-search-results').style.display='block';
   renderListSearch(q);
 }
@@ -1462,6 +1466,8 @@ function clearListSearch(){
   document.getElementById('list-search-clear').style.display='none';
   document.getElementById('list-search-results').style.display='none';
   document.getElementById('list-calendar-area').style.display='block';
+  const notice=document.getElementById('notice-section');
+  if(notice)notice.style.display='block';
 }
 
 function hl(text,q){
