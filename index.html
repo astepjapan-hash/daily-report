@@ -4988,6 +4988,23 @@ function renderTableStats() {
   const tdNameStyle = 'padding:8px 8px;font-size:13px;text-align:left;border-bottom:1px solid #f0ede8;color:#2d2a26;white-space:nowrap;';
   const tdTotalStyle = 'padding:8px 6px;font-size:13px;font-weight:700;text-align:center;border-bottom:1px solid #f0ede8;color:#e07b4f;';
 
+  // 施工数量（㎡）を先頭行として表に組み込む（持ち出し表のみ）
+  let areaRowHtml='';
+  let _areaNote='';
+  if(moveType==='out'){
+    let cFrom, cTo;
+    if(statsPeriod==='range'&&rangeFrom&&rangeTo){cFrom=rangeFrom;cTo=rangeTo;}
+    else{cFrom=zkStatsMonth+'-01';cTo=zkStatsMonth+'-31';}
+    const a=computeAreaByStaff(cFrom,cTo);
+    if(Object.keys(a.byStaff).length){
+      areaRowHtml=`<tr style="background:#f3f8f3">
+        <td style="${tdNameStyle}color:#3f6e3f">📐 施工数量(㎡)</td>
+        ${STAFF.map(s=>`<td style="${tdStyle}color:#3f6e3f;font-weight:700">${a.byStaff[s]?(a.byStaff[s]%1===0?a.byStaff[s]:a.byStaff[s].toFixed(1)):''}</td>`).join('')}
+        <td style="${tdTotalStyle}color:#3f6e3f">${a.total%1===0?a.total:a.total.toFixed(1)}</td>
+      </tr>`;
+    }
+    if(a.noArea)_areaNote=`<div style="font-size:10px;color:#c49a6a;margin-top:6px">※ 面積未入力の完了現場が${a.noArea}件あります（集計→現場の詳細から入力できます）</div>`;
+  }
   const tableHtml = `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
     <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
       <thead>
@@ -4998,6 +5015,7 @@ function renderTableStats() {
         </tr>
       </thead>
       <tbody>
+        ${areaRowHtml}
         ${activeItems.length ? activeItems.map(item => {
           const d = byItemStaff[item.id];
           return `<tr>
@@ -5026,31 +5044,9 @@ function renderTableStats() {
     ? rangeFrom + ' 〜 ' + rangeTo
     : `${y}年${parseInt(mo)}月`;
 
-  // 持ち出し表示のときはスタッフ別の施工数量（㎡）も表示
-  let areaHtml='';
-  if(moveType==='out'){
-    let cFrom, cTo;
-    if(statsPeriod==='range'&&rangeFrom&&rangeTo){cFrom=rangeFrom;cTo=rangeTo;}
-    else{cFrom=zkStatsMonth+'-01';cTo=zkStatsMonth+'-31';}
-    const a=computeAreaByStaff(cFrom,cTo);
-    const staffOrder=['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'].filter(s=>a.byStaff[s]);
-    if(staffOrder.length||a.noArea){
-      areaHtml=`<div style="margin-top:14px">
-        <div class="section-title">📐 施工数量（㎡）</div>
-        <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px">
-          <div style="font-size:11px;color:#aaa;margin-bottom:8px">この期間に完了した現場の面積を、樹脂の使用量で按分しています</div>
-          <table style="width:100%;border-collapse:collapse;font-size:13px">
-            ${staffOrder.map(s=>`<tr style="border-bottom:1px solid #f0ebe4"><td style="padding:7px 0;font-weight:700;color:#2d2a26">${SURNAME_MAP[s]||s}</td><td style="text-align:right;font-weight:700;color:#5a8a5a">${a.byStaff[s]}㎡</td></tr>`).join('')}
-            <tr><td style="padding:8px 0;font-weight:700;color:#888">合計</td><td style="text-align:right;font-weight:700;color:#2d2a26">${a.total}㎡</td></tr>
-          </table>
-          ${a.noArea?`<div style="font-size:10px;color:#c49a6a;margin-top:8px">※ 面積未入力の完了現場が${a.noArea}件あります（集計→現場の詳細から入力できます）</div>`:''}
-        </div>
-      </div>`;
-    }
-  }
   el.innerHTML = `
     ${tableHtml}
-    ${areaHtml}
+    ${_areaNote}
     <div style="margin-top:12px">
       <button class="btn-primary" onclick="exportTableExcel('${zkStatsMonth}','${moveType}')">📄 PDFで出力</button>
     </div>`;
@@ -5070,16 +5066,14 @@ async function exportTableExcel(month, moveType = 'out') {
     const d = byItemStaff[item.id];
     data.push([item.name, ...STAFF.map(s => d.staff[s] !== 0 ? (d.staff[s]%1===0?d.staff[s]:d.staff[s].toFixed(1)) : ''), d.total !== 0 ? (d.total%1===0?d.total:d.total.toFixed(1)) : '0']);
   });
-  let areaSection='';
   if(moveType==='out'){
     const a=computeAreaByStaff(month+'-01',month+'-31');
-    const staffOrder=['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'].filter(s=>a.byStaff[s]);
-    if(staffOrder.length){
-      const areaData=[['スタッフ','施工数量'],...staffOrder.map(s=>[s,a.byStaff[s]+'㎡']),['合計',a.total+'㎡']];
-      areaSection='<h2>施工数量（㎡）　※完了現場の面積を樹脂使用量で按分</h2>'+pdfTableHtml(areaData);
+    if(Object.keys(a.byStaff).length){
+      // 表の先頭行（ヘッダーの直後）に施工数量を挿入
+      data.splice(1,0,['📐 施工数量(㎡)', ...STAFF.map(s=>a.byStaff[s]?(a.byStaff[s]%1===0?a.byStaff[s]:a.byStaff[s].toFixed(1)):''), a.total%1===0?a.total:a.total.toFixed(1)]);
     }
   }
-  const inner='<h1>'+typeLabel+'表</h1><div class="sub">'+label+'</div>'+pdfTableHtml(data)+areaSection;
+  const inner='<h1>'+typeLabel+'表</h1><div class="sub">'+label+'</div>'+pdfTableHtml(data);
   openPdfWindow(typeLabel+'表_'+label, inner);
 }
 
