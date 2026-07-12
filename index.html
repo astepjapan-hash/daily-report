@@ -579,7 +579,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
       </div>
       <div class="filter-row" id="exp-staff-filter" style="margin-bottom:10px"></div>
       <div id="exp-list"></div>
-      <button class="btn-secondary" style="width:100%;margin-top:12px" onclick="exportExpensePdf()">📄 経費台帳をPDFで出力</button>
+      <button class="btn-secondary" id="exp-pdf-btn" style="width:100%;margin-top:12px;display:none" onclick="exportExpensePdf()">📄 経費台帳をPDFで出力（管理者）</button>
     </div>
   </div>
 
@@ -2571,6 +2571,9 @@ function renderExpense(){
   const el = document.getElementById('exp-list');
   const fr = document.getElementById('exp-staff-filter');
   if(!el || !lb) return;
+  // PDF出力は管理者のみ
+  const pdfBtn = document.getElementById('exp-pdf-btn');
+  if(pdfBtn) pdfBtn.style.display = adminLoggedIn ? 'block' : 'none';
   lb.textContent = `${expenseMonth.slice(0,4)}年${parseInt(expenseMonth.slice(5,7))}月`;
 
   // スタッフ絞り込みボタン
@@ -2679,17 +2682,19 @@ function getApprovedExpenseTotal(name, month){
 }
 
 // 紙の台帳と同じ体裁（1人1表）でPDF出力
-function exportExpensePdf(){
-  const [y, mo] = expenseMonth.split('-');
+function exportExpensePdf(monthArg){
+  if(!adminLoggedIn){alert('出力は管理者のみ可能です。管理タブからログインしてください。');return;}
+  const targetMonth = monthArg || expenseMonth;
+  const [y, mo] = targetMonth.split('-');
   const label = `${y}年${parseInt(mo)}月`;
   const MIN_ROWS = 8;
   const staffList = STAFF_LEAVE.concat(
-    Object.values(expenses).some(e => e.staffName === '外注' && (e.date||'').startsWith(expenseMonth) && e.status === 'approved') ? ['外注'] : []
+    Object.values(expenses).some(e => e.staffName === '外注' && (e.date||'').startsWith(targetMonth) && e.status === 'approved') ? ['外注'] : []
   );
   let grand = 0;
   const tables = staffList.map(name=>{
     const rows = Object.values(expenses)
-      .filter(e => e.staffName === name && (e.date||'').startsWith(expenseMonth) && e.status === 'approved')
+      .filter(e => e.staffName === name && (e.date||'').startsWith(targetMonth) && e.status === 'approved')
       .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
     const sum = rows.reduce((s,e)=>s+(parseInt(e.amount)||0),0);
     grand += sum;
@@ -2727,6 +2732,7 @@ function exportExpensePdf(){
 const BACKUP_PATHS=['reports','leaves','absences','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses'];
 
 async function backupAllData(){
+  if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
   if(window._backupBusy)return;
   window._backupBusy=true;
   try{
@@ -2750,6 +2756,7 @@ async function backupAllData(){
 }
 
 function restoreAllData(){
+  if(!adminLoggedIn){alert('復元は管理者のみ可能です。');return;}
   const input=document.createElement('input');
   input.type='file';
   input.accept='.json,application/json';
@@ -2968,6 +2975,14 @@ async function renderAdminContent(){
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-expense')">💴 経費 ${pendingExpenses.length?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingExpenses.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-expense">▶</span></div>
       <div class="collapse-body" id="collapse-expense" style="margin-bottom:20px">
+
+        <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:12px 14px;margin-bottom:14px">
+          <div style="font-size:12px;color:#333;margin-bottom:8px">承認済みの経費を紙の台帳と同じ体裁で出力します</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="month" id="admin-exp-month" value="${new Date().toLocaleDateString('sv').slice(0,7)}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
+            <button onclick="exportExpensePdf(document.getElementById('admin-exp-month').value)" style="padding:9px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📄 PDFで出力</button>
+          </div>
+        </div>
 
         <div class="section-title" style="margin-top:8px">経費申請 承認待ち（${pendingExpenses.length}件）</div>
         ${pendingExpenses.length?pendingExpenses.map(([key,e])=>`
@@ -3299,6 +3314,7 @@ function calcSalaryFromData(name,d){
 }
 
 async function exportSalaryPdfAll(){
+  if(!adminLoggedIn){alert('出力は管理者のみ可能です。');return;}
   const month=document.getElementById('salary-month').value;
   if(!month){alert('対象月を選択してください');return;}
   const [y,m]=month.split('-');
@@ -3493,6 +3509,7 @@ async function approveLeave(key,status){
   }catch(e){alert('処理に失敗しました。');}
 }
 function exportExcel(){
+  if(!adminLoggedIn){alert('出力は管理者のみ可能です。');return;}
   const month=document.getElementById('export-month')?.value;
   if(!month){alert('対象月を選択してください');return;}
   const [y,m]=month.split('-');
@@ -5385,11 +5402,12 @@ function renderTableStats() {
     ${tableHtml}
     ${_areaNote}
     <div style="margin-top:12px">
-      <button class="btn-primary" onclick="exportTableExcel('${zkStatsMonth}','${moveType}')">📄 PDFで出力</button>
+      ${adminLoggedIn?`<button class="btn-primary" onclick="exportTableExcel('${zkStatsMonth}','${moveType}')">📄 PDFで出力（管理者）</button>`:''}
     </div>`;
 }
 
 async function exportTableExcel(month, moveType = 'out') {
+  if(!adminLoggedIn){alert('出力は管理者のみ可能です。管理タブからログインしてください。');return;}
   const [y, mo] = month.split('-');
   const label = y + '年' + parseInt(mo) + '月';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
@@ -5617,6 +5635,7 @@ function triggerImport() {
 
 // 在庫バックアップ（Excel出力）
 function exportInventoryExcel() {
+  if(!adminLoggedIn){alert('出力は管理者のみ可能です。');return;}
   if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリが読み込まれていません'); return; }
   const now = new Date();
   const dateStr = now.toLocaleDateString('sv');
