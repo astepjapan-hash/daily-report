@@ -1050,9 +1050,9 @@ const SEED_USERS = {
   u_yamauchi: {name:'山内浩一', surname:'山内',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:2},
   u_morita:   {name:'森田義則', surname:'森田',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:3},
   u_tomiyama: {name:'富山裕貴', surname:'富山',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:4},
-  u_gaichu:   {name:'外注',     surname:'外注',   role:'staff', canLogin:false, leaveTarget:false, listed:true,  order:9}
+  u_gaichu:   {name:'外注',     surname:'外注',   role:'staff', canLogin:true,  leaveTarget:false, listed:true,  order:9}
 };
-const SEED_PASS = {u_admin:'24312431', u_kato:'000000', u_yamauchi:'000000', u_morita:'000000', u_tomiyama:'000000'};
+const SEED_PASS = {u_admin:'24312431', u_kato:'000000', u_yamauchi:'000000', u_morita:'000000', u_tomiyama:'000000', u_gaichu:'000000'};
 
 // 下書き保存キー（同じ端末を複数人で使う場合にユーザーごとに分離）
 function draftKey(){ return 'report_draft_'+(currentUser&&currentUser.key?currentUser.key:'anon'); }
@@ -3653,11 +3653,13 @@ function editUserForm(key){
   const u = usersCache[key];
   box.dataset.open = '1';
   box.innerHTML = userFormHtml('edit_'+key, u) + `
+    ${!u.uid?`<div class="field" style="margin-bottom:10px"><label class="lbl">初期パスワード（この人はまだログイン用の登録がありません。「ログインできる」をONにして保存すると、このパスワードで登録します）</label>
+      <input type="text" id="edit_${key}-pass" class="login-input" placeholder="例: 000000"></div>`:''}
     <div style="display:flex;gap:8px;margin-bottom:8px">
       <button class="btn-secondary" style="flex:1" onclick="editUserForm('${key}')">閉じる</button>
-      <button class="btn-primary" style="flex:2" onclick="submitEditUser('${key}')">保存する</button>
+      <button class="btn-primary" style="flex:2" id="edit_${key}-btn" onclick="submitEditUser('${key}')">保存する</button>
     </div>
-    ${u.canLogin?`<button class="btn-secondary" style="width:100%;margin-bottom:6px;color:#2858b0;border-color:#2858b0" onclick="resetUserPass('${key}')">🔑 パスワードを再設定する</button>`:''}
+    ${u.canLogin&&u.uid?`<button class="btn-secondary" style="width:100%;margin-bottom:6px;color:#2858b0;border-color:#2858b0" onclick="resetUserPass('${key}')">🔑 パスワードを再設定する</button>`:''}
     <button class="btn-secondary" style="width:100%;background:#fdf0f0;color:#a04040;border-color:#e0b0b0" onclick="deleteUser('${key}')">🗑 このユーザーを削除する</button>`;
 }
 
@@ -3675,8 +3677,20 @@ async function submitEditUser(key){
     const admins = usersSorted().filter(x=>x.role==='admin' && x.canLogin!==false);
     if(admins.length<=1){ alert('管理者が0人になってしまうため、権限を変更できません。先に別の管理者を作成してください。'); return; }
   }
+  // ログインをONにするが、ログイン用の登録がまだ無い人 → 初期パスワードで新規登録する
+  const passEl = document.getElementById('edit_'+key+'-pass');
+  const newPass = passEl ? passEl.value : '';
+  if(f.canLogin && !u.uid && newPass.length<6){ alert('この人はまだログイン用の登録がありません。\n初期パスワード（6文字以上）を入力してください。'); return; }
+  const btn = document.getElementById('edit_'+key+'-btn');
+  if(btn){ btn.disabled = true; btn.textContent = '保存中...'; }
   try{
     const rec = Object.assign({}, u, {name:f.name, surname:f.surname, role:f.role, canLogin:f.canLogin, leaveTarget:f.leaveTarget, listed:f.listed});
+    if(f.canLogin && !u.uid){
+      const d = await authApi('signUp', {email:key+'@'+AUTH_EMAIL_DOMAIN, password:newPass, returnSecureToken:true});
+      rec.uid = d.localId;
+      rec.mustChangePass = true;
+      await dbFetch('/authMap/'+d.localId+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(f.role)});
+    }
     await dbFetch('/users/'+key+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)});
     if(u.uid && (u.role!==f.role || u.canLogin!==f.canLogin)){
       if(f.canLogin) await dbFetch('/authMap/'+u.uid+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(f.role)});
@@ -3684,7 +3698,14 @@ async function submitEditUser(key){
     }
     alert('保存しました。');
     await refreshUsers();
-  }catch(e){ alert('保存に失敗しました（'+(e.message||'')+'）'); }
+  }catch(e){
+    const code = e.message||'';
+    if(code.indexOf('WEAK_PASSWORD')>=0) alert('パスワードが簡単すぎます。6文字以上にしてください。');
+    else if(code.indexOf('EMAIL_EXISTS')>=0) alert('この人のログイン用の登録は、すでにFirebase側に存在します。\nパスワードが分からない場合は、Firebaseの管理画面から再設定してください。');
+    else if(code.indexOf('OPERATION_NOT_ALLOWED')>=0) alert('Firebaseで「メール/パスワード」認証が有効になっていません。');
+    else alert('保存に失敗しました（'+code+'）');
+    if(btn){ btn.disabled = false; btn.textContent = '保存する'; }
+  }
 }
 
 async function resetUserPass(key){
