@@ -177,6 +177,10 @@ textarea { resize: vertical; }
 .cal-day.today { border-color: #e07b4f; }
 .cal-day.has-report { background: #fdf0e8; }
 .cal-day.selected { background: #e07b4f; border-color: #e07b4f; }
+.cal-day.holiday { background: #eef2f7; }
+.cal-day.holiday.has-report { background: #f6efe9; }
+.cal-day.holiday.selected { background: #e07b4f; }
+.cal-hol-icon { font-size: 11px; line-height: 1.2; margin-top: 1px; }
 .cal-day-num { font-size: 13px; font-weight: 600; color: #2d2a26; }
 .cal-day.sun .cal-day-num { color: #e05a5a; }
 .cal-day.sat .cal-day-num { color: #4a7ccc; }
@@ -457,6 +461,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         <span class="draft-bar-text">📝 下書き保存済み（一覧から編集できます）</span>
       </div>
       <div class="date-label" id="today-label"></div>
+      <div id="today-holiday" style="display:none;background:#eef2f7;border:1.5px solid #d5dee9;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:#3a5573"></div>
       <div class="field">
         <label class="lbl">氏名</label>
         <select id="staff-name">
@@ -1026,7 +1031,52 @@ let usersCache = {};    // /users の内容
 let _auth = null;       // {idToken, refreshToken, uid, expiresAt}
 let leaveSettings = {}; // スタッフごとの付与日数
 let leaveResetDate = ''; // 有給集計の基準日（この日以降の承認分のみカウント）
-let absences = {}; // 休み申請
+let absences = {}; // 休み申請（個人が申請する休み）
+
+// ── 会社の休業日（雨天中止・お盆・年末年始など。全員が休み） ──
+let companyHolidays = {}; // {'2026-08-13': {type:'obon', note:'', createdAt:...}}
+const HOLIDAY_TYPES = {
+  temp:    {label:'臨時休業',           hint:'雨・急な現場都合など', icon:'🏢'},
+  company: {label:'休業日',             hint:'会社が決めた休み',     icon:'📋'},
+  obon:    {label:'夏季休暇（お盆）',   hint:'',                     icon:'🎐'},
+  newyear: {label:'年末年始',           hint:'',                     icon:'🎍'},
+  gw:      {label:'ゴールデンウィーク', hint:'',                     icon:'🎏'},
+  other:   {label:'その他の休み',       hint:'',                     icon:'🏖'}
+};
+function holidayLabel(h){
+  if(!h) return '';
+  const t = HOLIDAY_TYPES[h.type] || HOLIDAY_TYPES.other;
+  return t.icon + ' ' + t.label + (h.note ? '（' + h.note + '）' : '');
+}
+// 対象者の表示（全員なら「全員」、一部ならその人の苗字）
+function holidayMembersLabel(h){
+  if(!h || !h.members || !h.members.length) return '全員';
+  return h.members.map(n=>SURNAME_MAP[n]||n).join('・');
+}
+// その日がこの人にとって休業日か
+function isHolidayFor(dateStr, staffName){
+  const h = companyHolidays[dateStr];
+  if(!h) return false;
+  if(!h.members || !h.members.length) return true; // 対象者の指定なし＝全員
+  return h.members.includes(staffName);
+}
+// 入力画面：今日が自分の休業日ならお知らせを出す（入力はできる）
+function updateTodayHoliday(){
+  const el=document.getElementById('today-holiday');
+  if(!el) return;
+  const today=new Date().toLocaleDateString('sv');
+  const h=companyHolidays[today];
+  const me=currentUser&&currentUser.name;
+  if(h && me && isHolidayFor(today, me)){
+    el.textContent=holidayLabel(h)+'　※今日はお休みです';
+    el.style.display='';
+  }else if(h){
+    el.textContent=holidayLabel(h)+'　※今日は '+holidayMembersLabel(h)+' がお休みです';
+    el.style.display='';
+  }else{
+    el.style.display='none';
+  }
+}
 
 let selectedWeather='', siteCount=0, reports={}, leaves={};
 let searchQuery='', filterName='', statsSeg='site', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
@@ -1453,7 +1503,7 @@ function showView(name, isBack) {
   const tid = (name==='form'||name==='done')?'form':(name==='detail'||name==='list')?'list':name;
   const tabEl = document.getElementById('tab-'+tid);
   if(tabEl) tabEl.classList.add('active');
-  if(name==='form') checkDraft();
+  if(name==='form'){ checkDraft(); updateTodayHoliday(); }
   if(name==='list') loadReports();
   if(name==='guide') loadGuides();
   if(name==='stats') loadStats();
@@ -1982,12 +2032,13 @@ function renderListSearch(q){
 
 async function loadReports(){
   try{
-    const [rRes,lRes,aRes,dRes,nRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/absences.json'),dbFetch('/drafts.json'),dbFetch('/notices.json')]);
+    const [rRes,lRes,aRes,dRes,nRes,chRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/absences.json'),dbFetch('/drafts.json'),dbFetch('/notices.json'),dbFetch('/companyHolidays.json')]);
     reports=await rRes.json()||{};
     leaves=await lRes.json()||{};
     absences=await aRes.json()||{};
     drafts=await dRes.json()||{};
     notices=await nRes.json()||{};
+    companyHolidays=await chRes.json()||{};
     try{const smRes=await dbFetch('/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
     try{const saRes=await dbFetch('/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){siteAliases={};}
     const todayStr=new Date().toLocaleDateString('sv');
@@ -1998,6 +2049,7 @@ async function loadReports(){
   renderCalendar();
   renderNotices();
   updateAdminBadge();
+  updateTodayHoliday();
 }
 
 function changeCalMonth(dir){
@@ -2033,6 +2085,7 @@ function renderCalendar(){
     const dateStr=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const dow=new Date(calYear,calMonth,d).getDay();
     const hasReport=byDate[dateStr]?.length>0||Object.values(schedules).some(s=>s.date===dateStr)||Object.values(leaves).some(l=>l.date===dateStr&&l.status==='approved')||Object.values(absences).some(a=>a.date===dateStr&&a.status==='approved')||Object.values(drafts).some(d=>d.date===dateStr);
+    const holiday=companyHolidays[dateStr];
     const isToday=dateStr===today;
     const isSelected=dateStr===calSelectedDate;
     const count=byDate[dateStr]?.length||0;
@@ -2043,8 +2096,9 @@ function renderCalendar(){
     const hasKyuka=kyukaCount>0;const hasYasumi=yasumiCount>0;
     const draftCount=Object.values(drafts).filter(d=>d.date===dateStr).length;const hasDraft=draftCount>0;
     const dots=(hasReport||hasSchedule||hasKyuka||hasYasumi||hasDraft)?`<div class="cal-dots">${Array.from({length:Math.min(count,3)}).map(()=>'<div class="cal-dot"></div>').join('')}${Array.from({length:Math.min(schedCount,2)}).map(()=>'<div class="cal-dot cal-dot-schedule"></div>').join('')}${Array.from({length:Math.min(kyukaCount,2)}).map(()=>'<div class="cal-dot cal-dot-kyuka"></div>').join('')}${Array.from({length:Math.min(yasumiCount,2)}).map(()=>'<div class="cal-dot cal-dot-yasumi"></div>').join('')}${Array.from({length:Math.min(draftCount,2)}).map(()=>'<div class="cal-dot cal-dot-draft"></div>').join('')}</div>`:'';
-    html+=`<div class="cal-day ${dow===0?'sun':dow===6?'sat':''} ${hasReport?'has-report':''} ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectCalDate('${dateStr}')">
-      <div class="cal-day-num">${d}</div>${dots}
+    const holIcon=holiday?`<div class="cal-hol-icon">${(HOLIDAY_TYPES[holiday.type]||HOLIDAY_TYPES.other).icon}</div>`:'';
+    html+=`<div class="cal-day ${dow===0?'sun':dow===6?'sat':''} ${hasReport?'has-report':''} ${holiday?'holiday':''} ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectCalDate('${dateStr}')" ${holiday?`title="${escHtml(holidayLabel(holiday))}"`:''}>
+      <div class="cal-day-num">${d}</div>${holIcon}${dots}
     </div>`;
   }
   document.getElementById('cal-grid').innerHTML=html;
@@ -2126,8 +2180,14 @@ function renderDayReports(dateStr){
       </div>`).join('')}`:'';
 
   const isEmpty=!schedList.length&&!list.length&&!kyukaList.length&&!yasumiList.length&&!draftList.length;
+  const hol=companyHolidays[dateStr];
+  const holHtml=hol?`<div style="background:#eef2f7;border:1.5px solid #d5dee9;border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:700;color:#3a5573">${escHtml(holidayLabel(hol))}</div>
+      <div style="font-size:12px;color:#7b8ea3;margin-top:2px">休み：${escHtml(holidayMembersLabel(hol))}（日報の入力はできます）</div>
+    </div>`:'';
   content.innerHTML=`
     <div class="cal-day-title" style="margin-bottom:10px">${label}</div>
+    ${holHtml}
     <button class="add-schedule-btn" onclick="toggleScheduleForm('${dateStr}')">＋ 予定を追加</button>
     <div id="schedule-form-${dateStr}" style="display:none">
       <div class="schedule-form">
@@ -3156,7 +3216,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -3269,8 +3329,8 @@ async function renderAdminContent(){
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json')]);
-    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';
+    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes,chRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json'),dbFetch('/companyHolidays.json')]);
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';companyHolidays=await chRes.json()||{};
   }catch(e){}
 
   // 作業時間・日数集計（全期間）
@@ -3521,6 +3581,54 @@ async function renderAdminContent(){
         </div>
         <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">新年度（10月）が始まったらリセットしてください。過去の申請履歴は消えず、履歴タブでそのまま確認できます。残日数の集計だけがリセット日以降でカウントし直されます。</div>
         <button class="btn-secondary" style="width:100%;background:#fdf3e7;color:#a4610f;border-color:#f0c890" onclick="resetKyukaYear()">🔄 有給をリセット（新年度を開始）</button>
+      </div>
+
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-holiday')">📅 休業日設定（会社の休み） <span class="collapse-arrow" id="arrow-collapse-holiday">▶</span></div>
+      <div class="card collapse-body" id="collapse-holiday" style="margin-bottom:20px">
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px">雨天中止・お盆・年末年始など、<b>全員が休みの日</b>を登録します。カレンダーに表示され、集計の「稼働可能日数」から除かれます。<br>登録しても<b>給料の計算は変わりません</b>（給料は日報を出した日数で計算されます）。休業日でも日報の入力はできます。</div>
+        <div class="field"><label class="lbl">日付（1日だけの場合は「開始日」だけでOK）</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="date" id="hol-from" style="flex:1">
+            <span style="color:#aaa;font-size:13px">〜</span>
+            <input type="date" id="hol-to" style="flex:1">
+          </div>
+        </div>
+        <div class="field"><label class="lbl">休みの種類</label>
+          <select id="hol-type" class="login-input">
+            ${Object.entries(HOLIDAY_TYPES).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}${v.hint?'（'+v.hint+'）':''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label class="lbl">誰が休みか</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26;margin-bottom:8px">
+            <input type="checkbox" id="hol-all" checked onchange="toggleHolMembers()" style="width:18px;height:18px">全員が休み
+          </label>
+          <div id="hol-members" style="display:none;background:#faf8f5;border-radius:10px;padding:10px 12px">
+            <div style="font-size:12px;color:#888;margin-bottom:8px">休む人にチェックを入れてください</div>
+            ${MEMBERS.map((m,i)=>`
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26;margin-bottom:6px">
+                <input type="checkbox" class="hol-member" value="${i}" style="width:18px;height:18px">${escHtml(m)}
+              </label>`).join('')}
+          </div>
+        </div>
+        <div class="field"><label class="lbl">メモ（任意）</label>
+          <input type="text" id="hol-note" placeholder="例: 台風接近のため">
+        </div>
+        <button class="btn-primary" onclick="submitHolidays()">休業日として登録する</button>
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">登録済みの休業日（新しい順）</div>
+          ${Object.keys(companyHolidays).sort((a,b)=>b.localeCompare(a)).slice(0,60).map(d=>{
+            const h=companyHolidays[d];
+            const [hy,hm,hd]=d.split('-');
+            const dw=['日','月','火','水','木','金','土'][new Date(d+'T00:00:00').getDay()];
+            const who=holidayMembersLabel(h);
+            return `<div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
+              <span style="font-size:13px;color:#2d2a26;word-break:break-all">${parseInt(hm)}月${parseInt(hd)}日(${dw})　${escHtml(holidayLabel(h))}
+                <span style="color:${who==='全員'?'#aaa':'#c97a1f'};font-size:12px">［${escHtml(who)}］</span>
+              </span>
+              <button onclick="deleteHoliday('${d}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
+            </div>`;
+          }).join('')||'<div class="notice-empty">休業日はまだ登録されていません</div>'}
+        </div>
       </div>
 
 
@@ -4138,6 +4246,70 @@ async function submitMergeSites(){
   }catch(e){ alert('保存に失敗しました。'); }
 }
 
+// ── 休業日（会社の休み）の登録・削除 ──
+// 「全員が休み」のチェックを外したときだけ、個別の名前リストを出す
+function toggleHolMembers(){
+  const all=document.getElementById('hol-all');
+  const box=document.getElementById('hol-members');
+  if(all&&box) box.style.display = all.checked ? 'none' : '';
+}
+
+async function submitHolidays(){
+  const from=document.getElementById('hol-from').value;
+  const toRaw=document.getElementById('hol-to').value;
+  const type=document.getElementById('hol-type').value;
+  const note=document.getElementById('hol-note').value.trim();
+  const isAll=document.getElementById('hol-all').checked;
+  const members=isAll?null:Array.from(document.querySelectorAll('.hol-member:checked'))
+    .map(c=>MEMBERS[parseInt(c.value,10)]).filter(n=>n!=null);
+  if(!from){ alert('日付（開始日）を選んでください'); return; }
+  if(!isAll && !members.length){ alert('休む人にチェックを入れてください'); return; }
+  const to=toRaw||from;
+  if(to<from){ alert('終了日は開始日より後にしてください'); return; }
+
+  // 開始日〜終了日の日付を並べる
+  const days=[];
+  const cur=new Date(from+'T00:00:00');
+  const end=new Date(to+'T00:00:00');
+  while(cur<=end){
+    days.push(cur.toLocaleDateString('sv'));
+    cur.setDate(cur.getDate()+1);
+    if(days.length>366){ alert('一度に登録できるのは1年分までです'); return; }
+  }
+  const t=HOLIDAY_TYPES[type]||HOLIDAY_TYPES.other;
+  const already=days.filter(d=>companyHolidays[d]);
+  const whoTxt=isAll?'全員':members.join('・');
+  let msg=days.length+'日間を「'+t.icon+' '+t.label+'」として休業日に登録します。\n\n'
+    +'日付：'+days[0]+(days.length>1?' 〜 '+days[days.length-1]:'')+'\n'
+    +'休む人：'+whoTxt+'\n\n';
+  if(already.length) msg+='※このうち'+already.length+'日はすでに休業日として登録されています（上書きします）\n\n';
+  msg+='※日報のデータは変わりません\n\nよろしいですか？';
+  if(!confirm(msg)) return;
+
+  const updates={};
+  const rec={type, note, createdAt:Date.now(), createdBy:(currentUser&&currentUser.name)||''};
+  if(!isAll) rec.members=members; // 全員のときは対象者を持たせない
+  days.forEach(d=>{ updates[d]=rec; });
+  try{
+    await dbFetch('/companyHolidays.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});
+    Object.assign(companyHolidays, updates);
+    document.getElementById('hol-note').value='';
+    alert('休業日を登録しました！');
+    renderAdminContent();
+  }catch(e){ alert('保存に失敗しました。'); }
+}
+
+async function deleteHoliday(dateStr){
+  const h=companyHolidays[dateStr];
+  if(!h) return;
+  if(!confirm(dateStr+'（'+holidayLabel(h)+'）を休業日から外しますか？')) return;
+  try{
+    await dbFetch('/companyHolidays/'+dateStr+'.json',{method:'DELETE'});
+    delete companyHolidays[dateStr];
+    renderAdminContent();
+  }catch(e){ alert('削除に失敗しました。'); }
+}
+
 async function deleteSiteAlias(fromEnc){
   const from=decodeURIComponent(fromEnc);
   if(!confirm(from+'の統合設定を削除しますか？'))return;
@@ -4495,10 +4667,10 @@ function calcWorkStats(seg){
   const labelEl=document.getElementById('work-stats-label');
   const gridEl=document.getElementById('work-stats-grid');
   if(labelEl)labelEl.textContent=label;
-  // 月表示のみ：有給・休み日数＋日曜除く稼働可能日数を追加
-  let kyukaByPerson={},yasumiByPerson={},possibleDays=0;
+  // 月表示のみ：有給・休み日数＋稼働可能日数（日曜・休業日を除く。休業日は人ごとに判定）
+  let kyukaByPerson={},yasumiByPerson={},possibleByPerson={},holidayByPerson={};
   if(seg==='month'){
-    STAFF_LEAVE.forEach(m=>{kyukaByPerson[m]=0;yasumiByPerson[m]=0;});
+    STAFF_LEAVE.forEach(m=>{kyukaByPerson[m]=0;yasumiByPerson[m]=0;possibleByPerson[m]=0;holidayByPerson[m]=0;});
     Object.values(leaves).forEach(l=>{
       if(l.status==='approved'&&l.date>=dateFrom&&l.date<=dateTo&&kyukaByPerson[l.staffName]!==undefined)
         kyukaByPerson[l.staffName]++;
@@ -4507,11 +4679,17 @@ function calcWorkStats(seg){
       if(a.status==='approved'&&a.date>=dateFrom&&a.date<=dateTo&&yasumiByPerson[a.staffName]!==undefined)
         yasumiByPerson[a.staffName]++;
     });
-    // 日曜除く稼働可能日数を計算
+    // 稼働可能日数を計算（日曜と、その人の休業日を除く）
     const cur=new Date(dateFrom);
     const end=new Date(dateTo);
     while(cur<=end){
-      if(cur.getDay()!==0)possibleDays++;
+      const ds=cur.toLocaleDateString('sv');
+      if(cur.getDay()!==0){
+        STAFF_LEAVE.forEach(m=>{
+          if(isHolidayFor(ds,m)) holidayByPerson[m]++;
+          else possibleByPerson[m]++;
+        });
+      }
       cur.setDate(cur.getDate()+1);
     }
   }
@@ -4523,11 +4701,12 @@ function calcWorkStats(seg){
     const yasumi=yasumiByPerson[m]||0;
     return `<div class="admin-stat-card">
       <div class="admin-stat-name">${m}</div>
-      <div class="admin-stat-row"><span class="admin-stat-key">作業日数</span><span class="admin-stat-val">${s.days.size}日${seg==='month'?` / ${possibleDays}日`+`<span style="font-size:10px;color:#aaa">（日曜除く）</span>`:''}</span></div>
+      <div class="admin-stat-row"><span class="admin-stat-key">作業日数</span><span class="admin-stat-val">${s.days.size}日${seg==='month'?` / ${possibleByPerson[m]||0}日`+`<span style="font-size:10px;color:#aaa">（日曜・休業日除く）</span>`:''}</span></div>
       <div class="admin-stat-row"><span class="admin-stat-key">作業時間</span><span class="admin-stat-val">${h}h${min}m</span></div>
       ${seg==='month'?`
       <div class="admin-stat-row"><span class="admin-stat-key">🏖️ 有給</span><span class="admin-stat-val" style="color:#388e3c">${kyuka}日</span></div>
-      <div class="admin-stat-row"><span class="admin-stat-key">😴 休み</span><span class="admin-stat-val" style="color:#7b4fb0">${yasumi}日</span></div>`:''}
+      <div class="admin-stat-row"><span class="admin-stat-key">😴 休み</span><span class="admin-stat-val" style="color:#7b4fb0">${yasumi}日</span></div>
+      <div class="admin-stat-row"><span class="admin-stat-key">🏢 休業日</span><span class="admin-stat-val" style="color:#5b7fb5">${holidayByPerson[m]||0}日</span></div>`:''}
     </div>`;
   }).join('');
 }
