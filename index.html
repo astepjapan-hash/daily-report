@@ -408,10 +408,28 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
 #view-admin .collapse-header { font-size: 17px; padding: 12px 4px; }
 #view-admin .page-sub, #view-admin .export-label { color: #333; }
 #view-admin .collapse-header { color: #000; }
+
+/* ログイン画面 */
+#login-screen { position: fixed; inset: 0; z-index: 1000; background: #f5f0ea; display: flex; align-items: center; justify-content: center; }
+.login-input { width: 100%; padding: 13px 12px; border-radius: 10px; border: 1.5px solid #e0d8d0; font-size: 15px; color: #2d2a26; background: #fff; outline: none; font-family: inherit; appearance: none; -webkit-appearance: none; box-sizing: border-box; }
+#hdr-user { flex-shrink: 0; padding: 6px 8px; border-radius: 8px; border: 1.5px solid #e0d8d0; background: #fff; color: #2d2a26; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+
+<!-- ログイン画面（起動時に表示。ログイン成功で非表示） -->
+<div id="login-screen"></div>
+
+<!-- ユーザーメニュー -->
+<div class="modal-overlay" id="user-menu-modal" style="display:none;z-index:1100" onclick="closeUserMenu()">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:340px;border-radius:16px;margin:auto">
+    <div class="modal-title" id="user-menu-title" style="text-align:center">👤</div>
+    <button class="btn-primary" style="margin-bottom:10px;background:#5b7fb5" onclick="closeUserMenu();showPassChange(true)">🔑 パスワード変更</button>
+    <button class="btn-primary" style="margin-bottom:10px;background:#c0605a" onclick="closeUserMenu();doLogout()">🚪 ログアウト</button>
+    <button class="btn-secondary" onclick="closeUserMenu()">閉じる</button>
+  </div>
+</div>
 
 <div class="header">
   <div class="header-inner">
@@ -426,6 +444,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
       <button class="tab" id="tab-kyuka" onclick="showView('kyuka')">有給</button>
       <button class="tab" id="tab-admin" onclick="showView('admin')">管理<span id="admin-badge" style="display:none;background:#e07b4f;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:3px;vertical-align:middle"></span></button>
     </div>
+    <button id="hdr-user" style="display:none" onclick="openUserMenu()"></button>
   </div>
 </div>
 
@@ -993,11 +1012,18 @@ const COMPANY_MAP = {
 };
 const RESIN_KG_PER_KAN = 18; // 樹脂1缶あたりkg
 const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
-const MEMBERS = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
-const SURNAME_MAP = {'加藤瑞樹':'加藤','山内浩一':'山内','森田義則':'森田','富山裕貴':'富山','外注':'外注'};
-const STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'];
-const STAFF_LEAVE = ['加藤瑞樹','山内浩一','森田義則','富山裕貴']; // 有給・休み対象（外注除く）
-const ADMIN_PASS = '2431'; // ← 管理者パスワード（変更可）
+// ユーザー名簿はFirebaseの /users から起動時に読み込む（applyUsersで設定）
+let MEMBERS = [];
+let SURNAME_MAP = {};
+let STAFF = [];
+let STAFF_LEAVE = []; // 有給・休み対象
+// ── ログイン認証（Firebase Authentication） ──
+const FIREBASE_API_KEY = 'AIzaSyAw_inN8cbeJiLAu-eA4fE0a28tTqKAodA';
+const AUTH_EMAIL_DOMAIN = 'astep-app.example.com'; // ログインID用の機械的なメールドメイン（実在不要）
+const SESSION_KEY = 'astep_session';
+let currentUser = null; // ログイン中のユーザー {key, name, surname, role, ...}
+let usersCache = {};    // /users の内容
+let _auth = null;       // {idToken, refreshToken, uid, expiresAt}
 let leaveSettings = {}; // スタッフごとの付与日数
 let leaveResetDate = ''; // 有給集計の基準日（この日以降の承認分のみカウント）
 let absences = {}; // 休み申請
@@ -1006,10 +1032,7 @@ let selectedWeather='', siteCount=0, reports={}, leaves={};
 let searchQuery='', filterName='', statsSeg='site', statsMonth=new Date().toLocaleDateString('sv').slice(0,7);
 let kyukaSeg='status', adminLoggedIn=false, prevView='form';
 
-document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
-addSite();
-checkDraft();
-showView('list');
+boot();
 
 // 日付変わり自動リロード
 const _startDate = getLocalDateStr();
@@ -1017,6 +1040,378 @@ setInterval(()=>{
   const now = getLocalDateStr();
   if(now !== _startDate) location.reload();
 }, 60000); // 1分ごとにチェック
+
+// ── ログイン・認証 ─────────────────
+const AUTH_API = 'https://identitytoolkit.googleapis.com/v1/accounts:';
+// 初期登録メンバー（/users が空のときだけ一度書き込まれる）
+const SEED_USERS = {
+  u_admin:    {name:'管理者',   surname:'管理者', role:'admin', canLogin:true,  leaveTarget:false, listed:false, order:0},
+  u_kato:     {name:'加藤瑞樹', surname:'加藤',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:1},
+  u_yamauchi: {name:'山内浩一', surname:'山内',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:2},
+  u_morita:   {name:'森田義則', surname:'森田',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:3},
+  u_tomiyama: {name:'富山裕貴', surname:'富山',   role:'staff', canLogin:true,  leaveTarget:true,  listed:true,  order:4},
+  u_gaichu:   {name:'外注',     surname:'外注',   role:'staff', canLogin:false, leaveTarget:false, listed:true,  order:9}
+};
+const SEED_PASS = {u_admin:'24312431', u_kato:'000000', u_yamauchi:'000000', u_morita:'000000', u_tomiyama:'000000'};
+
+// 下書き保存キー（同じ端末を複数人で使う場合にユーザーごとに分離）
+function draftKey(){ return 'report_draft_'+(currentUser&&currentUser.key?currentUser.key:'anon'); }
+
+function readSession(){
+  try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch(e){ return null; }
+}
+function clearSession(){ localStorage.removeItem(SESSION_KEY); _auth=null; }
+
+// Firebase Authentication API呼び出し
+async function authApi(action, body){
+  const r = await fetch(AUTH_API+action+'?key='+FIREBASE_API_KEY, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if(!r.ok) throw new Error((d.error && d.error.message) || 'auth_error');
+  return d;
+}
+
+// idTokenの取得（期限が近ければ自動更新）
+async function getIdToken(){
+  if(!_auth){
+    const s = readSession();
+    if(!s || !s.refreshToken) return null;
+    _auth = {idToken:null, refreshToken:s.refreshToken, uid:s.uid, expiresAt:0};
+  }
+  if(Date.now() > _auth.expiresAt - 60000){
+    const ok = await refreshAuthToken();
+    if(!ok) return null;
+  }
+  return _auth ? _auth.idToken : null;
+}
+
+async function refreshAuthToken(){
+  if(!_auth || !_auth.refreshToken) return false;
+  try{
+    const r = await fetch('https://securetoken.googleapis.com/v1/token?key='+FIREBASE_API_KEY, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(_auth.refreshToken)});
+    const d = await r.json();
+    if(!r.ok){
+      const code = (d.error && d.error.message) || '';
+      if(/TOKEN_EXPIRED|USER_DISABLED|USER_NOT_FOUND|INVALID_REFRESH_TOKEN/.test(code)) clearSession();
+      return false;
+    }
+    _auth = {idToken:d.id_token, refreshToken:d.refresh_token, uid:d.user_id, expiresAt:Date.now()+(parseInt(d.expires_in,10)||3600)*1000};
+    const s = readSession();
+    if(s){ s.refreshToken = d.refresh_token; localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+    return true;
+  }catch(e){ return false; } // 通信エラーではログアウトさせない
+}
+
+// 認証トークン付きでデータベースへアクセス（全DB通信がここを通る）
+async function dbFetch(path, opts){
+  let t = null;
+  try{ t = await getIdToken(); }catch(e){}
+  const url = DB + path + (t ? (path.indexOf('?')>=0?'&':'?')+'auth='+t : '');
+  return fetch(url, opts);
+}
+
+function buildLoginListObj(users){
+  const list = {};
+  Object.keys(users||{}).forEach(k=>{
+    const u = users[k];
+    if(u && u.canLogin) list[k] = {name:u.name, order:(u.order!=null?u.order:99)};
+  });
+  return list;
+}
+
+// 初回のみ: /users・Authアカウントの自動作成
+async function seedUsers(){
+  const users = {}, authMap = {};
+  for(const key of Object.keys(SEED_USERS)){
+    const u = Object.assign({createdAt:Date.now()}, SEED_USERS[key]);
+    if(u.canLogin){
+      u.mustChangePass = true;
+      try{
+        const d = await authApi('signUp', {email:key+'@'+AUTH_EMAIL_DOMAIN, password:SEED_PASS[key], returnSecureToken:true});
+        u.uid = d.localId;
+      }catch(e){
+        const code = e.message || '';
+        if(code.indexOf('EMAIL_EXISTS')>=0){
+          try{
+            const d = await authApi('signInWithPassword', {email:key+'@'+AUTH_EMAIL_DOMAIN, password:SEED_PASS[key], returnSecureToken:true});
+            u.uid = d.localId;
+          }catch(e2){}
+        }else if(code.indexOf('OPERATION_NOT_ALLOWED')>=0){
+          showLoginError('Firebaseの設定が未完了です。管理画面で「メール/パスワード」認証を有効にしてください。');
+          return null;
+        }else{
+          showLoginError('初期設定に失敗しました（'+code+'）');
+          return null;
+        }
+      }
+      if(u.uid) authMap[u.uid] = u.role;
+    }
+    users[key] = u;
+  }
+  await dbFetch('/users.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(users)});
+  await dbFetch('/authMap.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(authMap)});
+  await dbFetch('/loginList.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(buildLoginListObj(users))});
+  return users;
+}
+
+// /users からユーザー名簿を反映
+function applyUsers(users){
+  usersCache = users || {};
+  const list = usersSorted();
+  MEMBERS = list.filter(u=>u.listed!==false).map(u=>u.name);
+  STAFF = MEMBERS.slice();
+  SURNAME_MAP = {};
+  list.forEach(u=>{ SURNAME_MAP[u.name] = u.surname || u.name; });
+  STAFF_LEAVE = list.filter(u=>u.leaveTarget).map(u=>u.name);
+}
+function usersSorted(){
+  return Object.keys(usersCache).map(k=>Object.assign({key:k}, usersCache[k]))
+    .filter(u=>u && u.name)
+    .sort((a,b)=>((a.order!=null?a.order:99)-(b.order!=null?b.order:99)) || String(a.name).localeCompare(String(b.name),'ja'));
+}
+function getStaffNames(){ // 実スタッフ（外注・管理者を除く）
+  return usersSorted().filter(u=>u.listed!==false && u.canLogin).map(u=>u.name);
+}
+
+// ── 起動処理 ──
+async function boot(){
+  if(FIREBASE_API_KEY.indexOf('★')>=0){ showLoginError('アプリの設定が未完了です（APIキー未設定）。管理者にお問い合わせください。'); return; }
+  let loginList = null;
+  try{
+    loginList = await (await dbFetch('/loginList.json')).json();
+    if(!loginList){
+      let users = await (await dbFetch('/users.json')).json();
+      if(!users){
+        users = await seedUsers();
+        if(!users) return;
+      }else{
+        await dbFetch('/loginList.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(buildLoginListObj(users))});
+      }
+      loginList = buildLoginListObj(users);
+    }
+  }catch(e){ showLoginError('通信エラーです。電波の良い場所で再読み込みしてください。'); return; }
+  window._loginList = loginList;
+
+  const s = readSession();
+  if(s && s.refreshToken){
+    _auth = {idToken:null, refreshToken:s.refreshToken, uid:s.uid, expiresAt:0};
+    const ok = await refreshAuthToken();
+    if(ok){
+      const entered = await enterApp(s.key);
+      if(entered) return;
+    }
+    if(!readSession()) showLoginScreen('ログインの有効期限が切れました。再度ログインしてください。');
+    else showLoginScreen('自動ログインできませんでした。再度ログインしてください。');
+    return;
+  }
+  showLoginScreen();
+}
+
+// ログイン後（または自動ログイン後）のアプリ突入
+async function enterApp(key){
+  let users = null;
+  try{ users = await (await dbFetch('/users.json')).json(); }catch(e){}
+  if(!users){ showLoginError('データを読み込めませんでした。再読み込みしてください。'); return false; }
+  const u = users[key];
+  if(!u || u.canLogin===false){
+    clearSession();
+    showLoginScreen('このアカウントは使用できません。管理者にお問い合わせください。');
+    return false;
+  }
+  applyUsers(users);
+  currentUser = Object.assign({key}, u);
+  adminLoggedIn = (u.role === 'admin');
+  dbFetch('/users/'+key+'/lastLoginAt.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(Date.now())}).catch(()=>{});
+  if(u.mustChangePass){ showPassChange(false); return true; }
+  startApp();
+  return true;
+}
+
+// ── ログイン画面 ──
+function showLoginScreen(msg){
+  const scr = document.getElementById('login-screen');
+  scr.style.display = 'flex';
+  const names = Object.keys(window._loginList||{})
+    .map(k=>({key:k, name:window._loginList[k].name, order:window._loginList[k].order}))
+    .sort((a,b)=>(a.order-b.order));
+  scr.innerHTML = `<div class="admin-lock" style="width:100%">
+    <div class="lock-icon">🔐</div>
+    <div class="lock-title">Astep ログイン</div>
+    <div class="lock-sub">名前を選んでパスワードを入力してください</div>
+    <div style="width:100%;max-width:300px">
+      <select id="login-name" class="login-input" style="margin-bottom:12px">
+        <option value="">名前を選択</option>
+        ${names.map(n=>`<option value="${n.key}">${n.name}</option>`).join('')}
+      </select>
+      <input type="password" id="login-pass" class="login-input" placeholder="パスワード" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn-primary" id="login-btn" onclick="doLogin()">ログイン</button>
+      <div id="login-msg" style="color:#c0392b;font-size:13px;margin-top:12px;text-align:center;line-height:1.5">${msg||''}</div>
+    </div>
+  </div>`;
+}
+function showLoginError(msg){
+  const scr = document.getElementById('login-screen');
+  scr.style.display = 'flex';
+  scr.innerHTML = `<div class="admin-lock" style="width:100%">
+    <div class="lock-icon">⚠️</div>
+    <div class="lock-title">Astep</div>
+    <div class="lock-sub" style="color:#c0392b">${msg}</div>
+    <div style="width:100%;max-width:300px">
+      <button class="btn-primary" onclick="location.reload()">再読み込み</button>
+    </div>
+  </div>`;
+}
+
+async function doLogin(){
+  const key = document.getElementById('login-name').value;
+  const pass = document.getElementById('login-pass').value;
+  const msg = document.getElementById('login-msg');
+  if(!key){ msg.textContent='名前を選択してください'; return; }
+  if(!pass){ msg.textContent='パスワードを入力してください'; return; }
+  msg.textContent = '';
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = '確認中...';
+  try{
+    const d = await authApi('signInWithPassword', {email:key+'@'+AUTH_EMAIL_DOMAIN, password:pass, returnSecureToken:true});
+    _auth = {idToken:d.idToken, refreshToken:d.refreshToken, uid:d.localId, expiresAt:Date.now()+(parseInt(d.expiresIn,10)||3600)*1000};
+    localStorage.setItem(SESSION_KEY, JSON.stringify({key, refreshToken:d.refreshToken, uid:d.localId}));
+    await enterApp(key);
+  }catch(e){
+    const code = e.message || '';
+    if(/INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS|EMAIL_NOT_FOUND/.test(code)) msg.textContent = 'パスワードが違います';
+    else if(code.indexOf('TOO_MANY_ATTEMPTS')>=0) msg.textContent = '間違いが続いたため一時的にロックされました。しばらく待ってからお試しください';
+    else if(code.indexOf('USER_DISABLED')>=0) msg.textContent = 'このアカウントは停止されています';
+    else if(code==='auth_error'||code.indexOf('Failed')>=0) msg.textContent = '通信エラーです。電波の良い場所でお試しください';
+    else msg.textContent = 'ログインできませんでした（'+code+'）';
+  }finally{
+    btn.disabled = false; btn.textContent = 'ログイン';
+  }
+}
+
+// ── パスワード変更画面（cancelable=trueならメニューからの任意変更） ──
+function showPassChange(cancelable){
+  const scr = document.getElementById('login-screen');
+  scr.style.display = 'flex';
+  scr.innerHTML = `<div class="admin-lock" style="width:100%">
+    <div class="lock-icon">🔑</div>
+    <div class="lock-title">${cancelable?'パスワード変更':'新しいパスワードの設定'}</div>
+    <div class="lock-sub">${cancelable?'新しいパスワードを入力してください':'安全のため、自分だけのパスワードに変更してください'}<br>（6文字以上）</div>
+    <div style="width:100%;max-width:300px">
+      <input type="password" id="npass1" class="login-input" placeholder="新しいパスワード" style="margin-bottom:12px">
+      <input type="password" id="npass2" class="login-input" placeholder="新しいパスワード（もう一度）" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')doChangePass(${cancelable?'true':'false'})">
+      <button class="btn-primary" id="npass-btn" onclick="doChangePass(${cancelable?'true':'false'})">変更する</button>
+      ${cancelable?'<button class="btn-secondary" onclick="document.getElementById(\'login-screen\').style.display=\'none\'">キャンセル</button>':''}
+      <div id="npass-msg" style="color:#c0392b;font-size:13px;margin-top:12px;text-align:center"></div>
+    </div>
+  </div>`;
+}
+
+async function doChangePass(cancelable){
+  const p1 = document.getElementById('npass1').value;
+  const p2 = document.getElementById('npass2').value;
+  const msg = document.getElementById('npass-msg');
+  if(p1.length < 6){ msg.textContent = 'パスワードは6文字以上にしてください'; return; }
+  if(p1 !== p2){ msg.textContent = '2つのパスワードが一致しません'; return; }
+  const btn = document.getElementById('npass-btn');
+  btn.disabled = true; btn.textContent = '変更中...';
+  try{
+    const t = await getIdToken();
+    if(!t) throw new Error('auth_error');
+    const d = await authApi('update', {idToken:t, password:p1, returnSecureToken:true});
+    _auth = {idToken:d.idToken||t, refreshToken:d.refreshToken||_auth.refreshToken, uid:_auth.uid, expiresAt:Date.now()+(parseInt(d.expiresIn,10)||3600)*1000};
+    const s = readSession();
+    if(s && d.refreshToken){ s.refreshToken = d.refreshToken; localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+    if(currentUser && currentUser.mustChangePass){
+      await dbFetch('/users/'+currentUser.key+'/mustChangePass.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:'false'}).catch(()=>{});
+      currentUser.mustChangePass = false;
+    }
+    if(cancelable){
+      document.getElementById('login-screen').style.display = 'none';
+      alert('パスワードを変更しました。');
+    }else{
+      startApp();
+    }
+  }catch(e){
+    const code = e.message || '';
+    if(code.indexOf('WEAK_PASSWORD')>=0) msg.textContent = 'パスワードが簡単すぎます。6文字以上にしてください';
+    else if(code.indexOf('CREDENTIAL_TOO_OLD')>=0){ clearSession(); alert('もう一度ログインしてから変更してください。'); location.reload(); return; }
+    else msg.textContent = '変更に失敗しました（'+code+'）';
+  }finally{
+    btn.disabled = false; btn.textContent = '変更する';
+  }
+}
+
+// ── ユーザーメニュー（ヘッダーの名前をタップ） ──
+function openUserMenu(){
+  document.getElementById('user-menu-title').textContent = '👤 '+(currentUser?currentUser.name:'');
+  document.getElementById('user-menu-modal').style.display = 'flex';
+}
+function closeUserMenu(){ document.getElementById('user-menu-modal').style.display = 'none'; }
+function doLogout(){
+  if(!confirm((currentUser?currentUser.name:'')+' をログアウトしますか？')) return;
+  clearSession();
+  location.reload();
+}
+
+// ── ログイン後のアプリ開始 ──
+function startApp(){
+  document.getElementById('login-screen').style.display = 'none';
+  const chip = document.getElementById('hdr-user');
+  chip.textContent = '👤'+(currentUser.surname||currentUser.name);
+  chip.style.display = '';
+  const show = adminLoggedIn ? '' : 'none';
+  document.getElementById('tab-admin').style.display = show;
+  document.getElementById('zk-tab-admin').style.display = show;
+  fillAllNameSelects();
+  buildHistStaffFilter();
+  document.getElementById('today-label').textContent = new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  if(!window._appInited){ window._appInited = true; addSite(); }
+  checkDraft();
+  showView('list');
+}
+
+// ── 氏名欄の動的生成 ──
+function nameOptions(names, selected){
+  return names.map(n=>`<option${n===selected?' selected':''}>${n}</option>`).join('');
+}
+// own=true: 一般ユーザーは自分の名前で固定（管理者は全員から選択可）
+function fillNameSelect(id, names, own){
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(own && currentUser && currentUser.role!=='admin'){
+    el.innerHTML = `<option selected>${currentUser.name}</option>`;
+    el.disabled = true;
+    el.style.opacity = '1';
+    el.style.background = '#f5f0ea';
+  }else{
+    el.innerHTML = `<option value="">選択してください</option>`+nameOptions(names);
+    el.disabled = false;
+    el.style.background = '';
+  }
+}
+function fillAllNameSelects(){
+  fillNameSelect('staff-name', MEMBERS, true);
+  fillNameSelect('exp-staff', MEMBERS, true);
+  fillNameSelect('move-staff-top', MEMBERS, true);
+  fillNameSelect('bulk-staff', getStaffNames(), true);
+  fillNameSelect('handover-from', MEMBERS, false);
+  fillNameSelect('handover-to', MEMBERS, false);
+  fillNameSelect('process-staff', MEMBERS, true);
+}
+// テンプレート内で使う版（有給・休み申請）
+function ownNameOptions(names){
+  if(currentUser && currentUser.role!=='admin') return `<option selected>${currentUser.name}</option>`;
+  return `<option value="">選択してください</option>`+nameOptions(names);
+}
+function ownLockAttr(){
+  return (currentUser && currentUser.role!=='admin') ? 'disabled style="opacity:1;background:#f5f0ea"' : '';
+}
+// 在庫履歴のスタッフ絞り込みボタン
+function buildHistStaffFilter(){
+  const row = document.getElementById('hist-staff-filter-row');
+  if(!row) return;
+  row.innerHTML = `<button class="filter-btn active" onclick="setHistStaffFilter('all',this)">全員</button>`+
+    MEMBERS.map(n=>`<button class="filter-btn" onclick="setHistStaffFilter('${n}',this)">${SURNAME_MAP[n]||n}</button>`).join('');
+}
 
 // ── ビュー ───────────────────────
 function showView(name) {
@@ -1116,8 +1511,8 @@ async function submitReport(){
   if(!sites.length){alert('現場名を1つ以上入力してください');return;}
   const report={date:getLocalDateStr(),dateLabel:new Date().toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}),staffName,weather:selectedWeather,sites,tomorrow,createdAt:Date.now()};
   try{
-    const res=await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
-    if(!res.ok)throw new Error();localStorage.removeItem('report_draft');window._editingDraftKey=null;showView('done');
+    const res=await dbFetch('/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
+    if(!res.ok)throw new Error();localStorage.removeItem(draftKey());window._editingDraftKey=null;showView('done');
   }catch(e){alert('送信に失敗しました。');}
 }
 function resetForm(){
@@ -1158,14 +1553,14 @@ async function saveDraft(){
   try{
     const editKey=window._editingDraftKey;
     if(editKey){
-      await fetch(DB+'/drafts/'+editKey+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
+      await dbFetch('/drafts/'+editKey+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
       drafts[editKey]=draftData;
       window._editingDraftKey=null;
     }else{
-      await fetch(DB+'/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
+      await dbFetch('/drafts.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draftData)});
     }
     window._savingDraft=false;
-    localStorage.removeItem('report_draft');
+    localStorage.removeItem(draftKey());
     // フォームをリセットしてから一覧へ
     document.getElementById('staff-name').value='';
     document.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));
@@ -1177,7 +1572,7 @@ async function saveDraft(){
     alert('下書きを保存しました！一覧から編集・提出できます。');
   }catch(e){
     window._savingDraft=false;
-    localStorage.setItem('report_draft',JSON.stringify(draftData));
+    localStorage.setItem(draftKey(),JSON.stringify(draftData));
     alert('下書きをローカルに保存しました。');
   }
 }
@@ -1185,7 +1580,7 @@ async function saveDraft(){
 function checkDraft(){} // 一覧で管理
 
 function loadDraft(){
-  const d=localStorage.getItem('report_draft');
+  const d=localStorage.getItem(draftKey());
   if(!d)return;
   const draft=JSON.parse(d);
   document.getElementById('staff-name').value=draft.staffName||'';
@@ -1231,7 +1626,7 @@ function loadDraft(){
 
 function deleteDraft(){
   if(!confirm('下書きを削除しますか？'))return;
-  localStorage.removeItem('report_draft');
+  localStorage.removeItem(draftKey());
   document.getElementById('draft-bar').style.display='none';
 }
 
@@ -1351,7 +1746,7 @@ function renderPinView(){
 
 // ── 案内図 ─────────────────────
 async function loadGuides(){
-  try{const res=await fetch(DB+'/guides.json');guides=await res.json()||{};}catch(e){guides={};}
+  try{const res=await dbFetch('/guides.json');guides=await res.json()||{};}catch(e){guides={};}
   // 管理者フォームの表示制御
   const form=document.getElementById('guide-admin-form');
   if(form)form.style.display=adminLoggedIn?'block':'none';
@@ -1452,7 +1847,7 @@ async function addGuide(){
   if(!url){alert('PDF URLを入力してください');return;}
   try{
     const data={company,site,url,createdAt:Date.now()};
-    const res=await fetch(DB+'/guides.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const res=await dbFetch('/guides.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     const j=await res.json();
     guides[j.name]=data;
     document.getElementById('guide-site').value='';
@@ -1466,7 +1861,7 @@ async function addGuide(){
 async function deleteGuide(key){
   if(!confirm('この案内図を削除しますか？'))return;
   try{
-    await fetch(DB+'/guides/'+key+'.json',{method:'DELETE'});
+    await dbFetch('/guides/'+key+'.json',{method:'DELETE'});
     delete guides[key];
     renderGuides();
     alert('削除しました！');
@@ -1474,7 +1869,7 @@ async function deleteGuide(key){
 }
 
 async function loadSchedules(){
-  try{const res=await fetch(DB+'/schedules.json');schedules=await res.json()||{};}catch(e){schedules={};}
+  try{const res=await dbFetch('/schedules.json');schedules=await res.json()||{};}catch(e){schedules={};}
 }
 
 function onListSearch(input){
@@ -1555,14 +1950,14 @@ function renderListSearch(q){
 
 async function loadReports(){
   try{
-    const [rRes,lRes,aRes,dRes,nRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/absences.json'),fetch(DB+'/drafts.json'),fetch(DB+'/notices.json')]);
+    const [rRes,lRes,aRes,dRes,nRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/absences.json'),dbFetch('/drafts.json'),dbFetch('/notices.json')]);
     reports=await rRes.json()||{};
     leaves=await lRes.json()||{};
     absences=await aRes.json()||{};
     drafts=await dRes.json()||{};
     notices=await nRes.json()||{};
-    try{const smRes=await fetch(DB+'/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
-    try{const saRes=await fetch(DB+'/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){siteAliases={};}
+    try{const smRes=await dbFetch('/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
+    try{const saRes=await dbFetch('/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){siteAliases={};}
     const todayStr=new Date().toLocaleDateString('sv');
     const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
     document.getElementById('badge').textContent=todayCount||'';
@@ -1772,8 +2167,8 @@ async function submitDraft(key){
   if(!confirm(d.staffName+'の下書きを提出しますか？'))return;
   const report={...d,createdAt:Date.now()};
   try{
-    await fetch(DB+'/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
-    await fetch(DB+'/drafts/'+key+'.json',{method:'DELETE'});
+    await dbFetch('/reports.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(report)});
+    await dbFetch('/drafts/'+key+'.json',{method:'DELETE'});
     delete drafts[key];
     await loadReports();
     alert('提出しました！');
@@ -1783,7 +2178,7 @@ async function submitDraft(key){
 async function deleteDraftById(key){
   if(!confirm('この下書きを削除しますか？'))return;
   try{
-    await fetch(DB+'/drafts/'+key+'.json',{method:'DELETE'});
+    await dbFetch('/drafts/'+key+'.json',{method:'DELETE'});
     delete drafts[key];
     renderCalendar();
   }catch(e){alert('削除に失敗しました。');}
@@ -1801,7 +2196,7 @@ async function submitSchedule(dateStr){
   const task=document.getElementById('sch-task-'+dateStr)?.value.trim();
   if(!site){alert('現場名を入力してください');return;}
   try{
-    await fetch(DB+'/schedules.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:actualDate,site,address,task,createdAt:Date.now()})});
+    await dbFetch('/schedules.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:actualDate,site,address,task,createdAt:Date.now()})});
     await loadSchedules();
     calSelectedDate=actualDate;
     // 別の月の日付に変更された場合はカレンダーの月も移動
@@ -1815,7 +2210,7 @@ async function deleteSchedule(key,e){
   e.stopPropagation();
   if(!confirm('この予定を削除しますか？'))return;
   try{
-    await fetch(DB+'/schedules/'+key+'.json',{method:'DELETE'});
+    await dbFetch('/schedules/'+key+'.json',{method:'DELETE'});
     delete schedules[key];
     renderCalendar();
   }catch(e){alert('削除に失敗しました。');}
@@ -1885,7 +2280,7 @@ async function saveEditSchedule(){
   const task = document.getElementById('edit-task').value.trim();
   if(!site){ alert('現場名を入力してください'); return; }
   try{
-    await fetch(DB+'/schedules/'+editingKey+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,address,site,task})});
+    await dbFetch('/schedules/'+editingKey+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,address,site,task})});
     schedules[editingKey] = {...schedules[editingKey], date, site, address, task};
     closeEditModal();
     calSelectedDate = date;
@@ -1899,7 +2294,7 @@ async function deleteReport(key,name,e){
   e.stopPropagation();
   if(!confirm(name+'の日報を削除しますか？\nこの操作は取り消せません。'))return;
   try{
-    await fetch(DB+'/reports/'+key+'.json',{method:'DELETE'});
+    await dbFetch('/reports/'+key+'.json',{method:'DELETE'});
     delete reports[key];document.getElementById('badge').textContent=Object.keys(reports).length;
     renderCalendar();
     const q=document.getElementById('list-search-input').value.trim();
@@ -1912,8 +2307,8 @@ function setStatsSeg(seg){statsSeg=seg;document.querySelectorAll('#view-stats .s
 async function loadStats(){
   document.getElementById('stats-content').innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const res=await fetch(DB+'/reports.json');reports=await res.json()||{};
-    try{const saRes=await fetch(DB+'/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){}
+    const res=await dbFetch('/reports.json');reports=await res.json()||{};
+    try{const saRes=await dbFetch('/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){}
     renderStats();
   }
   catch(e){document.getElementById('stats-content').innerHTML='<div class="loading">読み込みに失敗しました</div>';}
@@ -2281,7 +2676,7 @@ async function saveSiteMeta(nameEnc){
   const key=name.replace(/[.#$/\[\]]/g,'_');
   try{
     const data={area,memo,name,company};
-    await fetch(DB+'/siteMeta/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    await dbFetch('/siteMeta/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     siteMeta[name]=data;
     alert('保存しました！');
     showSiteDetail(nameEnc);
@@ -2456,7 +2851,7 @@ function updateAdminBadge(){
 
 async function loadKyuka(){
   try{
-    const [lRes,sRes,aRes,rRes]=await Promise.all([fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/leaveResetDate.json')]);
+    const [lRes,sRes,aRes,rRes]=await Promise.all([dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/leaveResetDate.json')]);
     leaves=await lRes.json()||{};
     leaveSettings=await sRes.json()||{};
     const _lrd1=await rRes.json();leaveResetDate=(typeof _lrd1==='string')?_lrd1:'';
@@ -2497,7 +2892,7 @@ function renderKyuka(){
     content.innerHTML=`
       <div class="card">
         <div class="field"><label class="lbl">氏名</label>
-          <select id="leave-name"><option value="">選択してください</option>${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}</select>
+          <select id="leave-name" ${ownLockAttr()}>${ownNameOptions(STAFF_LEAVE)}</select>
         </div>
         <div class="field"><label class="lbl">取得日</label><input type="date" id="leave-date" value="${new Date().toLocaleDateString('sv')}"></div>
         <div class="field"><label class="lbl">理由（任意）</label><textarea id="leave-reason" rows="2" placeholder="私用のため など"></textarea></div>
@@ -2507,7 +2902,7 @@ function renderKyuka(){
     content.innerHTML=`
       <div class="card">
         <div class="field"><label class="lbl">氏名</label>
-          <select id="yasumi-name"><option value="">選択してください</option>${STAFF_LEAVE.map(m=>`<option>${m}</option>`).join('')}</select>
+          <select id="yasumi-name" ${ownLockAttr()}>${ownNameOptions(STAFF_LEAVE)}</select>
         </div>
         <div class="field"><label class="lbl">休み日</label><input type="date" id="yasumi-date" value="${new Date().toLocaleDateString('sv')}"></div>
         <div class="field"><label class="lbl">理由（任意）</label><textarea id="yasumi-reason" rows="2" placeholder="私用のため など"></textarea></div>
@@ -2545,7 +2940,7 @@ let expenseStaffFilter = '';
 
 async function loadExpenses(){
   try{
-    const res = await fetch(DB + '/expenses.json');
+    const res = await dbFetch('/expenses.json');
     expenses = await res.json() || {};
   }catch(e){ expenses = {}; }
   if(!expenseMonth) expenseMonth = new Date().toLocaleDateString('sv').slice(0,7);
@@ -2630,7 +3025,7 @@ async function submitExpense(){
   if(!detail){ alert('現場名・内容・目的を入力してください'); return; }
   window._expBusy = true;
   try{
-    await fetch(DB + '/expenses.json', { method:'POST', headers:{'Content-Type':'application/json'},
+    await dbFetch('/expenses.json', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ staffName, date, amount, detail, status:'pending', createdAt: Date.now() }) });
     document.getElementById('exp-amount').value = '';
     document.getElementById('exp-detail').value = '';
@@ -2646,7 +3041,7 @@ async function deleteExpense(key, fromAdmin){
   if(!confirm(fromAdmin ? 'この経費申請を却下（削除）しますか？' : 'この経費を削除しますか？')) return;
   window._expBusy = true;
   try{
-    await fetch(DB + '/expenses/' + key + '.json', { method:'DELETE' });
+    await dbFetch('/expenses/' + key + '.json', { method:'DELETE' });
     delete expenses[key];
     if(fromAdmin){
       alert('却下しました');
@@ -2666,7 +3061,7 @@ async function setExpenseStatus(key, status){
   if(status === 'pending' && !confirm('承認を取り消しますか？')) return;
   window._expBusy = true;
   try{
-    await fetch(DB + '/expenses/' + key + '/status.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(status) });
+    await dbFetch('/expenses/' + key + '/status.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(status) });
     if(expenses[key]) expenses[key].status = status;
     alert(status === 'approved' ? '承認しました' : '承認を取り消しました');
     renderAdminContent();
@@ -2729,7 +3124,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses'];
+const BACKUP_PATHS=['reports','leaves','absences','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -2738,7 +3133,7 @@ async function backupAllData(){
   try{
     const data={_meta:{app:'Astep',version:1,createdAt:new Date().toLocaleString('sv')}};
     for(const p of BACKUP_PATHS){
-      const res=await fetch(DB+'/'+p+'.json');
+      const res=await dbFetch('/'+p+'.json');
       data[p]=await res.json();
     }
     const fname='Astepバックアップ_'+new Date().toLocaleDateString('sv')+'.json';
@@ -2785,7 +3180,7 @@ async function applyBackupData(data){
   try{
     for(const p of BACKUP_PATHS){
       if(p in data){
-        await fetch(DB+'/'+p+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data[p]===undefined?null:data[p])});
+        await dbFetch('/'+p+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data[p]===undefined?null:data[p])});
       }
     }
     alert('復元が完了しました。アプリを読み込み直します。');
@@ -2802,7 +3197,7 @@ async function resetKyukaYear(){
   const periodTxt=leaveResetDate?leaveResetDate.slice(0,4)+'年'+parseInt(leaveResetDate.slice(5,7))+'月'+parseInt(leaveResetDate.slice(8,10))+'日〜今日':'これまでの全期間';
   if(!confirm('有給をリセットしますか？\n\n「'+periodTxt+'」の残日数はいったんリセットされ、今日（'+today+'）から新しい年度としてカウントを始めます。\n\n※過去の申請履歴は削除されません。履歴タブでそのまま確認できます。'))return;
   try{
-    await fetch(DB+'/leaveResetDate.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(today)});
+    await dbFetch('/leaveResetDate.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(today)});
     leaveResetDate=today;
     alert('リセットしました。本日（'+today+'）から新年度としてカウントします。');
     renderAdminContent();
@@ -2818,7 +3213,7 @@ async function submitLeave(){
   if(getKyukaDays(staffName)===0){alert('付与日数が設定されていません。管理者にお問い合わせください。');return;}
   if(s.remain<=0){alert('有給残日数がありません');return;}
   try{
-    await fetch(DB+'/leaves.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffName,date,reason,status:'pending',createdAt:Date.now()})});
+    await dbFetch('/leaves.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffName,date,reason,status:'pending',createdAt:Date.now()})});
     alert('申請しました！管理者の承認をお待ちください。');
     await loadKyuka();setKyukaSeg('history');
   }catch(e){alert('申請に失敗しました。');}
@@ -2829,29 +3224,20 @@ function showAdmin(){
   const content=document.getElementById('admin-content');
   if(!adminLoggedIn){
     content.innerHTML=`<div class="admin-lock">
-      <div class="lock-icon">🔐</div>
-      <div class="lock-title">管理者ページ</div>
-      <div class="lock-sub">パスワードを入力してください</div>
-      <div style="width:100%;max-width:300px">
-        <input type="password" id="admin-pass" placeholder="パスワード" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')checkPass()">
-        <button class="btn-primary" onclick="checkPass()">ログイン</button>
-      </div>
+      <div class="lock-icon">🔒</div>
+      <div class="lock-title">管理者専用ページ</div>
+      <div class="lock-sub">このページは管理者のみ利用できます。</div>
     </div>`;return;
   }
   renderAdminContent();
 }
-function checkPass(){
-  const p=document.getElementById('admin-pass').value;
-  if(p===ADMIN_PASS){adminLoggedIn=true;renderAdminContent();}
-  else{alert('パスワードが違います');}
-}
 async function renderAdminContent(){
   // 経費データを最新化（承認セクション・給料明細で使用）
-  try{ const _eRes = await fetch(DB+'/expenses.json'); expenses = await _eRes.json() || {}; }catch(e){}
+  try{ const _eRes = await dbFetch('/expenses.json'); expenses = await _eRes.json() || {}; }catch(e){}
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes]=await Promise.all([fetch(DB+'/reports.json'),fetch(DB+'/leaves.json'),fetch(DB+'/leaveSettings.json'),fetch(DB+'/absences.json'),fetch(DB+'/notices.json'),fetch(DB+'/siteAliases.json'),fetch(DB+'/salaryProfiles.json'),fetch(DB+'/leaveResetDate.json')]);
+    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json')]);
     reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';
   }catch(e){}
 
@@ -2872,6 +3258,7 @@ async function renderAdminContent(){
     calcWorkStats('month');
     renderAdminNoticeList();
     renderSalaryProfileForm();
+    renderUserAdmin();
   },0);
 
   // 有給申請（承認待ち）
@@ -2886,7 +3273,6 @@ async function renderAdminContent(){
     <div class="wrap">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="page-title">👤 管理者ページ</div>
-        <button class="logout-btn" onclick="adminLogout()">ログアウト</button>
       </div>
       <div class="page-sub">作業状況・有給承認</div>
 
@@ -3103,6 +3489,11 @@ async function renderAdminContent(){
 
       </div>
 
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-users')">👥 ユーザー管理 <span class="collapse-arrow" id="arrow-collapse-users">▶</span></div>
+      <div class="collapse-body" id="collapse-users" style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <div id="user-admin-area"><div class="loading">読み込み中...</div></div>
+      </div>
+
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-backup')">💾 データバックアップ <span class="collapse-arrow" id="arrow-collapse-backup">▶</span></div>
       <div class="collapse-body" id="collapse-backup" style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;margin-bottom:16px">
         <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">日報・在庫・有給など全データを1つのファイルに保存します。月に1回の保存をおすすめします。ファイルはスマホの「ファイル」アプリやパソコンのダウンロードに保存されます。</div>
@@ -3127,6 +3518,197 @@ async function renderAdminContent(){
 
     </div>`;
 }
+
+// ══════════ ユーザー管理 ══════════
+async function refreshUsers(){
+  try{
+    const users = await (await dbFetch('/users.json')).json();
+    applyUsers(users);
+    await dbFetch('/loginList.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(buildLoginListObj(users))}).catch(()=>{});
+    window._loginList = buildLoginListObj(users);
+  }catch(e){}
+  fillAllNameSelects();
+  buildHistStaffFilter();
+  renderUserAdmin();
+}
+
+function roleBadge(role){
+  return role==='admin'
+    ? '<span style="background:#e8f0fd;color:#2858b0;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">管理者</span>'
+    : '<span style="background:#f0ede8;color:#888;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">スタッフ</span>';
+}
+
+function renderUserAdmin(){
+  const el = document.getElementById('user-admin-area');
+  if(!el) return;
+  const list = usersSorted();
+  const rows = list.map(u=>{
+    const flags = [];
+    if(u.canLogin===false) flags.push('<span style="color:#c0605a">ログイン停止中</span>');
+    if(u.leaveTarget) flags.push('有給対象');
+    if(u.listed===false) flags.push('名簿非表示');
+    if(u.mustChangePass) flags.push('<span style="color:#d4a017">初回PW変更待ち</span>');
+    return `<div style="border:1.5px solid #ede8e2;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div>
+          <span style="font-weight:700;color:#2d2a26">${u.name}</span>
+          <span style="color:#aaa;font-size:12px">（${u.surname||''}）</span>
+          ${roleBadge(u.role)}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="editUserForm('${u.key}')" style="background:#f5f0ea;border:none;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit">編集</button>
+        </div>
+      </div>
+      ${flags.length?`<div style="font-size:11px;color:#aaa;margin-top:6px">${flags.join(' ・ ')}</div>`:''}
+      <div id="user-edit-${u.key}"></div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">ログインする人を追加・編集できます。パスワードを忘れた場合の再設定は、Firebase管理画面（Authentication）から行ってください。</div>
+    ${rows||'<div class="empty">ユーザーがいません</div>'}
+    <button class="btn-primary" style="margin-top:8px" onclick="addUserForm()">＋ ユーザーを追加</button>
+    <div id="user-add-area" style="margin-top:10px"></div>`;
+}
+
+function userFormHtml(prefix, u){
+  u = u || {};
+  return `<div style="background:#faf7f3;border-radius:10px;padding:12px;margin-top:8px">
+    <div class="field" style="margin-bottom:10px"><label class="lbl">氏名（日報などに記録される名前）</label>
+      <input type="text" id="${prefix}-name" class="login-input" value="${u.name||''}" placeholder="例: 田中太郎"></div>
+    <div class="field" style="margin-bottom:10px"><label class="lbl">苗字（画面の表示用）</label>
+      <input type="text" id="${prefix}-surname" class="login-input" value="${u.surname||''}" placeholder="例: 田中"></div>
+    <div class="field" style="margin-bottom:10px"><label class="lbl">権限</label>
+      <select id="${prefix}-role" class="login-input">
+        <option value="staff" ${u.role==='staff'?'selected':''}>スタッフ（一般）</option>
+        <option value="admin" ${u.role==='admin'?'selected':''}>管理者（すべての機能・編集が可能）</option>
+      </select></div>
+    <div class="field" style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26"><input type="checkbox" id="${prefix}-canlogin" ${u.canLogin!==false?'checked':''} style="width:18px;height:18px">ログインできる（外注などログイン不要な人はOFF）</label>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26"><input type="checkbox" id="${prefix}-leave" ${u.leaveTarget?'checked':''} style="width:18px;height:18px">有給・給料の対象にする</label>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26"><input type="checkbox" id="${prefix}-listed" ${u.listed!==false?'checked':''} style="width:18px;height:18px">名簿・集計に表示する</label>
+    </div>`;
+}
+
+function addUserForm(){
+  const area = document.getElementById('user-add-area');
+  area.innerHTML = userFormHtml('adduser', {canLogin:true, listed:true, role:'staff'}) + `
+    <div class="field" style="margin-bottom:10px"><label class="lbl">初期パスワード（6文字以上・本人が初回に変更）</label>
+      <input type="text" id="adduser-pass" class="login-input" placeholder="例: 000000"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-secondary" style="flex:1" onclick="renderUserAdmin()">キャンセル</button>
+      <button class="btn-primary" style="flex:2" id="adduser-btn" onclick="submitAddUser()">追加する</button>
+    </div></div>`;
+  area.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function readUserForm(prefix){
+  return {
+    name: document.getElementById(prefix+'-name').value.trim(),
+    surname: document.getElementById(prefix+'-surname').value.trim(),
+    role: document.getElementById(prefix+'-role').value,
+    canLogin: document.getElementById(prefix+'-canlogin').checked,
+    leaveTarget: document.getElementById(prefix+'-leave').checked,
+    listed: document.getElementById(prefix+'-listed').checked
+  };
+}
+
+async function submitAddUser(){
+  const f = readUserForm('adduser');
+  const pass = document.getElementById('adduser-pass').value;
+  if(!f.name){ alert('氏名を入力してください'); return; }
+  if(!f.surname) f.surname = f.name;
+  if(usersSorted().some(u=>u.name===f.name)){ alert('同じ氏名の人がすでにいます。別の名前にしてください。'); return; }
+  if(f.canLogin && pass.length<6){ alert('初期パスワードは6文字以上にしてください'); return; }
+  const btn = document.getElementById('adduser-btn');
+  btn.disabled = true; btn.textContent = '追加中...';
+  try{
+    const key = 'u_'+Date.now().toString(36);
+    const rec = {name:f.name, surname:f.surname, role:f.role, canLogin:f.canLogin, leaveTarget:f.leaveTarget, listed:f.listed, order:(usersSorted().length+1), createdAt:Date.now()};
+    if(f.canLogin){
+      const d = await authApi('signUp', {email:key+'@'+AUTH_EMAIL_DOMAIN, password:pass, returnSecureToken:true});
+      rec.uid = d.localId;
+      rec.mustChangePass = true;
+      await dbFetch('/authMap/'+d.localId+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(f.role)});
+    }
+    await dbFetch('/users/'+key+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)});
+    alert(f.name+' を追加しました。');
+    await refreshUsers();
+  }catch(e){
+    const code = e.message||'';
+    if(code.indexOf('WEAK_PASSWORD')>=0) alert('パスワードが簡単すぎます。6文字以上にしてください。');
+    else if(code.indexOf('OPERATION_NOT_ALLOWED')>=0) alert('Firebaseで「メール/パスワード」認証が有効になっていません。');
+    else alert('追加に失敗しました（'+code+'）');
+    btn.disabled = false; btn.textContent = '追加する';
+  }
+}
+
+function editUserForm(key){
+  const box = document.getElementById('user-edit-'+key);
+  if(!box) return;
+  if(box.dataset.open==='1'){ box.innerHTML=''; box.dataset.open=''; return; }
+  const u = usersCache[key];
+  box.dataset.open = '1';
+  box.innerHTML = userFormHtml('edit_'+key, u) + `
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button class="btn-secondary" style="flex:1" onclick="editUserForm('${key}')">閉じる</button>
+      <button class="btn-primary" style="flex:2" onclick="submitEditUser('${key}')">保存する</button>
+    </div>
+    ${u.canLogin?`<button class="btn-secondary" style="width:100%;margin-bottom:6px;color:#2858b0;border-color:#2858b0" onclick="resetUserPass('${key}')">🔑 パスワードを再設定する</button>`:''}
+    <button class="btn-secondary" style="width:100%;background:#fdf0f0;color:#a04040;border-color:#e0b0b0" onclick="deleteUser('${key}')">🗑 このユーザーを削除する</button>`;
+}
+
+async function submitEditUser(key){
+  const u = usersCache[key];
+  const f = readUserForm('edit_'+key);
+  if(!f.name){ alert('氏名を入力してください'); return; }
+  if(!f.surname) f.surname = f.name;
+  if(f.name!==u.name && usersSorted().some(x=>x.key!==key && x.name===f.name)){ alert('同じ氏名の人がすでにいます。'); return; }
+  if(f.name!==u.name){
+    if(!confirm('名前を「'+u.name+'」→「'+f.name+'」に変更します。\n\n※過去の日報・経費・在庫などのデータは古い名前のまま残ります。\n※有給・給料の設定は新しい名前で設定し直しが必要です。\n\nよろしいですか？')) return;
+  }
+  // 管理者→スタッフに変える場合、最後の管理者でないか確認
+  if(u.role==='admin' && f.role!=='admin'){
+    const admins = usersSorted().filter(x=>x.role==='admin' && x.canLogin!==false);
+    if(admins.length<=1){ alert('管理者が0人になってしまうため、権限を変更できません。先に別の管理者を作成してください。'); return; }
+  }
+  try{
+    const rec = Object.assign({}, u, {name:f.name, surname:f.surname, role:f.role, canLogin:f.canLogin, leaveTarget:f.leaveTarget, listed:f.listed});
+    await dbFetch('/users/'+key+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(rec)});
+    if(u.uid && (u.role!==f.role || u.canLogin!==f.canLogin)){
+      if(f.canLogin) await dbFetch('/authMap/'+u.uid+'.json', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(f.role)});
+      else await dbFetch('/authMap/'+u.uid+'.json', {method:'DELETE'});
+    }
+    alert('保存しました。');
+    await refreshUsers();
+  }catch(e){ alert('保存に失敗しました（'+(e.message||'')+'）'); }
+}
+
+async function resetUserPass(key){
+  alert('パスワードの再設定は、Firebase（グーグルのサーバー）の管理画面から行います。\n\n手順書「Firebase設定手順」の「パスワードを忘れたとき」をご覧ください。\n\n※アプリからの直接再設定は、安全のため無効にしています。');
+}
+
+async function deleteUser(key){
+  const u = usersCache[key];
+  if(!u) return;
+  if(u.role==='admin'){
+    const admins = usersSorted().filter(x=>x.role==='admin' && x.canLogin!==false);
+    if(admins.length<=1){ alert('最後の管理者は削除できません。先に別の管理者を作成してください。'); return; }
+  }
+  if(key===(currentUser&&currentUser.key)){ alert('ログイン中の自分自身は削除できません。'); return; }
+  if(!confirm(u.name+' を削除しますか？\n\n※過去のデータは残りますが、集計や名前の一覧から消えます。\n※ログインもできなくなります。\n\n（一時的に止めたいだけなら、削除ではなく編集画面で「ログインできる」のチェックを外す方が安全です）')) return;
+  if(!confirm('本当に削除してよろしいですか？\nこの操作は取り消せません。')) return;
+  try{
+    await dbFetch('/users/'+key+'.json', {method:'DELETE'});
+    if(u.uid) await dbFetch('/authMap/'+u.uid+'.json', {method:'DELETE'}).catch(()=>{});
+    alert(u.name+' を削除しました。');
+    await refreshUsers();
+  }catch(e){ alert('削除に失敗しました（'+(e.message||'')+'）'); }
+}
+
 // ── 管理: お知らせ一覧（月ナビ） ──
 let adminNoticeMonth='';
 function changeAdminNoticeMonth(delta){
@@ -3190,7 +3772,7 @@ async function saveSalaryProfile(name){
     p[key]=parseInt(document.getElementById('prof-'+key)?.value)||0;
   });
   try{
-    await fetch(DB+'/salaryProfiles/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    await dbFetch('/salaryProfiles/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
     salaryProfiles[name]=p;
     alert(name+'の固定項目を保存しました');
   }catch(e){alert('保存に失敗しました。');}
@@ -3213,7 +3795,7 @@ async function openSalaryForm(){
   // 保存済みデータの読み込み
   let saved={};
   try{
-    const res=await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
+    const res=await dbFetch('/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
     saved=await res.json()||{};
   }catch(e){}
 
@@ -3290,7 +3872,7 @@ async function saveSalaryData(month,name){
   const c=calcSalary(name);
   const data={workDays:c.workDays,kyukaDays:c.kyukaDays,halfDays:c.halfDays,incomeTax:c.incomeTax,expense:c.expense};
   try{
-    await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    await dbFetch('/salaryData/'+month+'/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     alert('保存しました！');
   }catch(e){alert('保存に失敗しました。');}
 }
@@ -3327,7 +3909,7 @@ async function exportSalaryPdfAll(){
     if(!p.dailyRate)continue; // 単価未設定はスキップ
     let d={};
     try{
-      const res=await fetch(DB+'/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
+      const res=await dbFetch('/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
       d=await res.json()||{};
     }catch(e){}
     if(d.workDays===undefined){
@@ -3406,7 +3988,7 @@ async function saveLeaveSettings(name){
   const id='ls-'+name.replace(/ /g,'_');
   const val=parseInt(document.getElementById(id)?.value)||0;
   try{
-    await fetch(DB+'/leaveSettings/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});
+    await dbFetch('/leaveSettings/'+encodeURIComponent(name)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});
     leaveSettings[name]=val;
     alert(name+'の付与日数を'+val+'日に設定しました');
   }catch(e){alert('保存に失敗しました。');}
@@ -3427,7 +4009,7 @@ async function addSiteAlias(){
   if(from===to){alert('同じ現場名は統合できません');return;}
   const key=from.replace(/[.#$/\[\]]/g,'_');
   try{
-    await fetch(DB+'/siteAliases/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(to)});
+    await dbFetch('/siteAliases/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(to)});
     siteAliases[from]=to;
     document.getElementById('alias-from').value='';
     document.getElementById('alias-to').value='';
@@ -3441,7 +4023,7 @@ async function deleteSiteAlias(fromEnc){
   if(!confirm(from+'の統合設定を削除しますか？'))return;
   const key=from.replace(/[.#$/\[\]]/g,'_');
   try{
-    await fetch(DB+'/siteAliases/'+encodeURIComponent(key)+'.json',{method:'DELETE'});
+    await dbFetch('/siteAliases/'+encodeURIComponent(key)+'.json',{method:'DELETE'});
     delete siteAliases[from];
     renderAdminContent();
   }catch(e){alert('削除に失敗しました。');}
@@ -3459,7 +4041,7 @@ async function postNotice(){
     createdAt:Date.now()
   };
   try{
-    await fetch(DB+'/notices.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    await dbFetch('/notices.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     notices[Date.now()]=data;
     document.getElementById('notice-body').value='';
     alert('投稿しました！');
@@ -3469,7 +4051,7 @@ async function postNotice(){
 
 async function setNoticePin(key,pinned){
   try{
-    const res=await fetch(DB+'/notices/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned})});
+    const res=await dbFetch('/notices/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pinned})});
     if(!res.ok)throw new Error();
     notices[key]={...notices[key],pinned};
     renderNotices();
@@ -3481,7 +4063,7 @@ async function setNoticePin(key,pinned){
 async function deleteNotice(key){
   if(!confirm('このお知らせを削除しますか？'))return;
   try{
-    await fetch(DB+'/notices/'+key+'.json',{method:'DELETE'});
+    await dbFetch('/notices/'+key+'.json',{method:'DELETE'});
     delete notices[key];
     renderNotices();
     renderAdminContent();
@@ -3492,7 +4074,7 @@ async function deleteNotice(key){
 async function approveAbsence(key,status){
   if(!confirm(status==='approved'?'この休み申請を承認しますか？':'この休み申請を却下しますか？'))return;
   try{
-    const res=await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    const res=await dbFetch('/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
     if(!res.ok)throw new Error();
     absences[key]={...absences[key],status};
     updateAdminBadge();
@@ -3503,7 +4085,7 @@ async function approveAbsence(key,status){
 
 async function approveLeave(key,status){
   try{
-    await fetch(DB+'/leaves/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    await dbFetch('/leaves/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
     alert(status==='approved'?'承認しました':'却下しました');
     renderAdminContent();
   }catch(e){alert('処理に失敗しました。');}
@@ -3576,7 +4158,7 @@ async function submitYasumi(){
   const reason=document.getElementById('yasumi-reason').value.trim();
   if(!staffName||!date){alert('氏名と休み日を入力してください');return;}
   try{
-    await fetch(DB+'/absences.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffName,date,reason,status:'pending',createdAt:Date.now()})});
+    await dbFetch('/absences.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({staffName,date,reason,status:'pending',createdAt:Date.now()})});
     alert('申請しました！管理者の承認をお待ちください。');
     await loadKyuka();setKyukaSeg('yasumi');
   }catch(e){alert('申請に失敗しました。');}
@@ -3585,7 +4167,7 @@ async function submitYasumi(){
 async function cancelAbsence(key){
   if(!confirm('この休み申請を取り消しますか？'))return;
   try{
-    const res=await fetch(DB+'/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
+    const res=await dbFetch('/absences/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
     if(!res.ok)throw new Error();
     absences[key]={...absences[key],status:'cancelled'};
     updateAdminBadge();
@@ -3598,7 +4180,7 @@ async function cancelAbsence(key){
 async function cancelLeave(key){
   if(!confirm('この有給を取り消しますか？取り消すと残日数に戻ります。'))return;
   try{
-    await fetch(DB+'/leaves/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
+    await dbFetch('/leaves/'+key+'.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'cancelled'})});
     leaves[key]={...leaves[key],status:'cancelled'};
     alert('有給を取り消しました');
     await loadKyuka();
@@ -3652,7 +4234,7 @@ function openReportEdit(key){
   editContent.innerHTML=`
     <div class="field"><label class="lbl">氏名</label>
       <select id="edit-staff-name">
-        ${['加藤瑞樹','山内浩一','森田義則','富山裕貴','外注'].map(m=>`<option ${r.staffName===m?'selected':''}>${m}</option>`).join('')}
+        ${(MEMBERS.includes(r.staffName)?MEMBERS:[r.staffName,...MEMBERS]).map(m=>`<option ${r.staffName===m?'selected':''}>${m}</option>`).join('')}
       </select>
     </div>
     <div class="field"><label class="lbl">日付</label>
@@ -3713,7 +4295,7 @@ async function saveReportEdit(key){
   const updated={...r,staffName,date,dateLabel,weather,sites,tomorrow};
 
   try{
-    await fetch(DB+'/reports/'+key+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(updated)});
+    await dbFetch('/reports/'+key+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(updated)});
     reports[key]=updated;
     document.getElementById('badge').textContent=Object.keys(reports).length;
     closeReportEdit();
@@ -3830,7 +4412,6 @@ function calcWorkStats(seg){
   }).join('');
 }
 
-function adminLogout(){adminLoggedIn=false;showAdmin();}
 
 // ── 詳細 ─────────────────────────
 function showDetail(key){
@@ -3877,7 +4458,7 @@ async function renderTsukiawase(from,to){
   if(end<start){el.innerHTML='';return;}
   try{
     if(!_tsukiMovements||Date.now()-_tsukiFetchedAt>60000){
-      const res=await fetch(DB+'/movements.json');
+      const res=await dbFetch('/movements.json');
       _tsukiMovements=await res.json()||{};
       _tsukiFetchedAt=Date.now();
     }
@@ -3984,7 +4565,7 @@ const PROCESS_PRESETS=[
 async function openProcessModal(){
   // 最新在庫を取得してから開く（在庫チェックを正確にするため）
   try{
-    const invRes=await fetch(DB+'/inventory.json');
+    const invRes=await dbFetch('/inventory.json');
     inventory=await invRes.json()||{};
     _zkLastLoad=Date.now();
   }catch(e){}
@@ -4043,10 +4624,10 @@ async function submitProcess(){
   try{
     const now=Date.now();
     await safeAdjustInventory(fi.id,-fromQty);
-    await fetch(DB+'/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'out',itemId:fi.id,itemName:fi.name,unit:fi.unit,qty:fromQty,staff,date,note:'加工 → '+ti.name,processing:true,createdAt:now})});
     await safeAdjustInventory(ti.id,toQty);
-    await fetch(DB+'/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'in',itemId:ti.id,itemName:ti.name,unit:ti.unit,qty:toQty,staff,date,note:'加工 ← '+fi.name,processing:true,createdAt:now+1})});
     closeProcessModal();
     showToast('✂️ 加工を登録しました！');
@@ -4102,11 +4683,11 @@ async function submitHandover(){
     const now=Date.now();
     // 渡す人: 入庫扱い（帳簿上いったん返却） → 在庫+
     await safeAdjustInventory(itemId, qty);
-    await fetch(DB+'/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'in',itemId,itemName:item.name,unit:item.unit,qty,staff:from,date,note:'受け渡し → '+to,handover:true,createdAt:now})});
     // 受け取る人: 持ち出し扱い → 在庫−（差し引きゼロ）
     await safeAdjustInventory(itemId, -qty);
-    await fetch(DB+'/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'out',itemId,itemName:item.name,unit:item.unit,qty,staff:to,date,note:'受け渡し ← '+from,handover:true,createdAt:now+1})});
     closeHandoverModal();
     showToast('🔄 受け渡しを登録しました！');
@@ -4301,9 +4882,9 @@ ITEMS_MASTER.forEach(i => { if (i.unit === '缶' && !i.step) i.step = 0.1; });
 async function loadAll() {
   try {
     const [invRes, movRes, alertRes] = await Promise.all([
-      fetch(DB + '/inventory.json'),
-      fetch(DB + '/movements.json'),
-      fetch(DB + '/alertSettings.json')
+      dbFetch('/inventory.json'),
+      dbFetch('/movements.json'),
+      dbFetch('/alertSettings.json')
     ]);
     inventory = await invRes.json() || {};
     movements = await movRes.json() || {};
@@ -4361,10 +4942,10 @@ function getQty(itemId) {
 
 // Firebaseから最新の在庫値を取得してから増減させる（同時操作対策）
 async function safeAdjustInventory(itemId, delta) {
-  const res = await fetch(DB + '/inventory/' + itemId + '.json');
+  const res = await dbFetch('/inventory/' + itemId + '.json');
   const latestQty = parseFloat(await res.json()) || 0;
   const newQty = Math.round(Math.max(0, latestQty + delta) * 10) / 10;
-  await fetch(DB + '/inventory/' + itemId + '.json', {
+  await dbFetch('/inventory/' + itemId + '.json', {
     method: 'PUT',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify(newQty)
@@ -4461,7 +5042,7 @@ async function goToMoveList(t) {
   if (!date) { alert('日付を入力してください'); return; }
   // 操作開始前に在庫を最新化（表示と実データのズレ防止）
   try{
-    const invRes = await fetch(DB + '/inventory.json');
+    const invRes = await dbFetch('/inventory.json');
     inventory = await invRes.json() || {};
     _zkLastLoad = Date.now();
   }catch(e){}
@@ -4722,7 +5303,7 @@ async function submitBulkOut() {
     for (const entry of confirmEntries) {
       await safeAdjustInventory(entry.itemId, -entry.qty);
       const movement = { type: 'out', itemId: entry.itemId, itemName: entry.itemName, unit: entry.unit, qty: entry.qty, staff, date, note: '', createdAt: Date.now() };
-      await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
     }
     showToast('📤 ' + confirmEntries.length + '品目を登録しました！');
     confirmEntries = [];
@@ -4837,7 +5418,7 @@ async function submitItemMove() {
   window._zkBusy = true;
   try {
     await safeAdjustInventory(currentItemId, delta);
-    await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) });
+    await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) });
     closeItemMoveModal();
     showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
     document.getElementById('in-step1').style.display = 'block';
@@ -4885,7 +5466,7 @@ async function submitBulk() {
     for (const { item, qty } of entries) {
       await safeAdjustInventory(item.id, -qty);
       const movement = { type: 'out', itemId: item.id, itemName: item.name, unit: item.unit, qty, staff, date, note: '一括持ち出し', createdAt: Date.now() };
-      await fetch(DB + '/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
     }
     closeBulkModal();
     showToast(`📤 ${entries.length}品目を一括登録しました！`);
@@ -5191,7 +5772,7 @@ async function deleteMovement(key, e) {
     // 削除時は逆方向に増減（最新値を取得してから計算）
     const delta = m.type === 'in' ? -m.qty : m.qty;
     await safeAdjustInventory(m.itemId, delta);
-    await fetch(DB + '/movements/' + key + '.json', { method: 'DELETE' });
+    await dbFetch('/movements/' + key + '.json', { method: 'DELETE' });
     delete movements[key];
     showToast('削除しました');
     renderHistory();
@@ -5267,7 +5848,7 @@ function computeAreaByStaff(completedFrom, completedTo){
 // 持ち出し表／入庫表の集計ロジック（画面表示・PDF出力で共通利用）
 // 加工・小分け（倉庫内変換）は現場への持ち出しではないため常に除外する
 function computeMoveStats(list, moveType, dateFilter){
-  const BASE_STAFF = ['加藤瑞樹','山内浩一','森田義則','富山裕貴'];
+  const BASE_STAFF = getStaffNames();
   const hasGaichuOut = moveType === 'out' && list.some(([,m]) => m.type === 'out' && m.staff === '外注' && !m.processing && dateFilter(m));
   const STAFF = moveType === 'out' ? (hasGaichuOut ? [...BASE_STAFF, '外注'] : BASE_STAFF) : ['外注'];
 
@@ -5314,7 +5895,6 @@ function renderTableStats() {
   const moveType = zkStatsSeg === 'in' ? 'in' : 'out';
   const typeLabel = moveType === 'out' ? '持ち出し' : '入庫';
 
-  const BASE_STAFF_SHORT = ['加藤','山内','森田','富山'];
   const rangeFrom = document.getElementById('stats-range-from')?.value || '';
   const rangeTo = document.getElementById('stats-range-to')?.value || '';
   const dateFilter = (m) => {
@@ -5323,7 +5903,7 @@ function renderTableStats() {
   };
 
   const { STAFF, byItemStaff } = computeMoveStats(list, moveType, dateFilter);
-  const STAFF_SHORT = STAFF.map(s => s === '外注' ? '外注' : BASE_STAFF_SHORT[['加藤瑞樹','山内浩一','森田義則','富山裕貴'].indexOf(s)]);
+  const STAFF_SHORT = STAFF.map(s => SURNAME_MAP[s] || s);
 
   // データある品目のみ＋検索フィルター
   const statsQuery = (document.getElementById('stats-search-input')?.value || '').trim().toLowerCase();
@@ -5452,23 +6032,13 @@ function zkShowAdmin() {
   const el = document.getElementById('zk-admin-content');
   if (!adminLoggedIn) {
     el.innerHTML = `<div class="admin-lock">
-      <div class="lock-icon">🔐</div>
-      <div class="lock-title">管理者ページ</div>
-      <div class="lock-sub">パスワードを入力してください</div>
-      <div style="width:100%;max-width:300px">
-        <input type="password" id="zk-admin-pass" placeholder="パスワード" style="margin-bottom:12px" onkeydown="if(event.key==='Enter')checkAdminPass()">
-        <button class="btn-primary" onclick="checkAdminPass()">ログイン</button>
-      </div>
+      <div class="lock-icon">🔒</div>
+      <div class="lock-title">管理者専用ページ</div>
+      <div class="lock-sub">このページは管理者のみ利用できます。</div>
     </div>`;
     return;
   }
   zkRenderAdminContent();
-}
-
-function checkAdminPass() {
-  if (document.getElementById('zk-admin-pass').value === ADMIN_PASS) {
-    adminLoggedIn = true; zkRenderAdminContent();
-  } else { alert('パスワードが違います'); }
 }
 
 let adminCatFilter = 'all';
@@ -5506,8 +6076,7 @@ function zkRenderAdminContent() {
 
   el.innerHTML = '<div class="wrap">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
-    '<div class="page-title">⚙️ 在庫管理</div>' +
-    '<button class="logout-btn" onclick="zkAdminLogout()">ログアウト</button></div>' +
+    '<div class="page-title">⚙️ 在庫管理</div></div>' +
     '<div class="page-sub">現在庫を直接設定・初期設定</div>' +
     '<div id="admin-cat-filter" style="position:sticky;top:102px;z-index:50;background:#f5f0ea;padding:6px 0 4px;margin:0 -16px;padding-left:16px;overflow-x:auto;display:flex;gap:6px;-webkit-overflow-scrolling:touch;margin-bottom:4px">' + filterHtml + '</div>' +
     '<div class="section-title">在庫数を設定（' + filteredItems.length + '品目）</div>' +
@@ -5543,7 +6112,7 @@ function saveAdminInputs() {
 async function saveItemQty(itemId) {
   const qty = parseFloat(document.getElementById('admin-qty-' + itemId)?.value) || 0;
   try {
-    await fetch(DB + '/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) });
+    await dbFetch('/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) });
     inventory[itemId] = qty;
     showToast('保存しました');
   } catch(e) { alert('保存に失敗しました。'); }
@@ -5570,16 +6139,16 @@ async function saveCatQty() {
   });
   try {
     const promises = Object.entries(invUpdates).map(([id, qty]) =>
-      fetch(DB + '/inventory/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) })
+      dbFetch('/inventory/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) })
     );
     Object.entries(alertUpdates).forEach(([id, val]) =>
-      promises.push(fetch(DB + '/alertSettings/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
+      promises.push(dbFetch('/alertSettings/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
     );
     await Promise.all(promises);
     const catLabel = adminCatFilter === 'all' ? '全品目' : CAT_LABELS[adminCatFilter] || adminCatFilter;
     showToast('✅ ' + catLabel + 'を保存しました！');
     // alertSettingsをFirebaseから再読み込みして在庫タブに反映
-    const alertRes = await fetch(DB + '/alertSettings.json');
+    const alertRes = await dbFetch('/alertSettings.json');
     alertSettings = await alertRes.json() || {};
   } catch(e) { alert('保存に失敗しました。'); }
 }
@@ -5604,19 +6173,13 @@ async function saveAllQty() {
   });
   try {
     await Promise.all([
-      fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(invUpdates) }),
-      fetch(DB + '/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) })
+      dbFetch('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(invUpdates) }),
+      dbFetch('/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) })
     ]);
     showToast('✅ 保存しました！');
   } catch(e) { alert('保存に失敗しました。'); }
 }
 
-function zkAdminLogout() {
-  adminLoggedIn = false;
-  adminQtyMap = {};
-  adminAlertMap = {};
-  zkShowAdmin();
-}
 
 // ファイル入力（body直下に配置）
 function triggerImport() {
@@ -5674,7 +6237,7 @@ async function importInventoryExcel(input) {
         }
       });
       if (!confirm(count + '品目の在庫を復元します。よろしいですか？')) return;
-      await fetch(DB + '/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+      await dbFetch('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
       showToast('✅ ' + count + '品目の在庫を復元しました！');
       zkRenderAdminContent();
     } catch(e) { alert('読み込みに失敗しました。正しいバックアップファイルか確認してください。'); }
