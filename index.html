@@ -4671,9 +4671,14 @@ function calcWorkStats(seg){
   let kyukaByPerson={},yasumiByPerson={},possibleByPerson={},holidayByPerson={};
   if(seg==='month'){
     STAFF_LEAVE.forEach(m=>{kyukaByPerson[m]=0;yasumiByPerson[m]=0;possibleByPerson[m]=0;holidayByPerson[m]=0;});
+    // 有給を取った日（人ごと）。休業日と重なった場合は「有給」を優先して数える
+    const kyukaDates={};
+    STAFF_LEAVE.forEach(m=>{kyukaDates[m]=new Set();});
     Object.values(leaves).forEach(l=>{
-      if(l.status==='approved'&&l.date>=dateFrom&&l.date<=dateTo&&kyukaByPerson[l.staffName]!==undefined)
+      if(l.status==='approved'&&l.date>=dateFrom&&l.date<=dateTo&&kyukaByPerson[l.staffName]!==undefined){
         kyukaByPerson[l.staffName]++;
+        kyukaDates[l.staffName].add(l.date);
+      }
     });
     Object.values(absences).forEach(a=>{
       if(a.status==='approved'&&a.date>=dateFrom&&a.date<=dateTo&&yasumiByPerson[a.staffName]!==undefined)
@@ -4686,7 +4691,11 @@ function calcWorkStats(seg){
       const ds=cur.toLocaleDateString('sv');
       if(cur.getDay()!==0){
         STAFF_LEAVE.forEach(m=>{
-          if(isHolidayFor(ds,m)) holidayByPerson[m]++;
+          if(kyukaDates[m].has(ds)){
+            // 有給を取った日。休業日と重なっていても「有給」として数える（給料にも有給として反映される）
+            if(!isHolidayFor(ds,m)) possibleByPerson[m]++;
+          }
+          else if(isHolidayFor(ds,m)) holidayByPerson[m]++;
           else possibleByPerson[m]++;
         });
       }
