@@ -3512,6 +3512,54 @@ async function renderAdminContent(){
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-kyuka')">🌴 有給・休み ${(pendingLeaves.length+pendingAbsences.length)?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingLeaves.length+pendingAbsences.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-kyuka">▶</span></div>
       <div class="collapse-body" id="collapse-kyuka" style="margin-bottom:20px">
 
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-holiday')">📅 休業日設定（会社の休み） <span class="collapse-arrow" id="arrow-collapse-holiday">▶</span></div>
+      <div class="card collapse-body" id="collapse-holiday" style="margin-bottom:20px">
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px">雨天中止・お盆・年末年始など、<b>会社の休み</b>を登録します。カレンダーに表示され、集計の「稼働可能日数」から除かれます。<br>登録しても<b>給料の計算は変わりません</b>（給料は日報を出した日数で計算されます）。休業日でも日報の入力はできます。</div>
+        <div class="field"><label class="lbl">日付（1日だけの場合は「開始日」だけでOK）</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="date" id="hol-from" style="flex:1">
+            <span style="color:#aaa;font-size:13px">〜</span>
+            <input type="date" id="hol-to" style="flex:1">
+          </div>
+        </div>
+        <div class="field"><label class="lbl">休みの種類</label>
+          <select id="hol-type" class="login-input">
+            ${Object.entries(HOLIDAY_TYPES).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}${v.hint?'（'+v.hint+'）':''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label class="lbl">誰が休みか</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26;margin-bottom:8px">
+            <input type="checkbox" id="hol-all" checked onchange="toggleHolMembers()" style="width:18px;height:18px">全員が休み
+          </label>
+          <div id="hol-members" style="display:none;background:#faf8f5;border-radius:10px;padding:10px 12px">
+            <div style="font-size:12px;color:#888;margin-bottom:8px">休む人にチェックを入れてください</div>
+            ${MEMBERS.map((m,i)=>`
+              <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26;margin-bottom:6px">
+                <input type="checkbox" class="hol-member" value="${i}" style="width:18px;height:18px">${escHtml(m)}
+              </label>`).join('')}
+          </div>
+        </div>
+        <div class="field"><label class="lbl">メモ（任意）</label>
+          <input type="text" id="hol-note" placeholder="例: 台風接近のため">
+        </div>
+        <button class="btn-primary" onclick="submitHolidays()">休業日として登録する</button>
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">登録済みの休業日（新しい順）</div>
+          ${Object.keys(companyHolidays).sort((a,b)=>b.localeCompare(a)).slice(0,60).map(d=>{
+            const h=companyHolidays[d];
+            const [hy,hm,hd]=d.split('-');
+            const dw=['日','月','火','水','木','金','土'][new Date(d+'T00:00:00').getDay()];
+            const who=holidayMembersLabel(h);
+            return `<div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
+              <span style="font-size:13px;color:#2d2a26;word-break:break-all">${parseInt(hm)}月${parseInt(hd)}日(${dw})　${escHtml(holidayLabel(h))}
+                <span style="color:${who==='全員'?'#aaa':'#c97a1f'};font-size:12px">［${escHtml(who)}］</span>
+              </span>
+              <button onclick="deleteHoliday('${d}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
+            </div>`;
+          }).join('')||'<div class="notice-empty">休業日はまだ登録されていません</div>'}
+        </div>
+      </div>
+
       <div class="section-title" style="margin-top:8px">有給申請 承認待ち（${pendingLeaves.length}件）</div>
       ${pendingLeaves.length?pendingLeaves.map(([key,l])=>`
         <div class="apply-card">
@@ -3593,6 +3641,8 @@ async function renderAdminContent(){
         <button class="btn-secondary" style="width:100%;background:#fdf3e7;color:#a4610f;border-color:#f0c890" onclick="resetKyukaYear()">🔄 有給をリセット（新年度を開始）</button>
       </div>
 
+      </div>
+
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-company')">🏢 取引会社の管理 <span class="collapse-arrow" id="arrow-collapse-company">▶</span></div>
       <div class="card collapse-body" id="collapse-company" style="margin-bottom:20px">
         <div style="font-size:12px;color:#aaa;margin-bottom:12px">現場の「取引会社」で選べる会社を追加します。<br>「現場名での略称」を入れておくと、その言葉で始まる現場名は<b>自動でこの会社になります</b>（例：略称「CHIKAZAWA」→ 現場名「CHIKAZAWA 田中様邸」が自動でCHIKAZAWA扱い）。</div>
@@ -3613,57 +3663,6 @@ async function renderAdminContent(){
           <div style="font-size:12px;color:#888;font-weight:700;margin:14px 0 6px">もとから登録されている会社（削除できません）</div>
           <div style="font-size:12px;color:#b5aca0;line-height:1.8;word-break:break-all">${[...new Set(Object.values(COMPANY_MAP))].map(c=>escHtml(c)).join('　/　')}</div>
         </div>
-      </div>
-
-      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-holiday')">📅 休業日設定（会社の休み） <span class="collapse-arrow" id="arrow-collapse-holiday">▶</span></div>
-      <div class="card collapse-body" id="collapse-holiday" style="margin-bottom:20px">
-        <div style="font-size:12px;color:#aaa;margin-bottom:12px">雨天中止・お盆・年末年始など、<b>全員が休みの日</b>を登録します。カレンダーに表示され、集計の「稼働可能日数」から除かれます。<br>登録しても<b>給料の計算は変わりません</b>（給料は日報を出した日数で計算されます）。休業日でも日報の入力はできます。</div>
-        <div class="field"><label class="lbl">日付（1日だけの場合は「開始日」だけでOK）</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="date" id="hol-from" style="flex:1">
-            <span style="color:#aaa;font-size:13px">〜</span>
-            <input type="date" id="hol-to" style="flex:1">
-          </div>
-        </div>
-        <div class="field"><label class="lbl">休みの種類</label>
-          <select id="hol-type" class="login-input">
-            ${Object.entries(HOLIDAY_TYPES).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}${v.hint?'（'+v.hint+'）':''}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field"><label class="lbl">誰が休みか</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26;margin-bottom:8px">
-            <input type="checkbox" id="hol-all" checked onchange="toggleHolMembers()" style="width:18px;height:18px">全員が休み
-          </label>
-          <div id="hol-members" style="display:none;background:#faf8f5;border-radius:10px;padding:10px 12px">
-            <div style="font-size:12px;color:#888;margin-bottom:8px">休む人にチェックを入れてください</div>
-            ${MEMBERS.map((m,i)=>`
-              <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#2d2a26;margin-bottom:6px">
-                <input type="checkbox" class="hol-member" value="${i}" style="width:18px;height:18px">${escHtml(m)}
-              </label>`).join('')}
-          </div>
-        </div>
-        <div class="field"><label class="lbl">メモ（任意）</label>
-          <input type="text" id="hol-note" placeholder="例: 台風接近のため">
-        </div>
-        <button class="btn-primary" onclick="submitHolidays()">休業日として登録する</button>
-        <div style="margin-top:16px">
-          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">登録済みの休業日（新しい順）</div>
-          ${Object.keys(companyHolidays).sort((a,b)=>b.localeCompare(a)).slice(0,60).map(d=>{
-            const h=companyHolidays[d];
-            const [hy,hm,hd]=d.split('-');
-            const dw=['日','月','火','水','木','金','土'][new Date(d+'T00:00:00').getDay()];
-            const who=holidayMembersLabel(h);
-            return `<div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
-              <span style="font-size:13px;color:#2d2a26;word-break:break-all">${parseInt(hm)}月${parseInt(hd)}日(${dw})　${escHtml(holidayLabel(h))}
-                <span style="color:${who==='全員'?'#aaa':'#c97a1f'};font-size:12px">［${escHtml(who)}］</span>
-              </span>
-              <button onclick="deleteHoliday('${d}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
-            </div>`;
-          }).join('')||'<div class="notice-empty">休業日はまだ登録されていません</div>'}
-        </div>
-      </div>
-
-
       </div>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-users')">👥 ユーザー管理 <span class="collapse-arrow" id="arrow-collapse-users">▶</span></div>
