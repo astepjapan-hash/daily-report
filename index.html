@@ -3442,30 +3442,6 @@ async function renderAdminContent(){
         <div style="margin-top:6px" id="admin-notice-list"></div>
       </div>
 
-      <div class="section-title collapse-header" onclick="toggleCollapse('collapse-alias')">🔗 現場名の統合 <span class="collapse-arrow" id="arrow-collapse-alias">▶</span></div>
-      <div class="card collapse-body" id="collapse-alias" style="margin-bottom:20px">
-        <div style="font-size:12px;color:#aaa;margin-bottom:12px">同じ現場が入力ゆれ（例：施工箇所の「○ｐ」違い）で別々に集計されてしまう場合、1つの名前にまとめられます。<br>現場名の一部で検索し、まとめたいものにチェックを入れて実行します。日報のデータは書き換わりません（集計の見え方だけが変わります）。</div>
-        <div class="field"><label class="lbl">① 現場名の一部を入れて検索</label>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="merge-kw" placeholder="例: Ｇ田島２丁目１期" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMergeSites();}">
-            <button class="btn-secondary" style="width:90px;flex-shrink:0" onclick="searchMergeSites()">🔍 検索</button>
-          </div>
-        </div>
-        <div id="merge-hits" style="margin-bottom:10px"><div class="notice-empty">現場名の一部を入れて「検索」を押してください</div></div>
-        <div class="field"><label class="lbl">② 統合後の名前（新しい名前でもOK）</label>
-          <input type="text" id="merge-to" placeholder="例: Ｇ田島２丁目１期　7ｐ3ｐ">
-        </div>
-        <button class="btn-primary" onclick="submitMergeSites()">この内容で統合する</button>
-        <div style="margin-top:16px">
-          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">現在の統合設定</div>
-          ${Object.entries(siteAliases).map(([from,to])=>`
-            <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
-              <span style="font-size:13px;color:#2d2a26;word-break:break-all">${escHtml(from)} → <b>${escHtml(to)}</b></span>
-              <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
-            </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
-        </div>
-      </div>
-
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-expense')">💴 経費 ${pendingExpenses.length?`<span style="background:#fff0d8;color:#c97a1f;font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;margin-left:4px">承認待ち ${pendingExpenses.length}件</span>`:''} <span class="collapse-arrow" id="arrow-collapse-expense">▶</span></div>
       <div class="collapse-body" id="collapse-expense" style="margin-bottom:20px">
 
@@ -3662,6 +3638,30 @@ async function renderAdminContent(){
             </div>`).join('')||'<div class="notice-empty">追加した会社はまだありません</div>'}
           <div style="font-size:12px;color:#888;font-weight:700;margin:14px 0 6px">もとから登録されている会社（削除できません）</div>
           <div style="font-size:12px;color:#b5aca0;line-height:1.8;word-break:break-all">${[...new Set(Object.values(COMPANY_MAP))].map(c=>escHtml(c)).join('　/　')}</div>
+        </div>
+      </div>
+
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-alias')">🔗 現場名の統合 <span class="collapse-arrow" id="arrow-collapse-alias">▶</span></div>
+      <div class="card collapse-body" id="collapse-alias" style="margin-bottom:20px">
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px">同じ現場が入力ゆれ（例：施工箇所の「○ｐ」違い）で別々に集計されてしまう場合、1つの名前にまとめられます。<br>現場名の一部で検索し、まとめたいものにチェックを入れて実行します。日報のデータは書き換わりません（集計の見え方だけが変わります）。</div>
+        <div class="field"><label class="lbl">① 現場名の一部を入れて検索</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="merge-kw" placeholder="例: Ｇ田島２丁目１期" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMergeSites();}">
+            <button class="btn-secondary" style="width:90px;flex-shrink:0" onclick="searchMergeSites()">🔍 検索</button>
+          </div>
+        </div>
+        <div id="merge-hits" style="margin-bottom:10px"><div class="notice-empty">現場名の一部を入れて「検索」を押してください</div></div>
+        <div class="field"><label class="lbl">② 統合後の名前（新しい名前でもOK）</label>
+          <input type="text" id="merge-to" placeholder="例: Ｇ田島２丁目１期　7ｐ3ｐ">
+        </div>
+        <button class="btn-primary" onclick="submitMergeSites()">この内容で統合する</button>
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">現在の統合設定</div>
+          ${Object.entries(siteAliases).map(([from,to])=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
+              <span style="font-size:13px;color:#2d2a26;word-break:break-all">${escHtml(from)} → <b>${escHtml(to)}</b></span>
+              <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
+            </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
         </div>
       </div>
 
