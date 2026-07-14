@@ -1015,6 +1015,14 @@ const COMPANY_MAP = {
   '住協ﾘﾌｫｰﾑ':'住協リフォーム','住協リフォーム':'住協リフォーム',
   '手直し':'手直し','手直し是正':'手直し是正','直し':'直し','直し是正':'直し是正'
 };
+// アプリの管理画面から追加した取引会社（略称 → 正式名称）。DBの /companies から読み込む
+let companies = {};
+// 元からある会社（COMPANY_MAP）と、追加した会社（companies）を合わせた対応表
+function companyMap(){ return Object.assign({}, COMPANY_MAP, companies); }
+// 会社名の選択肢（重複を除く）
+function companyOptions(){
+  return ['住協建設','住協メンテ',...Object.values(companyMap())].filter((v,i,a)=>a.indexOf(v)===i);
+}
 const RESIN_KG_PER_KAN = 18; // 樹脂1缶あたりkg
 const WEATHERS = {晴れ:'☀️',曇り:'⛅',雨:'🌧️',晴れのち雨:'🌦️',雨のち晴れ:'🌤️',曇り時々雨:'🌧️'};
 // ユーザー名簿はFirebaseの /users から起動時に読み込む（applyUsersで設定）
@@ -2041,6 +2049,7 @@ async function loadReports(){
     companyHolidays=await chRes.json()||{};
     try{const smRes=await dbFetch('/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
     try{const saRes=await dbFetch('/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){siteAliases={};}
+    try{const coRes=await dbFetch('/companies.json');companies=await coRes.json()||{};}catch(e){companies={};}
     const todayStr=new Date().toLocaleDateString('sv');
     const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
     document.getElementById('badge').textContent=todayCount||'';
@@ -2448,7 +2457,7 @@ function getCompanyName(siteName){
   const prefix=s.slice(0,sp).trim();
   if(!prefix)return '住協建設';
   // 対応表にあれば正式名称、なければ住協建設
-  return COMPANY_MAP[prefix]||'住協建設';
+  return companyMap()[prefix]||'住協建設';
 }
 function getSiteShort(siteName){
   const s=(siteName||'').trim();
@@ -2460,8 +2469,8 @@ function getSiteShort(siteName){
   if(sp<0)return s;
   const prefix=s.slice(0,sp).trim();
   if(!prefix)return s;
-  // COMPANY_MAPに登録された正式な略称の場合のみ接頭辞を削除
-  if(COMPANY_MAP[prefix])return s.slice(sp+1).trim()||s;
+  // 登録された正式な略称の場合のみ接頭辞を削除
+  if(companyMap()[prefix])return s.slice(sp+1).trim()||s;
   return s;
 }
 
@@ -2747,8 +2756,9 @@ function openSiteEdit(nameEnc){
       <div style="font-size:16px;font-weight:800;margin-bottom:14px">✏️ ${getSiteShort(name)}</div>
       <div class="field"><label class="lbl">取引会社</label>
         <select id="site-company-input" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
-          ${['住協建設','住協メンテ',...Object.values(COMPANY_MAP)].filter((v,i,a)=>a.indexOf(v)===i).map(c=>`<option ${getCompanyName(name)===c?'selected':''}>${c}</option>`).join('')}
+          ${companyOptions().map(c=>`<option ${getCompanyName(name)===c?'selected':''}>${escHtml(c)}</option>`).join('')}
         </select>
+        <div style="font-size:11px;color:#aaa;margin-top:4px">選びたい会社がない場合は、管理タブの「🏢 取引会社の管理」から追加できます</div>
       </div>
       <div class="field"><label class="lbl">面積（㎡）</label>
         <input type="number" step="0.1" id="site-area-input" value="${meta.area||''}" placeholder="例: 45.5" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
@@ -3216,7 +3226,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -3329,8 +3339,8 @@ async function renderAdminContent(){
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes,chRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json'),dbFetch('/companyHolidays.json')]);
-    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';companyHolidays=await chRes.json()||{};
+    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes,chRes,coRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json'),dbFetch('/companyHolidays.json'),dbFetch('/companies.json')]);
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';companyHolidays=await chRes.json()||{};companies=await coRes.json()||{};
   }catch(e){}
 
   // 作業時間・日数集計（全期間）
@@ -3581,6 +3591,28 @@ async function renderAdminContent(){
         </div>
         <div style="font-size:11px;color:#b5aca0;margin-bottom:12px;line-height:1.6">新年度（10月）が始まったらリセットしてください。過去の申請履歴は消えず、履歴タブでそのまま確認できます。残日数の集計だけがリセット日以降でカウントし直されます。</div>
         <button class="btn-secondary" style="width:100%;background:#fdf3e7;color:#a4610f;border-color:#f0c890" onclick="resetKyukaYear()">🔄 有給をリセット（新年度を開始）</button>
+      </div>
+
+      <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-company')">🏢 取引会社の管理 <span class="collapse-arrow" id="arrow-collapse-company">▶</span></div>
+      <div class="card collapse-body" id="collapse-company" style="margin-bottom:20px">
+        <div style="font-size:12px;color:#aaa;margin-bottom:12px">現場の「取引会社」で選べる会社を追加します。<br>「現場名での略称」を入れておくと、その言葉で始まる現場名は<b>自動でこの会社になります</b>（例：略称「CHIKAZAWA」→ 現場名「CHIKAZAWA 田中様邸」が自動でCHIKAZAWA扱い）。</div>
+        <div class="field"><label class="lbl">会社名（正式名称）</label>
+          <input type="text" id="co-name" placeholder="例: CHIKAZAWA">
+        </div>
+        <div class="field"><label class="lbl">現場名での略称（任意・空なら会社名と同じ）</label>
+          <input type="text" id="co-prefix" placeholder="例: CHIKAZAWA">
+        </div>
+        <button class="btn-primary" onclick="submitCompany()">この会社を追加する</button>
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">追加した会社</div>
+          ${Object.entries(companies).map(([pre,nm])=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
+              <span style="font-size:13px;color:#2d2a26;word-break:break-all"><b>${escHtml(nm)}</b><span style="color:#aaa;font-size:12px">　現場名の略称：${escHtml(pre)}</span></span>
+              <button onclick="deleteCompany('${encodeURIComponent(pre)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
+            </div>`).join('')||'<div class="notice-empty">追加した会社はまだありません</div>'}
+          <div style="font-size:12px;color:#888;font-weight:700;margin:14px 0 6px">もとから登録されている会社（削除できません）</div>
+          <div style="font-size:12px;color:#b5aca0;line-height:1.8;word-break:break-all">${[...new Set(Object.values(COMPANY_MAP))].map(c=>escHtml(c)).join('　/　')}</div>
+        </div>
       </div>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-holiday')">📅 休業日設定（会社の休み） <span class="collapse-arrow" id="arrow-collapse-holiday">▶</span></div>
@@ -4244,6 +4276,37 @@ async function submitMergeSites(){
     alert('統合しました！「集計」で確認してください。');
     renderAdminContent();
   }catch(e){ alert('保存に失敗しました。'); }
+}
+
+// ── 取引会社の追加・削除 ──
+async function submitCompany(){
+  const name=document.getElementById('co-name').value.trim();
+  const prefixRaw=document.getElementById('co-prefix').value.trim();
+  if(!name){ alert('会社名を入力してください'); return; }
+  const prefix=prefixRaw||name; // 略称が空なら会社名をそのまま略称にする
+  if(COMPANY_MAP[prefix]){ alert('「'+prefix+'」は、もとから登録されている会社の略称です。別の略称にしてください。'); return; }
+  if(companies[prefix] && !confirm('略称「'+prefix+'」はすでに「'+companies[prefix]+'」に使われています。\n「'+name+'」に上書きしますか？')) return;
+  const key=siteKey(prefix);
+  try{
+    await dbFetch('/companies/'+encodeURIComponent(key)+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(name)});
+    companies[key]=name;
+    document.getElementById('co-name').value='';
+    document.getElementById('co-prefix').value='';
+    alert('「'+name+'」を追加しました！\n集計の現場編集画面で選べるようになります。');
+    renderAdminContent();
+  }catch(e){ alert('保存に失敗しました。'); }
+}
+
+async function deleteCompany(preEnc){
+  const pre=decodeURIComponent(preEnc);
+  const nm=companies[pre];
+  if(!nm) return;
+  if(!confirm('「'+nm+'」を一覧から削除しますか？\n\n※すでにこの会社を設定した現場は、そのまま「'+nm+'」のままです。\n※新しく選ぶことはできなくなります。')) return;
+  try{
+    await dbFetch('/companies/'+encodeURIComponent(siteKey(pre))+'.json',{method:'DELETE'});
+    delete companies[pre];
+    renderAdminContent();
+  }catch(e){ alert('削除に失敗しました。'); }
 }
 
 // ── 休業日（会社の休み）の登録・削除 ──
