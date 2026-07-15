@@ -2929,14 +2929,30 @@ function setTotalMonth(){
 
 function renderTotalStats(){
   const content=document.getElementById('stats-content');
-  const from=document.getElementById('total-date-from')?.value||'';
-  const to=document.getElementById('total-date-to')?.value||'';
-  const monthVal=document.getElementById('total-month')?.value||'';
+  const fromEl=document.getElementById('total-date-from');
+  let from=fromEl?fromEl.value:'';
+  let to=document.getElementById('total-date-to')?.value||'';
+  let monthVal=document.getElementById('total-month')?.value||'';
+  // 初めて開いたときは「今月」を表示する（日付を消して「表示」を押せば全期間になる）
+  if(!fromEl){
+    const now=new Date();
+    const y=now.getFullYear(),mo=now.getMonth()+1;
+    const p=n=>String(n).padStart(2,'0');
+    from=`${y}-${p(mo)}-01`;
+    to=`${y}-${p(mo)}-${p(new Date(y,mo,0).getDate())}`;
+    monthVal=`${y}-${p(mo)}`;
+  }
   let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let filtered=from&&to?allList.filter(([,r])=>r.date>=from&&r.date<=to):allList;
   if(totalStaffFilters.length)filtered=filtered.filter(([,r])=>totalStaffFilters.includes(r.staffName));
   const t=calcTotals(filtered);
-  const lbl=from&&to?`${from} 〜 ${to}`:`全期間`;
+  // 期間ラベル（1日〜末日ならシンプルに「◯年◯月」と表示）
+  let lbl='全期間';
+  if(from&&to){
+    const [fy,fm,fd]=from.split('-');
+    const ld=String(new Date(parseInt(fy),parseInt(fm),0).getDate()).padStart(2,'0');
+    lbl=(fd==='01'&&to===`${fy}-${fm}-${ld}`)?`${parseInt(fy)}年${parseInt(fm)}月`:`${from} 〜 ${to}`;
+  }
 
   const staffChips=`<div class="filter-row">
     <button class="filter-btn ${totalStaffFilters.length===0?'active':''}" onclick="toggleTotalStaffFilter('')">全員</button>
@@ -5003,23 +5019,47 @@ async function renderTsukiawase(from,to){
     const diff=Math.round((u-o)*10)/10;
     return {label:c.label,u,o,diff,warn:Math.abs(diff)>1};
   });
-  const warns=rows.filter(r=>r.warn);
   const clipped=(!from||from<TSUKIAWASE_START);
   const label=`${start} 〜 ${to||'今日'}`;
+  // 結論を先に言葉で表示し、くわしい数字と見方は開いて見られるようにする
+  const verdictHtml=rows.map(r=>{
+    if(!r.warn)return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f5f0ea;font-size:13px">
+      <span>🟢</span><b style="min-width:86px">${r.label}</b><span style="color:#5a8a5a;font-weight:700">合っています</span>
+      <span style="color:#bbb;font-size:11px;margin-left:auto">差 ${r.diff>0?'+':''}${r.diff}缶</span>
+    </div>`;
+    const minus=r.diff<0;
+    return `<div style="padding:8px 0;border-bottom:1px solid #f5f0ea;font-size:13px">
+      <div style="display:flex;align-items:center;gap:8px"><span>🔴</span><b style="min-width:86px">${r.label}</b><span style="color:#c0392b;font-weight:700">${Math.abs(r.diff)}缶 合いません</span></div>
+      <div style="font-size:11px;color:#a4610f;margin:3px 0 0 30px;line-height:1.5">${minus?'持ち出しの方が多い → 日報の書き漏れか、車に積み置きの可能性':'日報の方が多い → 持ち出し（出庫）の登録漏れの可能性'}</div>
+    </div>`;
+  }).join('');
   el.innerHTML=`<div style="margin-top:16px">
     <div class="section-title">⚖️ 出庫との突き合わせ</div>
     <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px">
-      <div style="font-size:11px;color:#aaa;margin-bottom:8px">${label} の日報使用量と在庫出庫量を缶数で比較（差1缶超で⚠️）</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <tr style="color:#aaa;font-size:11px"><td></td><td style="text-align:right;padding:2px 0">日報使用</td><td style="text-align:right;padding:2px 0">在庫出庫</td><td style="text-align:right;padding:2px 0">差</td></tr>
-        ${rows.map(r=>`<tr style="border-top:1px solid #f0ebe4">
-          <td style="padding:8px 0;font-weight:700;color:#2d2a26">${r.label}</td>
-          <td style="text-align:right;color:#555">${r.u}缶</td>
-          <td style="text-align:right;color:#555">${r.o}缶</td>
-          <td style="text-align:right;font-weight:700;color:${r.warn?'#c0392b':'#5a8a5a'}">${r.diff>0?'+':''}${r.diff} ${r.warn?'⚠️':'✅'}</td>
-        </tr>`).join('')}
-      </table>
-      ${warns.length?`<div style="background:#fdf3e7;color:#a4610f;border-radius:8px;padding:9px 11px;margin-top:10px;font-size:11px;line-height:1.6">⚠️ ${warns.map(w=>w.label).join('・')}がズレています。日報の書き漏れ、または出庫の登録漏れの可能性があります。<br><span style="opacity:0.75">※期間またぎの持ち出しや積み置き分でも多少のズレは出ます</span></div>`:''}
+      <div style="font-size:11px;color:#aaa;margin-bottom:6px">${label}｜「日報に書いた量」と「倉庫から出した量」が合っているかの確認</div>
+      ${verdictHtml}
+      <details style="margin-top:10px">
+        <summary style="font-size:12px;color:#c97a1f;font-weight:700;cursor:pointer">▼ くわしい数字を見る</summary>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
+          <tr style="color:#aaa;font-size:10px"><td></td><td style="text-align:right;padding:2px 0">日報に書いた量</td><td style="text-align:right;padding:2px 0">倉庫から出した量</td><td style="text-align:right;padding:2px 0">差</td></tr>
+          ${rows.map(r=>`<tr style="border-top:1px solid #f0ebe4">
+            <td style="padding:8px 0;font-weight:700;color:#2d2a26">${r.label}</td>
+            <td style="text-align:right;color:#555">${r.u}缶</td>
+            <td style="text-align:right;color:#555">${r.o}缶</td>
+            <td style="text-align:right;font-weight:700;color:${r.warn?'#c0392b':'#5a8a5a'}">${r.diff>0?'+':''}${r.diff}</td>
+          </tr>`).join('')}
+        </table>
+      </details>
+      <details style="margin-top:8px">
+        <summary style="font-size:12px;color:#c97a1f;font-weight:700;cursor:pointer">❓ この表の見方</summary>
+        <div style="font-size:11px;color:#7a6a55;line-height:1.7;margin-top:6px;background:#fff8ee;border-radius:8px;padding:9px 11px">
+          この確認は「<b>日報に書いた材料の量</b>」と「<b>倉庫から持ち出した量</b>」を缶数でくらべるものです。本来はほぼ同じ数字になります。<br>
+          ・差が「<b>＋</b>」＝ 日報の方が多い → <b>持ち出し（出庫）の登録漏れ</b>の可能性<br>
+          ・差が「<b>−</b>」＝ 持ち出しの方が多い → <b>日報の書き漏れ</b>か、<b>車に積み置き</b>の可能性<br>
+          ・差が<b>±1缶以内</b>なら誤差の範囲です（🟢）<br>
+          <span style="opacity:0.75">※月をまたいだ持ち出しや積み置き分でも多少のズレは出ます</span>
+        </div>
+      </details>
       ${clipped?`<div style="font-size:10px;color:#b5aca0;margin-top:8px">※ 突き合わせは2026年7月10日以降のデータが対象です</div>`:''}
     </div>
   </div>`;
