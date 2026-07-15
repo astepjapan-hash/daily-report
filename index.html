@@ -1433,6 +1433,11 @@ function startApp(){
 function nameOptions(names, selected){
   return names.map(n=>`<option${n===selected?' selected':''}>${n}</option>`).join('');
 }
+// 編集・削除の権限：入力した本人（氏名が一致）か、管理者のときだけ true
+function canManage(ownerName){
+  if(adminLoggedIn) return true;
+  return !!(currentUser && ownerName && currentUser.name === ownerName);
+}
 // own=true: 一般ユーザーは自分の名前で固定（管理者は全員から選択可）
 function fillNameSelect(id, names, own){
   const el = document.getElementById(id);
@@ -2032,7 +2037,7 @@ function renderListSearch(q){
           <div class="report-sites" style="padding-right:40px">${r.sites?.map(s=>siteLineHtml(s,hl(s.name,q))).join('')||''}</div>
           <span class="report-arrow">›</span>
         </div>
-        <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
+        ${canManage(r.staffName)?`<button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>`:''}
       </div>`).join(''):'';
 
   el.innerHTML=schedHtml+reportHtml;
@@ -2172,7 +2177,7 @@ function renderDayReports(dateStr){
         <div class="report-sites" style="padding-right:40px">${(r.sites||[]).map(s=>siteLineHtml(s,s.name)).join('')}</div>
         <span class="report-arrow">›</span>
       </div>
-      <button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>
+      ${canManage(r.staffName)?`<button class="delete-btn" onclick="deleteReport('${key}','${r.staffName}',event)">🗑</button>`:''}
     </div>`;
   }).join('');
 
@@ -2393,6 +2398,7 @@ async function saveEditSchedule(){
 
 async function deleteReport(key,name,e){
   e.stopPropagation();
+  if(!canManage(name)){alert('この日報を削除できるのは、入力した本人か管理者だけです。');return;}
   if(!confirm(name+'の日報を削除しますか？\nこの操作は取り消せません。'))return;
   try{
     await dbFetch('/reports/'+key+'.json',{method:'DELETE'});
@@ -3108,7 +3114,7 @@ function renderExpense(){
           </div>
           <div style="text-align:right;flex:none">
             <div style="font-size:16px;font-weight:700;color:#000">¥${(parseInt(e.amount)||0).toLocaleString()}</div>
-            <button onclick="deleteExpense('${key}')" style="margin-top:4px;background:none;border:none;color:#ddd;font-size:17px;cursor:pointer;padding:2px;font-family:inherit">🗑</button>
+            ${canManage(e.staffName)?`<button onclick="deleteExpense('${key}')" style="margin-top:4px;background:none;border:none;color:#ddd;font-size:17px;cursor:pointer;padding:2px;font-family:inherit">🗑</button>`:''}
           </div>
         </div>
       </div>`).join('')
@@ -3140,6 +3146,10 @@ async function submitExpense(){
 
 async function deleteExpense(key, fromAdmin){
   if(window._expBusy) return;
+  if(!fromAdmin){
+    const exp=expenses[key];
+    if(exp && !canManage(exp.staffName)){alert('この経費を削除できるのは、申請した本人か管理者だけです。');return;}
+  }
   if(!confirm(fromAdmin ? 'この経費申請を却下（削除）しますか？' : 'この経費を削除しますか？')) return;
   window._expBusy = true;
   try{
@@ -4545,6 +4555,7 @@ async function cancelLeave(key){
 // ── 日報編集 ─────────────────────
 function openReportEdit(key){
   const r=reports[key];if(!r)return;
+  if(!canManage(r.staffName)){alert('この日報を編集できるのは、入力した本人か管理者だけです。');return;}
   window._reportEditKey=key;
   const modal=document.getElementById('report-edit-modal');
   const editContent=document.getElementById('report-edit-content');
@@ -4617,6 +4628,7 @@ function closeReportEdit(){
 
 async function saveReportEdit(key){
   const r=reports[key];if(!r)return;
+  if(!canManage(r.staffName)){alert('この日報を編集できるのは、入力した本人か管理者だけです。');return;}
   const staffName=document.getElementById('edit-staff-name').value;
   const date=document.getElementById('edit-report-date').value;
   const tomorrow=document.getElementById('edit-tomorrow').value.trim();
@@ -4790,7 +4802,7 @@ function showDetail(key){
   document.getElementById('detail-content').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <button class="back-btn" style="padding:0" onclick="showView('list', true)">← 一覧へ戻る</button>
-      <button onclick="openReportEdit('${key}')" style="background:#e07b4f;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✏️ 編集</button>
+      ${canManage(r.staffName)?`<button onclick="openReportEdit('${key}')" style="background:#e07b4f;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✏️ 編集</button>`:''}
     </div>
     <div style="font-size:13px;color:#aaa;margin-bottom:4px">${r.dateLabel||r.date}</div>
     <div style="font-size:22px;font-weight:700;color:#2d2a26;margin-bottom:20px">${r.staffName}</div>
@@ -5993,7 +6005,7 @@ function renderHistDayContent() {
           <div class="hist-qty-num ${m.type}">${m.type==='in'?'+':'-'}${m.qty%1===0?m.qty:m.qty.toFixed(1)}</div>
           <div class="hist-qty-unit">${m.unit||''}</div>
         </div>
-        <button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>
+        ${canManage(m.staff)?`<button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>`:''}
       </div>`).join('')}
   </div>`;
 }
@@ -6116,7 +6128,7 @@ function renderHistory() {
           <div class="hist-qty-num ${m.type}">${m.type === 'in' ? '+' : '-'}${m.qty % 1 === 0 ? m.qty : m.qty.toFixed(1)}</div>
           <div class="hist-qty-unit">${m.unit || ''}</div>
         </div>
-        <button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>
+        ${canManage(m.staff)?`<button class="delete-btn" onclick="deleteMovement('${key}', event)">🗑</button>`:''}
       </div>`).join('');
 
     return `<div style="margin-bottom:16px">
@@ -6132,10 +6144,11 @@ function renderHistory() {
 }
 
 async function deleteMovement(key, e) {
-  if (window._zkBusy) return; 
+  if (window._zkBusy) return;
   e.stopPropagation();
   const m = movements[key];
   if (!m) return;
+  if (!canManage(m.staff)) { alert('この記録を削除できるのは、入力した本人か管理者だけです。'); return; }
   if (!confirm(`「${m.itemName}」の${m.type === 'in' ? '入庫' : '持ち出し'}記録を削除しますか？\n在庫数も元に戻ります。`)) return;
   window._zkBusy = true;
   try {
