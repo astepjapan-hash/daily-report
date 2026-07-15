@@ -2518,6 +2518,55 @@ function aggregateSites(){
   return sites;
 }
 
+// 面積が入力されているか（0㎡も「入力済み」とみなす。空欄・未設定だけを未入力とする）
+function hasArea(name){
+  const v=siteMeta[name]&&siteMeta[name].area;
+  return v!==undefined&&v!==null&&String(v).trim()!=='';
+}
+
+// 現場ごとの「人別樹脂使用量」を日報から集計（名寄せは現場集計と同じルール）
+function computeResinBySite(){
+  const resinBySite={};
+  Object.values(reports).forEach(r=>{
+    (r.sites||[]).forEach(s=>{
+      const rawName=(s.name||'').trim();
+      if(!rawName||!r.staffName)return;
+      const name=siteAliases[rawName]||siteAliases[siteKey(rawName)]||rawName;
+      const resin=(parseInt(s.resinKan)||0)+(parseInt(s.resinWari)||0)/10;
+      if(!resinBySite[name])resinBySite[name]={};
+      resinBySite[name][r.staffName]=(resinBySite[name][r.staffName]||0)+resin;
+    });
+  });
+  return resinBySite;
+}
+
+// 数量チップの表示（月合計・会社別で共通）
+// 個人で絞り込み中は、現場面積を樹脂使用量の比率で按分した「その人の取り分」を表示する
+function areaChipHtml(sitesArr, opts){
+  opts=opts||{};
+  const style=opts.small?'font-size:11px;padding:3px 8px;text-align:center':'text-align:center';
+  const miss=sitesArr.filter(s=>!hasArea(s.name)).length;
+  let a=0,label='数量';
+  if(siteStaffFilters.length){
+    label='数量(取り分)';
+    const resinBySite=opts.resin||computeResinBySite();
+    sitesArr.forEach(s=>{
+      const area=parseFloat(siteMeta[s.name]?.area)||0;
+      if(!area)return;
+      const resins=resinBySite[s.name]||{};
+      const sum=Object.values(resins).reduce((x,y)=>x+y,0);
+      if(sum<=0)return; // 樹脂の記録がない現場は取り分計算の対象外
+      const q=siteStaffFilters.reduce((x,m)=>x+(resins[m]||0),0);
+      a+=area*q/sum;
+    });
+  }else{
+    a=sitesArr.reduce((sum,s)=>sum+(parseFloat(siteMeta[s.name]?.area)||0),0);
+  }
+  const sub=miss?`<br><span style="font-size:10px;color:#c49a6a;font-weight:500">未入力${miss}件</span>`
+    :(opts.showCount?`<br><span style="font-size:10px;color:#7d967d;font-weight:500">${sitesArr.length}現場</span>`:'');
+  return `<span class="material-chip" style="${style}">${label} ${Math.round(a*10)/10}㎡${sub}</span>`;
+}
+
 let siteStaffFilters=[];
 let siteViewMode='month'; // 'month'（月別）| 'company'（会社別）
 let siteSortMode='dateDesc'; // 'dateDesc' | 'dateAsc' | 'name'
@@ -2605,6 +2654,9 @@ function renderSiteListInner(){
     return true;
   });
 
+  // 個人絞り込み中の取り分計算用（1回の描画で1度だけ日報を集計する）
+  const _resinCache=siteStaffFilters.length?computeResinBySite():null;
+
   // 月別ビュー：月ナビ＋その月の材料合計
   let headerHtml='';
   if(siteViewMode==='month'){
@@ -2627,7 +2679,7 @@ function renderSiteListInner(){
       <span class="material-chip" style="text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
       <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
       <span class="material-chip" style="text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
-      ${(()=>{const a=list.reduce((sum,s)=>sum+(parseFloat(siteMeta[s.name]?.area)||0),0);const miss=list.filter(s=>!(parseFloat(siteMeta[s.name]?.area)>0)).length;return `<span class="material-chip" style="text-align:center">数量 ${Math.round(a*10)/10}㎡${miss?`<br><span style="font-size:10px;color:#c49a6a;font-weight:500">未入力${miss}件</span>`:`<br><span style="font-size:10px;color:#7d967d;font-weight:500">${list.length}現場</span>`}</span>`;})()}
+      ${areaChipHtml(list,{showCount:true,resin:_resinCache})}
     </div>`;
   }
 
@@ -2672,7 +2724,7 @@ function renderSiteListInner(){
       return head+`
           <div onclick="showSiteDetail('${encodeURIComponent(s.name)}')" style="background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
             <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}</div>
-            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}${parseFloat(siteMeta[s.name]?.area)>0?`　<span style="color:#7d967d;font-weight:700">📐 ${siteMeta[s.name].area}㎡</span>`:''}</div>
+            <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}${hasArea(s.name)?`　<span style="color:#7d967d;font-weight:700">📐 ${siteMeta[s.name].area}㎡</span>`:''}</div>
           </div>`;
     }).join('');
     // 月別ビュー：会社ごとの材料合計（その月に完了した現場の累計）
@@ -2686,7 +2738,7 @@ function renderSiteListInner(){
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${rkg}kg</span></span>
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
-        ${(()=>{const a=items.reduce((sum,s)=>sum+(parseFloat(siteMeta[s.name]?.area)||0),0);const miss=items.filter(s=>!(parseFloat(siteMeta[s.name]?.area)>0)).length;return `<span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">数量 ${Math.round(a*10)/10}㎡${miss?`<br><span style="font-size:10px;color:#c49a6a;font-weight:500">未入力${miss}件</span>`:''}</span>`;})()}
+        ${areaChipHtml(items,{small:true,resin:_resinCache})}
       </div>`;
     }
     return `
@@ -2736,7 +2788,7 @@ function showSiteDetail(nameEnc){
       <div style="font-size:14px;margin-bottom:12px">${[...s.shitaji,...s.burner].join('、')||'-'}</div>
 
       <div class="detail-section-label">📐 面積・メモ</div>
-      <div style="font-size:14px;margin-bottom:4px">${meta.area?meta.area+' ㎡':'（面積未入力）'}</div>
+      <div style="font-size:14px;margin-bottom:4px">${hasArea(s.name)?meta.area+' ㎡':'（面積未入力）'}</div>
       ${meta.memo?`<div style="font-size:13px;color:#7a6a55;background:#fff8ee;padding:8px 10px;border-radius:8px;margin-bottom:12px">📝 ${meta.memo}</div>`:'<div style="margin-bottom:12px"></div>'}
 
       ${adminLoggedIn?`<button onclick="openSiteEdit('${encodeURIComponent(s.name)}')" style="width:100%;padding:10px;background:#e07b4f;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:14px">✏️ 面積・メモを編集</button>`:''}
@@ -6197,24 +6249,15 @@ function computeAreaByStaff(completedFrom, completedTo){
   const result = {}; // staffName -> ㎡
   let total = 0, noArea = 0;
   // 現場ごとの「人別樹脂使用量」を日報から集計（名寄せは現場集計と同じルール）
-  const resinBySite = {};
-  Object.values(reports).forEach(r=>{
-    (r.sites||[]).forEach(s=>{
-      const rawName=(s.name||'').trim();
-      if(!rawName||!r.staffName)return;
-      const name=siteAliases[rawName]||siteAliases[siteKey(rawName)]||rawName;
-      const resin=(parseInt(s.resinKan)||0)+(parseInt(s.resinWari)||0)/10;
-      if(!resinBySite[name])resinBySite[name]={};
-      resinBySite[name][r.staffName]=(resinBySite[name][r.staffName]||0)+resin;
-    });
-  });
+  const resinBySite = computeResinBySite();
   // 対象期間に完了した現場の面積を按分
   Object.values(aggregateSites()).forEach(site=>{
     if(!site.completed)return;
     const cd=site.completedDate||'';
     if(cd<completedFrom||cd>completedTo)return;
+    if(!hasArea(site.name)){noArea++;return;} // 空欄だけを未入力扱い（0㎡は入力済み）
     const area=parseFloat(siteMeta[site.name]?.area)||0;
-    if(!area){noArea++;return;}
+    if(!area)return; // 0㎡は配分する面積が無いので加算なし
     const resins=resinBySite[site.name]||{};
     const resinSum=Object.values(resins).reduce((a,b)=>a+b,0);
     // 樹脂の記録がない現場は㎡集計の対象外（メイン材料が樹脂のため）
