@@ -5060,10 +5060,10 @@ async function renderTsukiawase(from,to){
     if(!staffOk(mv.staff||''))return;
     // 加工・小分けは倉庫内の変換なので突き合わせ対象外
     if(mv.processing)return;
-    // 出庫は加算。受け渡しの入庫（渡した人）は差し引く → 全体合計は受け渡しで変化しない
+    // 出庫は加算。スタッフの入庫（返却・受け渡し）は差し引く（持ち出し表と同じルール）。外注の入庫は納品なので対象外
     let sign=0;
     if(mv.type==='out')sign=1;
-    else if(mv.type==='in'&&mv.handover)sign=-1;
+    else if(mv.type==='in'&&(mv.staff||'')!=='外注')sign=-1;
     if(!sign)return;
     for(const c of TSUKI_CATS){
       if(c.ids.includes(mv.itemId)){
@@ -5103,7 +5103,7 @@ async function renderTsukiawase(from,to){
   const mvSign=mv=>{
     if(!mv||mv.processing)return 0;
     if(mv.type==='out')return 1;
-    if(mv.type==='in'&&mv.handover)return -1;
+    if(mv.type==='in'&&(mv.staff||'')!=='外注')return -1; // 返却・受け渡しの入庫は差し引く（外注の入庫は納品なので対象外）
     return 0;
   };
   let causeHtml='';
