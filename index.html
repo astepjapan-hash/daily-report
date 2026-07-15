@@ -4963,9 +4963,21 @@ const TSUKI_CATS=[
   {label:'トップ系', ids:['top','ivory3','gray3']},
 ];
 let _tsukiMovements=null,_tsukiFetchedAt=0;
+// 「原因を探す」の開閉状態（開いている材料の系統と、選択中の人）
+let _tsukiCauseCat=null,_tsukiCauseStaff=null,_tsukiFrom='',_tsukiTo='';
+function tsukiFindCause(cat){
+  if(_tsukiCauseCat===cat){_tsukiCauseCat=null;_tsukiCauseStaff=null;}
+  else{_tsukiCauseCat=cat;_tsukiCauseStaff=null;}
+  renderTsukiawase(_tsukiFrom,_tsukiTo);
+}
+function tsukiPickStaff(st){
+  _tsukiCauseStaff=(_tsukiCauseStaff===st)?null:st;
+  renderTsukiawase(_tsukiFrom,_tsukiTo);
+}
 async function renderTsukiawase(from,to){
   const el=document.getElementById('tsukiawase-card');
   if(!el)return;
+  _tsukiFrom=from;_tsukiTo=to;
   // 比較期間: 指定範囲と運用開始日(TSUKIAWASE_START)の重なり
   const start=(from&&from>TSUKIAWASE_START)?from:TSUKIAWASE_START;
   const end=to||'9999-12-31';
@@ -5021,6 +5033,98 @@ async function renderTsukiawase(from,to){
   });
   const clipped=(!from||from<TSUKIAWASE_START);
   const label=`${start} 〜 ${to||'今日'}`;
+
+  // ── 「原因を探す」：人ごとの差 → 日ごとの記録の並べ表示 ──
+  const unitsOf=(c,mv)=>{const q=Number(mv.qty)||0;return c.kg?q*(c.kg[mv.itemId]||c.baseKg)/c.baseKg:q;};
+  const useCansOf=(c,s)=>c.label==='プライマー系'?(Number(s.primerKg)||0)/KAN_KG.primerKg
+    :c.label==='樹脂系'?(Number(s.resinKan)||0)+(Number(s.resinWari)||0)/10
+    :(Number(s.topKg)||0)/KAN_KG.topKg;
+  const mvSign=mv=>{
+    if(!mv||mv.processing)return 0;
+    if(mv.type==='out')return 1;
+    if(mv.type==='in'&&mv.handover)return -1;
+    return 0;
+  };
+  let causeHtml='';
+  if(_tsukiCauseCat){
+    const c=TSUKI_CATS.find(x=>x.label===_tsukiCauseCat);
+    if(c){
+      // 人ごとの「倉庫から出した量」と「日報に書いた量」（缶）
+      const oBy={},uBy={};
+      Object.values(_tsukiMovements).forEach(mv=>{
+        if(!mv)return;
+        if(!inRange(mv.date||''))return;
+        if(!staffOk(mv.staff||''))return;
+        const sign=mvSign(mv);
+        if(!sign||!c.ids.includes(mv.itemId))return;
+        oBy[mv.staff]=(oBy[mv.staff]||0)+sign*unitsOf(c,mv);
+      });
+      Object.values(reports).forEach(r=>{
+        if(!inRange(r.date||''))return;
+        if(!staffOk(r.staffName||''))return;
+        let u=0;(r.sites||[]).forEach(s=>{u+=useCansOf(c,s);});
+        if(u)uBy[r.staffName]=(uBy[r.staffName]||0)+u;
+      });
+      const names=[...new Set([...Object.keys(oBy),...Object.keys(uBy)])];
+      const pRows=names.map(n=>{
+        const u=Math.round((uBy[n]||0)*10)/10,o=Math.round((oBy[n]||0)*10)/10,d=Math.round((u-o)*10)/10;
+        return {n,u,o,d};
+      }).filter(p=>p.n&&(p.u||p.o)).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+      // 日ごとの記録（人を選んだとき）
+      let dayHtml='';
+      if(_tsukiCauseStaff){
+        const byDay={};
+        Object.values(_tsukiMovements).forEach(mv=>{
+          if(!mv||mv.staff!==_tsukiCauseStaff)return;
+          if(!inRange(mv.date||''))return;
+          const sign=mvSign(mv);
+          if(!sign||!c.ids.includes(mv.itemId))return;
+          const d=mv.date||'';
+          if(!byDay[d])byDay[d]={o:0,u:0};
+          byDay[d].o+=sign*unitsOf(c,mv);
+        });
+        Object.values(reports).forEach(r=>{
+          if(r.staffName!==_tsukiCauseStaff)return;
+          if(!inRange(r.date||''))return;
+          let u=0;(r.sites||[]).forEach(s=>{u+=useCansOf(c,s);});
+          if(!u)return;
+          const d=r.date||'';
+          if(!byDay[d])byDay[d]={o:0,u:0};
+          byDay[d].u+=u;
+        });
+        const days=Object.keys(byDay).sort();
+        let cum=0;
+        const dRows=days.map(d=>{
+          const v=byDay[d];cum+=v.u-v.o;
+          const cumR=Math.round(cum*10)/10;
+          return `<tr style="border-top:1px solid #f0ebe4">
+            <td style="padding:6px 0;color:#888;white-space:nowrap">${d.slice(5).replace('-','/')}</td>
+            <td style="text-align:right;color:#555">${v.o?Math.round(v.o*10)/10+'缶':'-'}</td>
+            <td style="text-align:right;color:#555">${v.u?Math.round(v.u*10)/10+'缶':'-'}</td>
+            <td style="text-align:right;font-weight:700;color:${Math.abs(cumR)>1?'#c0392b':'#5a8a5a'}">${cumR>0?'+':''}${cumR}</td>
+          </tr>`;
+        }).join('');
+        dayHtml=`<div style="margin-top:10px;background:#faf8f5;border-radius:10px;padding:10px 12px">
+          <div style="font-size:12px;font-weight:700;color:#2d2a26;margin-bottom:4px">📅 ${_tsukiCauseStaff}さんの日ごとの記録（${c.label}）</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tr style="color:#aaa;font-size:10px"><td>日付</td><td style="text-align:right">倉庫から出した</td><td style="text-align:right">日報に書いた</td><td style="text-align:right">累計の差</td></tr>
+            ${dRows||'<tr><td colspan="4" style="padding:8px 0;color:#aaa">この期間の記録はありません</td></tr>'}
+          </table>
+          <div style="font-size:10px;color:#b5aca0;margin-top:6px;line-height:1.6">※持ち出した缶を数日かけて使うのは普通です。「累計の差」が途中で大きくなっても、最後に🟢（±1以内）へ戻れば問題ありません。<b>最後まで赤いまま</b>の場合、その頃の日報の書き漏れや持ち出しの登録漏れの可能性があります。</div>
+        </div>`;
+      }
+      causeHtml=`<div style="margin:6px 0 4px 0;background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px">
+        <div style="font-size:12px;font-weight:700;color:#2d2a26;margin-bottom:6px">👤 人ごとの差（名前をタップすると日ごとの記録が見られます）</div>
+        ${pRows.map(p=>`<div onclick="tsukiPickStaff('${p.n}')" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #f0e8dc;font-size:12px;cursor:pointer;border-radius:6px;${_tsukiCauseStaff===p.n?'background:#fff3e2;':''}">
+          <b style="min-width:64px">${SURNAME_MAP[p.n]||p.n}</b>
+          <span style="color:#999;font-size:11px">日報 ${p.u}缶 ／ 持ち出し ${p.o}缶</span>
+          <span style="margin-left:auto;font-weight:700;color:${Math.abs(p.d)>1?'#c0392b':'#5a8a5a'}">${Math.abs(p.d)>1?'🔴':'🟢'} ${p.d>0?'+':''}${p.d}缶</span>
+        </div>`).join('')||'<div style="color:#aaa;font-size:12px">この期間の記録はありません</div>'}
+        ${dayHtml}
+      </div>`;
+    }
+  }
+
   // 結論を先に言葉で表示し、くわしい数字と見方は開いて見られるようにする
   const verdictHtml=rows.map(r=>{
     if(!r.warn)return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f5f0ea;font-size:13px">
@@ -5028,9 +5132,12 @@ async function renderTsukiawase(from,to){
       <span style="color:#bbb;font-size:11px;margin-left:auto">差 ${r.diff>0?'+':''}${r.diff}缶</span>
     </div>`;
     const minus=r.diff<0;
+    const openCause=_tsukiCauseCat===r.label;
     return `<div style="padding:8px 0;border-bottom:1px solid #f5f0ea;font-size:13px">
       <div style="display:flex;align-items:center;gap:8px"><span>🔴</span><b style="min-width:86px">${r.label}</b><span style="color:#c0392b;font-weight:700">${Math.abs(r.diff)}缶 合いません</span></div>
       <div style="font-size:11px;color:#a4610f;margin:3px 0 0 30px;line-height:1.5">${minus?'持ち出しの方が多い → 日報の書き漏れか、車に積み置きの可能性':'日報の方が多い → 持ち出し（出庫）の登録漏れの可能性'}</div>
+      <button onclick="tsukiFindCause('${r.label}')" style="margin:6px 0 0 30px;padding:5px 12px;background:${openCause?'#b5aca0':'#e07b4f'};color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🔍 原因を探す${openCause?'（閉じる）':''}</button>
+      ${openCause?causeHtml:''}
     </div>`;
   }).join('');
   el.innerHTML=`<div style="margin-top:16px">
