@@ -115,6 +115,12 @@ textarea { resize: vertical; }
 .notice-card { background: #fffbf0; border: 1.5px solid #f0c040; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; position: relative; }
 .notice-date { font-size: 11px; color: #b8860b; font-weight: 600; margin-bottom: 4px; }
 .notice-body { font-size: 14px; color: #2d2a26; line-height: 1.6; white-space: pre-wrap; }
+/* 長いお知らせは行数を絞って表示し、タップで全部開く */
+.notice-clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.notice-clamp.lines-5 { -webkit-line-clamp: 5; }
+.notice-clamp.lines-3 { -webkit-line-clamp: 3; }
+.notice-clamp.open { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.notice-more { font-size: 11px; color: #c97a1f; font-weight: 700; margin-top: 6px; cursor: pointer; display: none; }
 .notice-empty { text-align: center; padding: 20px; color: #ccc; font-size: 14px; }
 
 /* 検索 */
@@ -1774,6 +1780,22 @@ function matGridHtml(t){return `<div class="mat-grid">
   <div class="mat-cell"><div class="mat-name">トップ</div><div class="mat-val" style="font-size:15px">${kgToKanWari(t.topKg,KAN_KG.topKg)}</div></div>
 </div>`;}
 
+// お知らせ本文の開け閉め（タップで全部表示⇔たたむ）
+function toggleNoticeBody(el){
+  const open=el.classList.toggle('open');
+  const hint=el.nextElementSibling;
+  if(hint&&hint.classList.contains('notice-more'))hint.textContent=open?'▲ 閉じる':'▼ 続きを読む';
+}
+// 本文が行数を超えているお知らせだけ「▼ 続きを読む」を表示する
+function refreshNoticeMore(){
+  document.querySelectorAll('.notice-clamp').forEach(el=>{
+    const hint=el.nextElementSibling;
+    if(!hint||!hint.classList.contains('notice-more'))return;
+    if(el.classList.contains('open')){hint.style.display='block';return;}
+    hint.style.display=(el.scrollHeight>el.clientHeight+2)?'block':'none';
+  });
+}
+
 function renderNotices(){
   const el=document.getElementById('notice-list');
   if(!el)return;
@@ -1784,8 +1806,10 @@ function renderNotices(){
     el.innerHTML=list.map(([key,n])=>`
       <div class="notice-card">
         <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
-        <div class="notice-body">${n.body||''}</div>
+        <div class="notice-body notice-clamp lines-5" onclick="toggleNoticeBody(this)">${n.body||''}</div>
+        <div class="notice-more" onclick="toggleNoticeBody(this.previousElementSibling)">▼ 続きを読む</div>
       </div>`).join('');
+    refreshNoticeMore();
   }
   // ピン留めボタンの表示制御
   const pinned=Object.entries(notices).filter(([,n])=>n.pinned);
@@ -1817,12 +1841,14 @@ function renderPinView(){
   const cardHtml=([key,n])=>`
       <div class="notice-card" style="background:#faf6ee;border-color:#e0d0a8">
         <div class="notice-date">📅 ${n.dateLabel||n.date||''}</div>
-        <div class="notice-body">${n.body||''}</div>
+        <div class="notice-body notice-clamp lines-3" onclick="toggleNoticeBody(this)">${n.body||''}</div>
+        <div class="notice-more" onclick="toggleNoticeBody(this.previousElementSibling)">▼ 続きを読む</div>
       </div>`;
   const months=[...new Set(pinned.map(([,n])=>(n.date||'').slice(0,7)).filter(m=>/^\d{4}-\d{2}$/.test(m)))].sort((a,b)=>b.localeCompare(a));
   const noDate=pinned.filter(([,n])=>!/^\d{4}-\d{2}/.test(n.date||''));
   if(!months.length){
     el.innerHTML=noDate.map(cardHtml).join('');
+    refreshNoticeMore();
     return;
   }
   if(!months.includes(_pinViewMonth))_pinViewMonth=months[0];
@@ -1837,6 +1863,7 @@ function renderPinView(){
     </div>
     ${items.map(cardHtml).join('')}
     ${noDate.length?`<div style="font-size:12px;font-weight:700;color:#c97a1f;margin:12px 0 6px">📌 日付なし</div>${noDate.map(cardHtml).join('')}`:''}`;
+  refreshNoticeMore();
 }
 
 // ── 案内図 ─────────────────────
@@ -2540,6 +2567,26 @@ function computeResinBySite(){
   return resinBySite;
 }
 
+// 選択中の人が、指定の現場で「自分の日報に書いた材料」だけを合計する
+// （個人絞り込み時の材料チップ用。現場全体の量ではなく本人の使用量を出す）
+function computeStaffMaterials(sitesArr,staffList){
+  const nameSet={};sitesArr.forEach(s=>{nameSet[s.name]=1;});
+  let pk=0,tk=0,rwTotal=0;
+  Object.values(reports).forEach(r=>{
+    if(!r.staffName||!staffList.includes(r.staffName))return;
+    (r.sites||[]).forEach(x=>{
+      const rawName=(x.name||'').trim();
+      if(!rawName)return;
+      const nm=siteAliases[rawName]||siteAliases[siteKey(rawName)]||rawName;
+      if(!nameSet[nm])return;
+      pk+=parseFloat(x.primerKg)||0;
+      tk+=parseFloat(x.topKg)||0;
+      rwTotal+=(parseInt(x.resinKan)||0)*10+(parseInt(x.resinWari)||0);
+    });
+  });
+  return {pk,tk,rk:Math.floor(rwTotal/10),rw:rwTotal%10};
+}
+
 // 数量チップの表示（月合計・会社別で共通）
 // 個人で絞り込み中は、現場面積を樹脂使用量の比率で按分した「その人の取り分」を表示する
 function areaChipHtml(sitesArr, opts){
@@ -2667,8 +2714,14 @@ function renderSiteListInner(){
     const [y,mo]=siteMonthSel.split('-');
     list=list.filter(s=>(s.completedDate||'').slice(0,7)===siteMonthSel);
     let pk=0,rk=0,rw=0,tk=0;
-    list.forEach(s=>{pk+=s.primerKg;rk+=s.resinKan;rw+=s.resinWari;tk+=s.topKg;});
-    rk+=Math.floor(rw/10);rw=rw%10;
+    if(siteStaffFilters.length){
+      // 個人絞り込み中は「本人が日報に書いた量」だけを合計する
+      const m=computeStaffMaterials(list,siteStaffFilters);
+      pk=m.pk;rk=m.rk;rw=m.rw;tk=m.tk;
+    }else{
+      list.forEach(s=>{pk+=s.primerKg;rk+=s.resinKan;rw+=s.resinWari;tk+=s.topKg;});
+      rk+=Math.floor(rw/10);rw=rw%10;
+    }
     const resinKg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
     headerHtml=`<div class="month-nav" style="margin-bottom:8px">
       <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx+1]||''}')" ${!months[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
@@ -2733,8 +2786,14 @@ function renderSiteListInner(){
     let matHtml='';
     if(siteViewMode==='month'&&open){
       let pk=0,rk=0,rw=0,tk=0;
-      items.forEach(s=>{pk+=s.primerKg;rk+=s.resinKan;rw+=s.resinWari;tk+=s.topKg;});
-      rk+=Math.floor(rw/10);rw=rw%10;
+      if(siteStaffFilters.length){
+        // 個人絞り込み中は「本人が日報に書いた量」だけを合計する
+        const m=computeStaffMaterials(items,siteStaffFilters);
+        pk=m.pk;rk=m.rk;rw=m.rw;tk=m.tk;
+      }else{
+        items.forEach(s=>{pk+=s.primerKg;rk+=s.resinKan;rw+=s.resinWari;tk+=s.topKg;});
+        rk+=Math.floor(rw/10);rw=rw%10;
+      }
       const rkg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
       matHtml=`<div style="display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 8px 2px">
         <span class="material-chip" style="font-size:11px;padding:3px 8px;text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
@@ -2973,14 +3032,14 @@ function renderTotalStats(){
     </div>
     <div class="section-title">${lbl}（${filtered.length}件）</div>
     <div class="stats-row">${matGridHtml(t)}</div>
+    <div id="tsukiawase-card"></div>
     ${totalStaffFilters.length===0?`<div style="margin-top:16px">
       <div class="section-title">個人別 合計</div>
       ${MEMBERS.filter(m=>filtered.some(([,r])=>r.staffName===m)).map(m=>{
         const ml=filtered.filter(([,r])=>r.staffName===m);
         return statsRowHtml(m,ml.length,calcTotals(ml));
       }).join('')||'<div class="empty">データなし</div>'}
-    </div>`:''}
-    <div id="tsukiawase-card"></div>`;
+    </div>`:''}`;
   renderTsukiawase(from,to);
 }
 
@@ -3573,7 +3632,7 @@ async function renderAdminContent(){
       <div class="section-title collapse-header" onclick="toggleCollapse('collapse-notice')">📢 お知らせ投稿 <span class="collapse-arrow" id="arrow-collapse-notice">▶</span></div>
       <div class="card collapse-body" id="collapse-notice" style="margin-bottom:20px">
         <div class="field"><label class="lbl">内容</label>
-          <textarea id="notice-body" rows="3" placeholder="スタッフへのお知らせを入力してください"></textarea>
+          <textarea id="notice-body" rows="6" placeholder="スタッフへのお知らせを入力してください"></textarea>
         </div>
         <button class="btn-primary" onclick="postNotice()">投稿する</button>
         <div class="month-nav" style="margin-top:14px;margin-bottom:8px">
@@ -4068,7 +4127,8 @@ function renderAdminNoticeList(){
   el.innerHTML=list.map(([key,n])=>`
     <div class="notice-card" style="${n.pinned?'background:#faf6ee;border-color:#e0d0a8':''}">
       <div class="notice-date">📅 ${n.dateLabel||n.date||''} ${n.pinned?'<span style="color:#c97a1f;font-weight:700">📌 ピン留め中</span>':'<span style="color:#27ae60;font-weight:700">📢 表示中</span>'}</div>
-      <div class="notice-body" style="margin-bottom:10px">${n.body||''}</div>
+      <div class="notice-body notice-clamp lines-3" style="margin-bottom:10px" onclick="toggleNoticeBody(this)">${n.body||''}</div>
+      <div class="notice-more" onclick="toggleNoticeBody(this.previousElementSibling)" style="margin:-4px 0 10px">▼ 続きを読む</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${n.pinned
           ?`<button onclick="setNoticePin('${key}',false)" style="flex:1;min-width:90px;padding:7px;background:#eafaf0;color:#27ae60;border:1.5px solid #27ae60;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📢 表示に戻す</button>`
@@ -4076,6 +4136,7 @@ function renderAdminNoticeList(){
         <button onclick="deleteNotice('${key}')" style="flex:1;min-width:70px;padding:7px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🗑 削除</button>
       </div>
     </div>`).join('')||'<div class="notice-empty">この月のお知らせはありません</div>';
+  refreshNoticeMore();
 }
 
 // ── 給料明細 ─────────────────────
