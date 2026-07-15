@@ -2708,6 +2708,8 @@ function renderSiteListInner(){
   el.innerHTML=headerHtml+companies.map(company=>{
     const items=groups[company].sort(sortFn);
     const open=forceOpen||_openSiteCompanies[company];
+    // ㎡未入力の現場がある会社には印を付ける
+    const missCnt=items.filter(s=>!hasArea(s.name)).length;
     // 会社別・日付順・5件以上のときは月見出しを挟む
     const useMonthHeaders=siteViewMode==='company'&&siteSortMode!=='name'&&items.length>=5;
     let lastMonth='';
@@ -2723,7 +2725,7 @@ function renderSiteListInner(){
       }
       return head+`
           <div onclick="showSiteDetail('${encodeURIComponent(s.name)}')" style="background:#faf8f5;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
-            <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}</div>
+            <div style="font-weight:700;font-size:14px;color:#2d2a26">📍 ${getSiteShort(s.name)}${hasArea(s.name)?'':'　<span style="color:#e07b4f;font-weight:700;font-size:11px;background:#fdf0e9;padding:2px 7px;border-radius:8px">📐未入力</span>'}</div>
             <div style="font-size:12px;color:#aaa;margin-top:3px">✅ ${s.completedDate||'完了'}　👤 ${Object.keys(s.workers).join('、')||'-'}${hasArea(s.name)?`　<span style="color:#7d967d;font-weight:700">📐 ${siteMeta[s.name].area}㎡</span>`:''}</div>
           </div>`;
     }).join('');
@@ -2744,7 +2746,7 @@ function renderSiteListInner(){
     return `
     <div style="margin-bottom:10px">
       <div onclick="toggleSiteCompany('${company.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;cursor:pointer;font-weight:700;font-size:15px">
-        <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span></span>
+        <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span>${missCnt?`<span style="color:#e07b4f;font-weight:700;font-size:11px;margin-left:6px;background:#fdf0e9;padding:2px 7px;border-radius:8px">📐未入力${missCnt}件</span>`:''}</span>
         <span class="collapse-arrow ${open?'open':''}">▶</span>
       </div>
       ${open?`<div style="padding:8px 0 0 8px">${matHtml}${itemsHtml}</div>`:''}
@@ -2767,6 +2769,66 @@ function showSiteDetail(nameEnc){
   // 工程履歴（日付順）
   const history=s.history.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const resinKg=Math.round((s.resinKan*10+s.resinWari)*RESIN_KG_PER_KAN/10*10)/10;
+
+  // 個人別・日付別の材料使用量をこの現場の日報から集計（名寄せは現場集計と同じルール）
+  const perStaff={},perDayMap={};
+  Object.values(reports).forEach(r=>{
+    (r.sites||[]).forEach(x=>{
+      const rawName=(x.name||'').trim();
+      if(!rawName||!r.staffName)return;
+      const nm=siteAliases[rawName]||siteAliases[siteKey(rawName)]||rawName;
+      if(nm!==name)return;
+      const pk=parseFloat(x.primerKg)||0,tk=parseFloat(x.topKg)||0;
+      const rw=(parseInt(x.resinKan)||0)*10+(parseInt(x.resinWari)||0); // 樹脂は「割」単位で集計
+      if(!pk&&!tk&&!rw)return; // 材料の記録がない日は表に出さない
+      if(!perStaff[r.staffName])perStaff[r.staffName]={pk:0,tk:0,rw:0};
+      perStaff[r.staffName].pk+=pk;perStaff[r.staffName].tk+=tk;perStaff[r.staffName].rw+=rw;
+      const dk=(r.date||'')+'|'+r.staffName;
+      if(!perDayMap[dk])perDayMap[dk]={date:r.date||'',dateLabel:r.dateLabel||r.date||'',staff:r.staffName,pk:0,tk:0,rw:0};
+      perDayMap[dk].pk+=pk;perDayMap[dk].tk+=tk;perDayMap[dk].rw+=rw;
+    });
+  });
+  // ㎡の取り分＝現場面積 × その人（その日）の樹脂 ÷ 現場全体の樹脂
+  const areaVal=parseFloat(meta.area)||0;
+  const totalRw=s.resinKan*10+s.resinWari;
+  const shareM2=rw=>(areaVal&&totalRw>0&&rw>0)?Math.round(areaVal*rw/totalRw*10)/10:null;
+  const resinTxt=rw=>rw>0?Math.floor(rw/10)+'缶'+(rw%10)+'割':'-';
+  const kgTxt=v=>v>0?(Math.round(v*10)/10)+'kg':'-';
+  const m2Txt=v=>v===null?'-':v+'㎡';
+  const _th='padding:6px 6px;font-size:11px;font-weight:700;color:#7a6a55;background:#f5f0ea;text-align:center;white-space:nowrap;';
+  const _tdL='padding:6px 6px;font-size:12px;border-bottom:1px solid #f0ebe4;text-align:left;';
+  const _tdC='padding:6px 6px;font-size:12px;border-bottom:1px solid #f0ebe4;text-align:center;white-space:nowrap;';
+  const staffRows=Object.entries(perStaff).sort((a,b)=>b[1].rw-a[1].rw).map(([st,v])=>`<tr>
+    <td style="${_tdL}white-space:nowrap"><b>${st}</b></td>
+    <td style="${_tdC}">${kgTxt(v.pk)}</td>
+    <td style="${_tdC}">${resinTxt(v.rw)}</td>
+    <td style="${_tdC}">${kgTxt(v.tk)}</td>
+    <td style="${_tdC}color:#3f6e3f;font-weight:700">${m2Txt(shareM2(v.rw))}</td>
+  </tr>`).join('');
+  const dayRows=Object.values(perDayMap).sort((a,b)=>(a.date||'').localeCompare(b.date||'')||a.staff.localeCompare(b.staff,'ja')).map(v=>`<tr>
+    <td style="${_tdL}white-space:nowrap;color:#888">${v.dateLabel}</td>
+    <td style="${_tdL}white-space:nowrap"><b>${v.staff}</b></td>
+    <td style="${_tdC}">${kgTxt(v.pk)}</td>
+    <td style="${_tdC}">${resinTxt(v.rw)}</td>
+    <td style="${_tdC}">${kgTxt(v.tk)}</td>
+    <td style="${_tdC}color:#3f6e3f;font-weight:700">${m2Txt(shareM2(v.rw))}</td>
+  </tr>`).join('');
+  const breakdownHtml=staffRows?`
+      <div class="detail-section-label">👤 個人別の材料と数量(㎡)</div>
+      ${(areaVal&&totalRw>0)?'':`<div style="font-size:11px;color:#c49a6a;margin:2px 0 6px">※ ${!areaVal?'面積が未入力（または0㎡）':'樹脂の記録がない'}ため、㎡の取り分は表示できません</div>`}
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:12px">
+        <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden">
+          <thead><tr><th style="${_th}text-align:left">名前</th><th style="${_th}">プライマー</th><th style="${_th}">樹脂</th><th style="${_th}">トップ</th><th style="${_th}">㎡(取り分)</th></tr></thead>
+          <tbody>${staffRows}</tbody>
+        </table>
+      </div>
+      <div class="detail-section-label">📅 日付別の材料と数量(㎡)</div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:12px">
+        <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden">
+          <thead><tr><th style="${_th}text-align:left">日付</th><th style="${_th}text-align:left">名前</th><th style="${_th}">プライマー</th><th style="${_th}">樹脂</th><th style="${_th}">トップ</th><th style="${_th}">㎡</th></tr></thead>
+          <tbody>${dayRows}</tbody>
+        </table>
+      </div>`:'';
   content.innerHTML=`
     <button onclick="renderSiteList()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:12px">← 現場リストへ戻る</button>
     <div style="background:#fff;border-radius:14px;padding:18px;border:1.5px solid #e0d8d0">
@@ -2783,6 +2845,8 @@ function showSiteDetail(nameEnc){
         <span class="material-chip" style="text-align:center">樹脂 ${s.resinKan}缶${s.resinWari}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
         <span class="material-chip" style="text-align:center">トップ ${kgToKanText(s.topKg,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(s.topKg*10)/10}kg</span></span>
       </div>
+
+      ${breakdownHtml}
 
       <div class="detail-section-label">🌡️ 下地状況</div>
       <div style="font-size:14px;margin-bottom:12px">${[...s.shitaji,...s.burner].join('、')||'-'}</div>
