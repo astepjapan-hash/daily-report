@@ -3722,7 +3722,8 @@ async function renderAdminContent(){
         </div>
         <button class="btn-primary" onclick="submitHolidays()">休業日として登録する</button>
         <div style="margin-top:16px">
-          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">登録済みの休業日（新しい順）</div>
+          <div class="collapse-header" onclick="toggleCollapse('collapse-hol-list')" style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">登録済みの休業日（新しい順・${Object.keys(companyHolidays).length}件） <span class="collapse-arrow" id="arrow-collapse-hol-list">▶</span></div>
+          <div class="collapse-body" id="collapse-hol-list">
           <div style="font-size:11px;color:#aaa;margin-bottom:6px">まとめて削除したいときは、左のチェックを入れて下のボタンを押してください</div>
           ${Object.keys(companyHolidays).sort((a,b)=>b.localeCompare(a)).slice(0,60).map(d=>{
             const h=companyHolidays[d];
@@ -3738,6 +3739,7 @@ async function renderAdminContent(){
             </div>`;
           }).join('')||'<div class="notice-empty">休業日はまだ登録されていません</div>'}
           <button id="hol-del-selected" onclick="deleteSelectedHolidays()" style="display:none;width:100%;margin-top:4px;padding:11px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🗑 選んだ日をまとめて削除</button>
+          </div>
         </div>
       </div>
 
@@ -3861,12 +3863,14 @@ async function renderAdminContent(){
         </div>
         <button class="btn-primary" onclick="submitMergeSites()">この内容で統合する</button>
         <div style="margin-top:16px">
-          <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">現在の統合設定</div>
+          <div class="collapse-header" onclick="toggleCollapse('collapse-alias-list')" style="font-size:12px;color:#888;font-weight:700;margin-bottom:6px">現在の統合設定（${Object.keys(siteAliases).length}件） <span class="collapse-arrow" id="arrow-collapse-alias-list">▶</span></div>
+          <div class="collapse-body" id="collapse-alias-list">
           ${Object.entries(siteAliases).map(([from,to])=>`
             <div style="display:flex;align-items:center;justify-content:space-between;background:#faf8f5;border-radius:10px;padding:10px 14px;margin-bottom:6px">
               <span style="font-size:13px;color:#2d2a26;word-break:break-all">${escHtml(from)} → <b>${escHtml(to)}</b></span>
               <button onclick="deleteSiteAlias('${encodeURIComponent(from)}')" style="background:none;border:none;color:#ccc;font-size:16px;cursor:pointer;flex-shrink:0">🗑</button>
             </div>`).join('')||'<div class="notice-empty">統合設定はまだありません</div>'}
+          </div>
         </div>
       </div>
 
@@ -4596,7 +4600,16 @@ async function deleteHoliday(dateStr){
     await dbFetch('/companyHolidays/'+dateStr+'.json',{method:'DELETE'});
     delete companyHolidays[dateStr];
     renderAdminContent();
+    reopenHolidayList();
   }catch(e){ alert('削除に失敗しました。'); }
+}
+
+// 削除後も「休業日設定」と「登録済みの一覧」を開いたままにする（続けて操作しやすいように）
+function reopenHolidayList(){
+  ['collapse-holiday','collapse-hol-list'].forEach(id=>{
+    document.getElementById(id)?.classList.add('open');
+    document.getElementById('arrow-'+id)?.classList.add('open');
+  });
 }
 
 // チェックの数に合わせて「まとめて削除」ボタンを出し入れする
@@ -4623,6 +4636,7 @@ async function deleteSelectedHolidays(){
     days.forEach(d=>{delete companyHolidays[d];});
     alert(days.length+'日分を削除しました');
     renderAdminContent();
+    reopenHolidayList();
   }catch(e){ alert('削除に失敗しました。'); }
 }
 
@@ -4634,6 +4648,11 @@ async function deleteSiteAlias(fromEnc){
     delete siteAliases[siteKey(from)];
     delete siteAliases[from];
     renderAdminContent();
+    // 削除後も「現場名の統合」と「現在の統合設定」を開いたままにする
+    ['collapse-alias','collapse-alias-list'].forEach(id=>{
+      document.getElementById(id)?.classList.add('open');
+      document.getElementById('arrow-'+id)?.classList.add('open');
+    });
   }catch(e){alert('削除に失敗しました。');}
 }
 
