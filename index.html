@@ -4459,7 +4459,7 @@ async function submitMergeSites(){
   const froms=picked.filter(f=>f!==to);
   if(!froms.length){ alert('選んだ現場名が「統合後の名前」と同じです。まとめる必要はありません。'); return; }
 
-  if(!confirm('次の'+froms.length+'件を「'+to+'」にまとめます。\n\n'+froms.join('\n')+'\n\n※日報のデータは書き換えません（集計の見え方だけが変わります）\n\nよろしいですか？')) return;
+  if(!confirm('次の'+froms.length+'件を「'+to+'」にまとめます。\n\n'+froms.join('\n')+'\n\n※日報のデータは書き換えません（集計の見え方だけが変わります）\n※面積・メモ・会社の設定は、統合後の名前へ引き継ぎます\n\nよろしいですか？')) return;
 
   const updates={};
   froms.forEach(f=>{ updates[siteKey(f)]=to; });
@@ -4473,6 +4473,26 @@ async function submitMergeSites(){
   try{
     await dbFetch('/siteAliases.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});
     Object.entries(updates).forEach(([k,v])=>{ if(v===null) delete siteAliases[k]; else siteAliases[k]=v; });
+    // 統合前の名前に登録済みの面積・メモ・会社を、統合後の名前へ引き継ぐ
+    // （統合後の名前側が未設定の項目だけ埋める。元の設定は消さないので、統合を解除すれば元に戻る）
+    try{
+      const toMeta=siteMeta[to]||{};
+      const hasVal=v=>v!==undefined&&v!==null&&String(v).trim()!=='';
+      const newMeta={area:toMeta.area,memo:toMeta.memo,company:toMeta.company};
+      froms.forEach(f=>{
+        const m=siteMeta[f];
+        if(!m)return;
+        if(!hasVal(newMeta.area)&&hasVal(m.area))newMeta.area=m.area;
+        if(!hasVal(newMeta.memo)&&hasVal(m.memo))newMeta.memo=m.memo;
+        if(!hasVal(newMeta.company)&&hasVal(m.company))newMeta.company=m.company;
+      });
+      const changed=newMeta.area!==toMeta.area||newMeta.memo!==toMeta.memo||newMeta.company!==toMeta.company;
+      if(changed){
+        const data={area:newMeta.area!=null?newMeta.area:'',memo:newMeta.memo!=null?newMeta.memo:'',name:to,company:newMeta.company!=null?newMeta.company:''};
+        await dbFetch('/siteMeta/'+encodeURIComponent(siteKey(to))+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        siteMeta[to]=data;
+      }
+    }catch(e){}
     document.getElementById('merge-kw').value='';
     document.getElementById('merge-to').value='';
     window._mergeHits=[];
