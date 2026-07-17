@@ -3242,9 +3242,12 @@ function getLeaveStats(name){
 }
 function renderKyuka(){
   const content=document.getElementById('kyuka-content');
+  // 一般ユーザーは自分の分だけ表示する（管理者は全員分）
+  const ownOnly=!!(currentUser&&currentUser.role!=='admin');
+  const myName=currentUser?currentUser.name:'';
   if(kyukaSeg==='status'){
     const periodLabel=leaveResetDate?`${leaveResetDate.slice(0,4)}年${parseInt(leaveResetDate.slice(5,7))}月${parseInt(leaveResetDate.slice(8,10))}日〜 の集計`:'全期間の集計';
-    content.innerHTML=`<div style="font-size:11px;color:#aaa;margin-bottom:10px;text-align:center">📅 ${periodLabel}</div>`+STAFF_LEAVE.map(name=>{
+    content.innerHTML=`<div style="font-size:11px;color:#aaa;margin-bottom:10px;text-align:center">📅 ${periodLabel}${ownOnly?'（自分の分のみ表示）':''}</div>`+(STAFF_LEAVE.filter(name=>!ownOnly||name===myName).map(name=>{
       const s=getLeaveStats(name);
       const total=s.total||0;
       const pct=total>0?Math.round((s.used/total)*100):0;
@@ -3258,7 +3261,7 @@ function renderKyuka(){
           <div class="kyuka-stat"><div class="kyuka-stat-label">残日数</div><div class="kyuka-stat-val">${s.remain}</div><div class="kyuka-stat-unit">日</div></div>
         </div>
       </div>`;
-    }).join('');
+    }).join('')||'<div class="empty">表示できる有給データがありません</div>');
   }else if(kyukaSeg==='apply'){
     content.innerHTML=`
       <div class="card">
@@ -3280,8 +3283,8 @@ function renderKyuka(){
         <button class="btn-primary" onclick="submitYasumi()">申請する</button>
       </div>
       <div style="margin-top:16px">
-        <div class="section-title">休み申請 履歴</div>
-        ${Object.entries(absences).sort((a,b)=>b[1].createdAt-a[1].createdAt).map(([key,a])=>`
+        <div class="section-title">休み申請 履歴${ownOnly?'（自分の分のみ）':''}</div>
+        ${Object.entries(absences).filter(([,a])=>!ownOnly||a.staffName===myName).sort((a,b)=>b[1].createdAt-a[1].createdAt).map(([key,a])=>`
           <div class="yasumi-card">
             <div class="apply-top">
               <div><div class="apply-name">${a.staffName}</div><div class="apply-date">📅 ${a.date}</div></div>
@@ -3292,7 +3295,7 @@ function renderKyuka(){
           </div>`).join('')||'<div class="empty">申請履歴がありません</div>'}
       </div>`;
   }else{
-    const list=Object.entries(leaves).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+    const list=Object.entries(leaves).filter(([,l])=>!ownOnly||l.staffName===myName).sort((a,b)=>b[1].createdAt-a[1].createdAt);
     if(!list.length){content.innerHTML='<div class="empty">📭 申請履歴がありません</div>';return;}
     content.innerHTML=list.map(([key,l])=>`
       <div class="apply-card">
