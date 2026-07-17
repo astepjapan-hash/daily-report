@@ -6284,11 +6284,19 @@ function renderLlCatItems() {
   const el = document.getElementById('ll-cat-items');
   if (!el) return;
   if (!_llCat) { el.innerHTML = ''; return; }
+  const l = loadingLists[_llCurrentKey];
+  const listItems = (l && l.items) || [];
   el.innerHTML = ITEMS_MASTER.filter(i => i.category === _llCat).map(i => {
     const q = getQty(i.id);
-    return `<button onclick="llTapItem('${i.id}')" style="width:calc(50% - 3px);padding:10px 8px;border-radius:10px;border:1.5px solid #e0d8d0;background:#fff;text-align:left;cursor:pointer;font-family:inherit">
+    const ex = listItems.find(e => e.itemId === i.id);
+    const sel = ex ? (ex.qty || 0) : 0;
+    const rest = Math.round((q - sel) * 10) / 10;
+    const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+    return `<button onclick="llTapItem('${i.id}')" style="width:calc(50% - 3px);padding:10px 8px;border-radius:10px;border:1.5px solid ${sel ? '#e07b4f' : '#e0d8d0'};background:${sel ? '#fdf0e9' : '#fff'};text-align:left;cursor:pointer;font-family:inherit">
       <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
-      <div style="font-size:11px;color:#aaa;margin-top:2px">在庫 <span style="color:#2d2a26;font-weight:700;font-size:13px">${q % 1 === 0 ? q : q.toFixed(1)}</span>${i.unit}｜タップで追加</div>
+      <div style="font-size:11px;color:#aaa;margin-top:2px;line-height:19px">${sel
+        ? `積む <span style="color:#e07b4f;font-weight:800;font-size:15px">${fmt(sel)}</span>${i.unit}｜残り <span style="color:${rest < 0 ? '#d32f2f' : '#2d2a26'};font-weight:700;font-size:13px">${fmt(rest)}</span>${i.unit}`
+        : `在庫 <span style="color:#2d2a26;font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜タップで追加`}</div>
     </button>`;
   }).join('');
 }
@@ -6318,8 +6326,11 @@ function llTapItem(itemId) {
   const ex = l.items.find(e => e.itemId === itemId);
   if (ex) { ex.qty = Math.round((ex.qty + _llStep) * 10) / 10; ex.checked = false; }
   else l.items.push({ itemId: item.id, itemName: item.name, qty: _llStep, checked: false });
-  showToast('＋ ' + item.name);
+  // 上のリストが増えても材料ボタンが下にずれないよう、描き直し前後で画面位置を合わせる
+  const grid = document.getElementById('ll-cat-items');
+  const before = grid ? grid.getBoundingClientRect().top : null;
   renderLoadlistEdit();
+  if (before !== null) window.scrollBy(0, grid.getBoundingClientRect().top - before);
   llSave();
 }
 
@@ -6368,6 +6379,7 @@ function renderLoadlistEdit() {
     else if (!allChecked) { hint.textContent = `残り${items.length - checked}件をチェックすると「積み込み完了」ボタンが出ます`; hint.style.display = 'block'; }
     else { hint.style.display = 'none'; }
   }
+  renderLlCatItems(); // 下の材料ボタンの「積む・残り」表示も最新にする
 }
 
 async function llSave() {
