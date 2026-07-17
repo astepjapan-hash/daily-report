@@ -6178,10 +6178,14 @@ function showLoadlistHome() {
   document.getElementById('loadlist-confirm').style.display = 'none';
   document.getElementById('loadlist-home').style.display = 'block';
   _llCurrentKey = null;
-  // 「積む人」の選択肢を用意（ログイン中の人を最初から選んでおく。外注の持ち出しにも対応）
+  // 「積む人」の選択肢：一般ユーザーは本人と外注のみ（他人のリストは作れない）。管理者は全員から選択可
   const sel = document.getElementById('ll-staff');
-  const names = [...getStaffNames(), '外注'];
-  sel.innerHTML = '<option value="">積む人を選択</option>' + names.map(n => `<option${currentUser && currentUser.name === n ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+  if (currentUser && currentUser.role !== 'admin') {
+    sel.innerHTML = `<option selected>${escHtml(currentUser.name)}</option><option>外注</option>`;
+  } else {
+    const names = [...getStaffNames(), '外注'];
+    sel.innerHTML = '<option value="">積む人を選択</option>' + names.map(n => `<option${currentUser && currentUser.name === n ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+  }
   if (!document.getElementById('ll-date').value) document.getElementById('ll-date').value = getToday();
   renderLoadlists();
 }
@@ -6229,6 +6233,7 @@ async function createLoadlist() {
   const date = document.getElementById('ll-date').value;
   if (!staff) { alert('積む人を選択してください'); return; }
   if (!date) { alert('日付を選択してください'); return; }
+  if (currentUser && currentUser.role !== 'admin' && staff !== currentUser.name && staff !== '外注') { alert('リストを作れるのは自分の分（または外注の分）だけです。'); return; }
   const rec = { staff, date, createdBy: (currentUser && currentUser.name) || '', createdAt: Date.now(), status: 'open', items: [] };
   try {
     const res = await dbFetch('/loadingLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
@@ -6236,6 +6241,11 @@ async function createLoadlist() {
     loadingLists[out.name] = rec;
     openLoadlist(out.name);
   } catch(e) { alert('作成に失敗しました。'); }
+}
+
+// このリストを操作できるか（積む本人・作った本人・管理者のみ。それ以外は見るだけ）
+function llCanEdit(l) {
+  return !!(l && (canManage(l.staff) || canManage(l.createdBy)));
 }
 
 function openLoadlist(key) {
@@ -6319,7 +6329,7 @@ function llUpdateStepBtn() {
 }
 function llTapItem(itemId) {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   const item = ITEMS_MASTER.find(i => i.id === itemId);
   if (!item) return;
   if (!l.items) l.items = [];
@@ -6339,22 +6349,25 @@ function renderLoadlistEdit() {
   if (!l) { showLoadlistHome(); return; }
   const items = l.items || [];
   const isOpen = l.status === 'open';
+  const editable = isOpen && llCanEdit(l); // 本人・作った人・管理者だけが操作できる
   const checked = items.filter(i => i.checked).length;
   document.getElementById('ll-edit-title').textContent = '✅ ' + formatLlDate(l.date) + '　' + (l.staff || '');
-  document.getElementById('ll-edit-sub').textContent = isOpen
-    ? `チェック ${checked}/${items.length}　積んだ材料をタップしてチェック`
-    : 'このリストは持ち出し登録済みです（見るだけ）';
+  document.getElementById('ll-edit-sub').textContent = !isOpen
+    ? 'このリストは持ち出し登録済みです（見るだけ）'
+    : editable
+      ? `チェック ${checked}/${items.length}　積んだ材料をタップしてチェック`
+      : `このリストは${l.staff || ''}さん本人（と管理者）だけが操作できます（見るだけ）`;
   const el = document.getElementById('ll-items');
   el.innerHTML = items.map((it, idx) => {
     const item = ITEMS_MASTER.find(i => i.id === it.itemId);
     const unit = item ? item.unit : '';
     return `<div class="card" style="margin-bottom:6px;padding:10px 12px;${it.checked ? 'background:#f0f7f0;border-color:#bcd8bc' : ''}">
       <div style="display:flex;align-items:center;gap:8px">
-        <div onclick="${isOpen ? `llToggleItem(${idx})` : ''}" style="width:34px;height:34px;border-radius:10px;border:2px solid ${it.checked ? '#4a7c4a' : '#e0d8d0'};background:${it.checked ? '#4a7c4a' : '#fff'};color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">${it.checked ? '✓' : ''}</div>
-        <div style="flex:1;min-width:0;cursor:pointer" onclick="${isOpen ? `llToggleItem(${idx})` : ''}">
+        <div onclick="${editable ? `llToggleItem(${idx})` : ''}" style="width:34px;height:34px;border-radius:10px;border:2px solid ${it.checked ? '#4a7c4a' : '#e0d8d0'};background:${it.checked ? '#4a7c4a' : '#fff'};color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">${it.checked ? '✓' : ''}</div>
+        <div style="flex:1;min-width:0;cursor:pointer" onclick="${editable ? `llToggleItem(${idx})` : ''}">
           <div style="font-size:13px;font-weight:700;line-height:1.3;color:${it.checked ? '#4a7c4a' : '#2d2a26'}">${escHtml(it.itemName)}</div>
         </div>
-        ${isOpen
+        ${editable
           ? `<button onclick="llChangeQty(${idx},-1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:17px;cursor:pointer;font-family:inherit;flex-shrink:0">−</button>
              <input type="number" min="0" step="0.1" value="${it.qty}" onchange="llSetQty(${idx},this.value)" style="width:62px;padding:2px;border:none;background:transparent;font-size:24px;font-weight:800;text-align:center;font-family:inherit;color:${it.checked ? '#4a7c4a' : '#2d2a26'}">
              <span style="font-size:11px;color:#aaa;flex-shrink:0">${unit}</span>
@@ -6363,15 +6376,15 @@ function renderLoadlistEdit() {
           : `<span style="font-size:24px;font-weight:800;color:#4a7c4a;flex-shrink:0">${it.qty}<span style="font-size:12px;font-weight:600;color:#aaa">　${unit}</span></span>`}
       </div>
     </div>`;
-  }).join('') || '<div class="notice-empty">材料がまだありません。下の「＋ 材料を追加」から入れてください</div>';
-  document.getElementById('ll-add-form').style.display = isOpen ? 'block' : 'none';
-  document.getElementById('ll-delete-bar').style.display = isOpen ? 'block' : 'none';
-  document.getElementById('ll-step-bar').style.display = (isOpen && items.length) ? 'flex' : 'none';
+  }).join('') || (editable ? '<div class="notice-empty">材料がまだありません。下の「＋ 材料を追加」から入れてください</div>' : '<div class="notice-empty">材料がまだありません</div>');
+  document.getElementById('ll-add-form').style.display = editable ? 'block' : 'none';
+  document.getElementById('ll-delete-bar').style.display = editable ? 'block' : 'none';
+  document.getElementById('ll-step-bar').style.display = (editable && items.length) ? 'flex' : 'none';
   llUpdateStepBtn();
   // ④ すべてチェックしたときだけ「積み込み完了」ボタンを表示する
   const bar = document.getElementById('ll-complete-bar');
-  bar.style.display = isOpen ? 'block' : 'none';
-  if (isOpen) {
+  bar.style.display = editable ? 'block' : 'none';
+  if (editable) {
     const allChecked = items.length > 0 && items.every(i => i.checked);
     document.getElementById('ll-complete-btn').style.display = allChecked ? 'block' : 'none';
     const hint = document.getElementById('ll-complete-hint');
@@ -6390,7 +6403,7 @@ async function llSave() {
 
 function llToggleItem(idx) {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   l.items[idx].checked = !l.items[idx].checked;
   renderLoadlistEdit();
   llSave();
@@ -6398,7 +6411,7 @@ function llToggleItem(idx) {
 
 function llChangeQty(idx, delta) {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   const it = l.items[idx];
   const nv = Math.round(((it.qty || 0) + delta * _llStep) * 10) / 10;
   if (nv <= 0) return; // 0以下にはしない
@@ -6410,7 +6423,7 @@ function llChangeQty(idx, delta) {
 // ② 数字をタップして手入力で変更
 function llSetQty(idx, val) {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   const v = Math.round(Math.max(0, parseFloat(val) || 0) * 10) / 10;
   if (v <= 0) { renderLoadlistEdit(); return; } // 空や0は元の数に戻す
   l.items[idx].qty = v;
@@ -6420,7 +6433,7 @@ function llSetQty(idx, val) {
 
 function llRemoveItem(idx) {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   l.items.splice(idx, 1);
   renderLoadlistEdit();
   llSave();
@@ -6428,7 +6441,7 @@ function llRemoveItem(idx) {
 
 function llAddItem() {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   const itemId = document.getElementById('ll-add-item').value;
   const qty = parseFloat(document.getElementById('ll-add-qty').value);
   if (!itemId) { alert('品目を選択してください'); return; }
@@ -6449,7 +6462,7 @@ function llAddItem() {
 // ⑤ 完了ボタン → 登録前の再確認ページを表示
 function completeLoadlist() {
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   const items = l.items || [];
   if (!items.length || !items.every(i => i.checked)) { alert('すべての材料にチェックを入れてください。'); return; }
   document.getElementById('loadlist-edit').style.display = 'none';
@@ -6457,7 +6470,8 @@ function completeLoadlist() {
   document.getElementById('ll-confirm-sub').textContent = formatLlDate(l.date) + '　' + (l.staff || '');
   const lack = items.filter(it => it.qty > getQty(it.itemId));
   document.getElementById('ll-confirm-list').innerHTML = `
-    <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:8px">この内容で持ち出し登録します。間違いがないか確認してください（${items.length}品目）</div>
+    <div style="background:#fdf0e9;border:1.5px solid #e07b4f;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;font-weight:700;color:#e07b4f;line-height:1.6">⚠️ まだ持ち出し登録は終わっていません！<br>内容を確認して、一番下の緑のボタン「この内容で持ち出し登録する」を必ず押してください。押すまで記録されません。</div>
+    <div style="font-size:12px;color:#888;font-weight:700;margin-bottom:8px">確認する材料（${items.length}品目）</div>
     ${lack.length ? `<div style="background:#fce8e8;color:#c0392b;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;font-weight:700">⚠️ 在庫が足りない材料があります。「戻って直す」で数量を確認してください</div>` : ''}
     ${items.map(it => {
       const item = ITEMS_MASTER.find(i => i.id === it.itemId);
@@ -6485,7 +6499,7 @@ function backToLoadlistEdit() {
 async function llSubmitConfirmed() {
   if (window._zkBusy) return;
   const l = loadingLists[_llCurrentKey];
-  if (!l || l.status !== 'open') return;
+  if (!l || l.status !== 'open' || !llCanEdit(l)) return;
   const items = l.items || [];
   if (!items.length || !items.every(i => i.checked)) { alert('すべての材料にチェックを入れてください。'); return; }
   const lack = items.filter(it => it.qty > getQty(it.itemId));
