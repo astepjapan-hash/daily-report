@@ -663,7 +663,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
       <!-- STEP1: 名前・日付 -->
       <div id="move-step1">
         <div class="page-title">入出庫登録</div>
-        <div class="page-sub" style="margin-bottom:16px">まず名前と日付を入力してください</div>
+        <div class="page-sub" style="margin-bottom:16px">持ち出しは「積み込みリスト」から。入庫は名前と日付を入れてから進んでください</div>
         <div class="field">
           <label class="lbl">スタッフ</label>
           <select id="move-staff-top">
@@ -676,10 +676,9 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
           <input type="date" id="move-date-top">
         </div>
         <div class="type-toggle" style="margin-top:4px">
-          <button class="type-btn out selected" id="type-out" onclick="goToMoveList('out')">📤 持ち出し</button>
+          <button class="type-btn out selected" id="type-out" onclick="showLoadlistHome()">📤 持ち出し（積み込みリスト）</button>
           <button class="type-btn in" id="type-in" onclick="goToMoveList('in')">📥 入庫</button>
         </div>
-        <button class="btn-secondary" style="margin-top:8px" onclick="showBulkModal()">📋 一括持ち出し（表から入力）</button>
         <button class="btn-secondary" style="margin-top:8px" onclick="openHandoverModal()">🔄 受け渡し（スタッフ間で材料を渡す）</button>
         <button class="btn-secondary" style="margin-top:8px" onclick="openProcessModal()">✂️ 加工・小分け（切り出し・詰め替え）</button>
       </div>
@@ -724,6 +723,54 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         </div>
         <div style="margin-top:12px">
           <button class="btn-primary" onclick="submitBulkOut()">📤 登録する</button>
+        </div>
+      </div>
+
+      <!-- 積み込みリスト：一覧 -->
+      <div id="loadlist-home" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <button onclick="backFromLoadlist()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:700;color:#2d2a26">✅ 積み込みリスト</div>
+            <div style="font-size:11px;color:#aaa">持ち出しはすべてここから。リストを作り、チェックしながら積む → 完了で持ち出し登録</div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:8px">＋ 新しいリストを作る（前日に作っておくと朝が楽です）</div>
+          <div style="display:flex;gap:8px">
+            <select id="ll-staff" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;background:#fff"></select>
+            <input type="date" id="ll-date" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
+          </div>
+          <button class="btn-primary" style="margin-top:10px" onclick="createLoadlist()">リストを作る</button>
+        </div>
+        <div id="loadlist-list"><div class="loading">読み込み中...</div></div>
+      </div>
+
+      <!-- 積み込みリスト：チェック画面 -->
+      <div id="loadlist-edit" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <button onclick="showLoadlistHome()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:700;color:#2d2a26" id="ll-edit-title"></div>
+            <div style="font-size:11px;color:#aaa" id="ll-edit-sub"></div>
+          </div>
+        </div>
+        <div id="ll-items"></div>
+        <div id="ll-add-form" style="margin-top:12px;background:#fff;border-radius:12px;padding:12px;border:1.5px dashed #e0d8d0">
+          <div style="font-size:12px;font-weight:600;color:#aaa;margin-bottom:8px">＋ 材料を追加（積み忘れに気づいたらここから）</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="ll-add-item" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;background:#fff">
+              <option value="">品目を選択</option>
+            </select>
+            <input type="number" min="0" step="0.1" placeholder="0" id="ll-add-qty"
+              style="width:64px;padding:10px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:15px;text-align:center;font-family:inherit">
+            <span id="ll-add-unit" style="font-size:12px;color:#aaa;white-space:nowrap">―</span>
+            <button onclick="llAddItem()" style="padding:10px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">追加</button>
+          </div>
+        </div>
+        <div style="margin-top:12px" id="ll-complete-bar">
+          <button class="btn-primary" style="background:#4a7c4a" onclick="completeLoadlist()">✅ 積み込み完了（持ち出し登録する）</button>
+          <button onclick="deleteLoadlist()" style="width:100%;margin-top:8px;padding:10px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🗑 このリストを削除</button>
         </div>
       </div>
 
@@ -6093,6 +6140,231 @@ async function submitBulkOut() {
     document.getElementById('move-date-top').value = getToday();
   } catch(e) { alert('登録に失敗しました。'); }
   finally { window._zkBusy = false; }
+}
+
+// ══════════ 積み込みリスト（チェックしながら積む → 完了で持ち出し登録） ══════════
+let loadingLists = {};
+let _llCurrentKey = null;
+
+function showLoadlistHome() {
+  document.getElementById('move-step1').style.display = 'none';
+  document.getElementById('move-step2').style.display = 'none';
+  document.getElementById('move-step3').style.display = 'none';
+  document.getElementById('loadlist-edit').style.display = 'none';
+  document.getElementById('loadlist-home').style.display = 'block';
+  _llCurrentKey = null;
+  // 「積む人」の選択肢を用意（ログイン中の人を最初から選んでおく。外注の持ち出しにも対応）
+  const sel = document.getElementById('ll-staff');
+  const names = [...getStaffNames(), '外注'];
+  sel.innerHTML = '<option value="">積む人を選択</option>' + names.map(n => `<option${currentUser && currentUser.name === n ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+  if (!document.getElementById('ll-date').value) document.getElementById('ll-date').value = getToday();
+  renderLoadlists();
+}
+
+function backFromLoadlist() {
+  document.getElementById('loadlist-home').style.display = 'none';
+  document.getElementById('loadlist-edit').style.display = 'none';
+  document.getElementById('move-step1').style.display = 'block';
+}
+
+function formatLlDate(d) {
+  if (!d) return '';
+  const dw = ['日','月','火','水','木','金','土'][new Date(d + 'T00:00:00').getDay()];
+  const [y, m, dd] = d.split('-');
+  return `${parseInt(m)}/${parseInt(dd)}(${dw})`;
+}
+
+async function renderLoadlists() {
+  const el = document.getElementById('loadlist-list');
+  el.innerHTML = '<div class="loading">読み込み中...</div>';
+  try { const res = await dbFetch('/loadingLists.json'); loadingLists = await res.json() || {}; }
+  catch(e) { loadingLists = {}; }
+  const entries = Object.entries(loadingLists);
+  const open = entries.filter(([,l]) => l && l.status === 'open').sort((a,b) => (b[1].date||'').localeCompare(a[1].date||''));
+  const done = entries.filter(([,l]) => l && l.status === 'done').sort((a,b) => (b[1].doneAt||0)-(a[1].doneAt||0)).slice(0,5);
+  const row = ([key, l]) => {
+    const items = l.items || [];
+    const checked = items.filter(i => i.checked).length;
+    return `<div onclick="openLoadlist('${key}')" class="card" style="margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px;${l.status==='done'?'opacity:0.65':''}">
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:700;color:#2d2a26">${formatLlDate(l.date)}　${escHtml(l.staff||'')}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px">${items.length}品目${l.status==='open' ? `・チェック ${checked}/${items.length}` : '・持ち出し登録済み'}</div>
+      </div>
+      <span style="font-size:16px;color:${l.status==='open'?'#e07b4f':'#4a7c4a'}">${l.status==='open'?'▶':'✅'}</span>
+    </div>`;
+  };
+  el.innerHTML =
+    (open.length ? `<div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">📦 積み込み前のリスト</div>${open.map(row).join('')}` : '<div class="notice-empty">積み込み前のリストはありません。上から作成してください</div>')
+    + (done.length ? `<div style="font-size:12px;font-weight:700;color:#888;margin:14px 0 6px">登録が終わったリスト（最近5件）</div>${done.map(row).join('')}` : '');
+}
+
+async function createLoadlist() {
+  const staff = document.getElementById('ll-staff').value;
+  const date = document.getElementById('ll-date').value;
+  if (!staff) { alert('積む人を選択してください'); return; }
+  if (!date) { alert('日付を選択してください'); return; }
+  const rec = { staff, date, createdBy: (currentUser && currentUser.name) || '', createdAt: Date.now(), status: 'open', items: [] };
+  try {
+    const res = await dbFetch('/loadingLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
+    const out = await res.json();
+    loadingLists[out.name] = rec;
+    openLoadlist(out.name);
+  } catch(e) { alert('作成に失敗しました。'); }
+}
+
+function openLoadlist(key) {
+  _llCurrentKey = key;
+  document.getElementById('loadlist-home').style.display = 'none';
+  document.getElementById('loadlist-edit').style.display = 'block';
+  // 追加用の品目選択を用意
+  const sel = document.getElementById('ll-add-item');
+  sel.innerHTML = '<option value="">品目を選択</option>';
+  ['frp','sub','drain','tool','consume'].forEach(cat => {
+    const group = document.createElement('optgroup');
+    group.label = CAT_LABELS[cat];
+    ITEMS_MASTER.filter(i => i.category === cat).forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id; opt.textContent = item.name;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  });
+  sel.onchange = function() {
+    const item = ITEMS_MASTER.find(i => i.id === this.value);
+    document.getElementById('ll-add-unit').textContent = item ? item.unit : '―';
+  };
+  renderLoadlistEdit();
+}
+
+function renderLoadlistEdit() {
+  const l = loadingLists[_llCurrentKey];
+  if (!l) { showLoadlistHome(); return; }
+  const items = l.items || [];
+  const isOpen = l.status === 'open';
+  const checked = items.filter(i => i.checked).length;
+  document.getElementById('ll-edit-title').textContent = '✅ ' + formatLlDate(l.date) + '　' + (l.staff || '');
+  document.getElementById('ll-edit-sub').textContent = isOpen
+    ? `チェック ${checked}/${items.length}　積んだ材料をタップしてチェック`
+    : 'このリストは持ち出し登録済みです（見るだけ）';
+  const el = document.getElementById('ll-items');
+  el.innerHTML = items.map((it, idx) => {
+    const item = ITEMS_MASTER.find(i => i.id === it.itemId);
+    const unit = item ? item.unit : '';
+    return `<div class="card" style="margin-bottom:8px;padding:12px 14px;${it.checked ? 'background:#f0f7f0;border-color:#bcd8bc' : ''}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div onclick="${isOpen ? `llToggleItem(${idx})` : ''}" style="width:36px;height:36px;border-radius:10px;border:2px solid ${it.checked ? '#4a7c4a' : '#e0d8d0'};background:${it.checked ? '#4a7c4a' : '#fff'};color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">${it.checked ? '✓' : ''}</div>
+        <div style="flex:1;cursor:pointer" onclick="${isOpen ? `llToggleItem(${idx})` : ''}">
+          <div style="font-size:14px;font-weight:700;color:${it.checked ? '#4a7c4a' : '#2d2a26'}">${escHtml(it.itemName)}</div>
+          <div style="font-size:12px;color:#aaa">${it.qty}${unit}</div>
+        </div>
+        ${isOpen ? `
+        <button onclick="llChangeQty(${idx},-1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:18px;cursor:pointer;font-family:inherit">−</button>
+        <button onclick="llChangeQty(${idx},1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:18px;cursor:pointer;font-family:inherit">＋</button>
+        <button onclick="llRemoveItem(${idx})" style="width:32px;height:32px;border-radius:8px;border:none;background:#fce8e8;color:#d32f2f;font-size:16px;cursor:pointer;font-family:inherit">✕</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') || '<div class="notice-empty">材料がまだありません。下の「＋ 材料を追加」から入れてください</div>';
+  document.getElementById('ll-complete-bar').style.display = isOpen ? 'block' : 'none';
+  document.getElementById('ll-add-form').style.display = isOpen ? 'block' : 'none';
+}
+
+async function llSave() {
+  try {
+    await dbFetch('/loadingLists/' + _llCurrentKey + '/items.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(loadingLists[_llCurrentKey].items || []) });
+  } catch(e) { alert('保存に失敗しました。電波の良い場所でもう一度お試しください。'); }
+}
+
+function llToggleItem(idx) {
+  const l = loadingLists[_llCurrentKey];
+  if (!l || l.status !== 'open') return;
+  l.items[idx].checked = !l.items[idx].checked;
+  renderLoadlistEdit();
+  llSave();
+}
+
+function llChangeQty(idx, delta) {
+  const l = loadingLists[_llCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const it = l.items[idx];
+  const step = ITEMS_MASTER.find(i => i.id === it.itemId)?.step || 1;
+  it.qty = Math.round(Math.max(step, (it.qty || 0) + delta * step) * 10) / 10;
+  renderLoadlistEdit();
+  llSave();
+}
+
+function llRemoveItem(idx) {
+  const l = loadingLists[_llCurrentKey];
+  if (!l || l.status !== 'open') return;
+  l.items.splice(idx, 1);
+  renderLoadlistEdit();
+  llSave();
+}
+
+function llAddItem() {
+  const l = loadingLists[_llCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const itemId = document.getElementById('ll-add-item').value;
+  const qty = parseFloat(document.getElementById('ll-add-qty').value);
+  if (!itemId) { alert('品目を選択してください'); return; }
+  if (!qty || qty <= 0) { alert('数量を入力してください'); return; }
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  if (!item) return;
+  if (!l.items) l.items = [];
+  const ex = l.items.find(e => e.itemId === itemId);
+  if (ex) { ex.qty = Math.round((ex.qty + qty) * 10) / 10; ex.checked = false; }
+  else l.items.push({ itemId: item.id, itemName: item.name, qty, checked: false });
+  document.getElementById('ll-add-item').value = '';
+  document.getElementById('ll-add-qty').value = '';
+  document.getElementById('ll-add-unit').textContent = '―';
+  renderLoadlistEdit();
+  llSave();
+}
+
+async function completeLoadlist() {
+  if (window._zkBusy) return;
+  const l = loadingLists[_llCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const items = l.items || [];
+  const checkedItems = items.filter(i => i.checked);
+  if (!checkedItems.length) { alert('チェック済みの材料がありません。積んだ材料をタップしてチェックを入れてください。'); return; }
+  const unchecked = items.length - checkedItems.length;
+  // 在庫が足りるか確認
+  const lack = checkedItems.filter(it => it.qty > getQty(it.itemId));
+  if (lack.length) {
+    alert('在庫が足りない材料があります：\n' + lack.map(it => `・${it.itemName}（リスト ${it.qty}、在庫 ${getQty(it.itemId)}）`).join('\n') + '\n\n数量を直すか、在庫を確認してください。');
+    return;
+  }
+  let msg = `チェック済みの${checkedItems.length}品目を「${l.staff}」の持ち出しとして登録します。\n日付：${l.date}\n`;
+  if (unchecked) msg += `\n※チェックしていない${unchecked}品目は登録されません\n`;
+  msg += '\nよろしいですか？';
+  if (!confirm(msg)) return;
+  window._zkBusy = true;
+  try {
+    for (const it of checkedItems) {
+      const item = ITEMS_MASTER.find(i => i.id === it.itemId);
+      await safeAdjustInventory(it.itemId, -it.qty);
+      const movement = { type: 'out', itemId: it.itemId, itemName: it.itemName, unit: item ? item.unit : '', qty: it.qty, staff: l.staff, date: l.date, note: '積み込みリスト', createdAt: Date.now() };
+      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+    }
+    l.status = 'done';
+    l.doneAt = Date.now();
+    await dbFetch('/loadingLists/' + _llCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
+    showToast('📤 ' + checkedItems.length + '品目を持ち出し登録しました！');
+    showLoadlistHome();
+  } catch(e) { alert('登録に失敗しました。'); }
+  finally { window._zkBusy = false; }
+}
+
+async function deleteLoadlist() {
+  const l = loadingLists[_llCurrentKey];
+  if (!l) return;
+  if (!canManage(l.createdBy) && !canManage(l.staff)) { alert('このリストを削除できるのは、作った本人・積む本人・管理者だけです。'); return; }
+  if (!confirm('このリストを削除しますか？\n（すでに持ち出し登録した記録は消えません）')) return;
+  try {
+    await dbFetch('/loadingLists/' + _llCurrentKey + '.json', { method: 'DELETE' });
+    delete loadingLists[_llCurrentKey];
+    showLoadlistHome();
+  } catch(e) { alert('削除に失敗しました。'); }
 }
 
 function openItemMoveModal(itemId) {
