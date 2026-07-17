@@ -3502,7 +3502,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -3653,6 +3653,8 @@ async function renderAdminContent(){
         <div class="page-title">👤 管理者ページ</div>
       </div>
       <div class="page-sub">作業状況・有給承認</div>
+
+      <button onclick="showOrderlistHome()" style="width:100%;margin-top:10px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">🛒 注文リスト（材料の買い物メモ）<span style="color:#e07b4f">▶</span></button>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-work')">⏱ 作業時間・作業日数 <span class="collapse-arrow" id="arrow-collapse-work">▶</span></div>
       <div class="collapse-body" id="collapse-work" style="margin-bottom:20px">
@@ -7465,6 +7467,312 @@ function zkUpdateAdminBadge() {
 }
 
 // ── トースト ──
+// ══════════ 注文リスト（管理者用の買い物メモ。納品チェックで自動入庫） ══════════
+let orderLists = {};
+let _olCurrentKey = null;
+let _olCat = null;
+
+async function showOrderlistHome() {
+  if (!adminLoggedIn) return;
+  const content = document.getElementById('admin-content');
+  content.innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const [oRes, invRes, alRes] = await Promise.all([dbFetch('/orderLists.json'), dbFetch('/inventory.json'), dbFetch('/alertSettings.json')]);
+    orderLists = await oRes.json() || {};
+    inventory = await invRes.json() || {};
+    alertSettings = await alRes.json() || {};
+  } catch(e) { orderLists = {}; }
+  _olCurrentKey = null;
+  const entries = Object.entries(orderLists);
+  const open = entries.filter(([,l]) => l && l.status === 'open').sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0));
+  const done = entries.filter(([,l]) => l && l.status === 'done').sort((a,b) => (b[1].doneAt||0)-(a[1].doneAt||0)).slice(0,5);
+  const row = ([key, l]) => {
+    const items = l.items || [];
+    return `<div onclick="openOrderlist('${key}')" class="card" style="margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px;${l.status==='done'?'opacity:0.65':''}">
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:700;color:#2d2a26">${formatLlDate(l.date)}　注文リスト</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px">${items.length}品目${l.status==='open' ? `・納品済み ${items.filter(i=>i.received).length}/${items.length}` : '・納品完了'}</div>
+      </div>
+      <span style="font-size:16px;color:${l.status==='open'?'#e07b4f':'#4a7c4a'}">${l.status==='open'?'▶':'✅'}</span>
+    </div>`;
+  };
+  content.innerHTML = `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:#2d2a26">🛒 注文リスト</div>
+        <div style="font-size:11px;color:#aaa">足りない材料をメモ → 注文 → 届いたらチェックで自動入庫</div>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="createOrderlist()">＋ 新しい注文リストを作る</button>
+    <div style="margin-top:14px">
+      ${open.length ? `<div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">📝 注文中・作成中のリスト</div>${open.map(row).join('')}` : '<div class="notice-empty">作成中の注文リストはありません。上から作成してください</div>'}
+      ${done.length ? `<div style="font-size:12px;font-weight:700;color:#888;margin:14px 0 6px">納品が終わったリスト（最近5件）</div>${done.map(row).join('')}` : ''}
+    </div>
+  </div>`;
+}
+
+async function createOrderlist() {
+  if (!adminLoggedIn) return;
+  const rec = { date: getToday(), createdBy: (currentUser && currentUser.name) || '', createdAt: Date.now(), status: 'open', items: [] };
+  try {
+    const res = await dbFetch('/orderLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
+    const out = await res.json();
+    orderLists[out.name] = rec;
+    openOrderlist(out.name);
+  } catch(e) { alert('作成に失敗しました。'); }
+}
+
+function openOrderlist(key) {
+  _olCurrentKey = key;
+  _olCat = null;
+  renderOrderlistEdit();
+}
+
+function renderOrderlistEdit() {
+  const content = document.getElementById('admin-content');
+  const l = orderLists[_olCurrentKey];
+  if (!l) { showOrderlistHome(); return; }
+  const items = l.items || [];
+  const isOpen = l.status === 'open';
+  const checkedCnt = items.filter(i => i.checked && !i.received).length;
+  const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+
+  const rowsHtml = items.map((it, idx) => {
+    const item = ITEMS_MASTER.find(i => i.id === it.itemId);
+    const unit = item ? item.unit : '';
+    if (!isOpen || it.received) {
+      return `<div class="card" style="margin-bottom:6px;padding:10px 12px;background:#f0f7f0;border-color:#bcd8bc">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:34px;text-align:center;color:#4a7c4a;font-size:18px;flex-shrink:0">✓</span>
+          <div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#4a7c4a">${escHtml(it.itemName)}<span style="font-size:11px;font-weight:600;color:#8ab08a">　納品済み</span></div>
+          <span style="font-size:22px;font-weight:800;color:#4a7c4a;flex-shrink:0">${fmt(it.qty)}<span style="font-size:12px;font-weight:600;color:#aaa">　${unit}</span></span>
+        </div>
+      </div>`;
+    }
+    return `<div class="card" style="margin-bottom:6px;padding:10px 12px;${it.checked ? 'background:#fdf8f2;border-color:#f0c890' : ''}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div onclick="olToggleItem(${idx})" style="width:34px;height:34px;border-radius:10px;border:2px solid ${it.checked ? '#e07b4f' : '#e0d8d0'};background:${it.checked ? '#e07b4f' : '#fff'};color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">${it.checked ? '✓' : ''}</div>
+        <div style="flex:1;min-width:0;cursor:pointer" onclick="olToggleItem(${idx})">
+          <div style="font-size:13px;font-weight:700;line-height:1.3;color:#2d2a26">${escHtml(it.itemName)}</div>
+          <div style="font-size:10px;color:#aaa">今の在庫 ${fmt(getQty(it.itemId))}${unit}</div>
+        </div>
+        <button onclick="olChangeQty(${idx},-1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:17px;cursor:pointer;font-family:inherit;flex-shrink:0">−</button>
+        <input type="number" min="0" step="0.1" value="${it.qty}" onchange="olSetQty(${idx},this.value)" style="width:56px;padding:2px;border:none;background:transparent;font-size:22px;font-weight:800;text-align:center;font-family:inherit;color:#2d2a26">
+        <span style="font-size:11px;color:#aaa;flex-shrink:0">${unit}</span>
+        <button onclick="olChangeQty(${idx},1)" style="width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d8d0;background:#fff;font-size:17px;cursor:pointer;font-family:inherit;flex-shrink:0">＋</button>
+        <button onclick="olRemoveItem(${idx})" style="width:28px;height:28px;border-radius:8px;border:none;background:#fce8e8;color:#d32f2f;font-size:14px;cursor:pointer;font-family:inherit;flex-shrink:0">✕</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="notice-empty">材料がまだありません。下の「⚠️ 在庫が少ない材料」や「＋ 材料を追加」から入れてください</div>';
+
+  let bottomHtml = '';
+  if (isOpen) {
+    // 注文中（未納品）の材料一覧を注文数つきで持つ
+    const inList = {};
+    items.forEach(it => { if (!it.received) inList[it.itemId] = it.qty; });
+    // ⚠️ 在庫が少ない材料（警告ラインの目安以下）
+    const lowHtml = ITEMS_MASTER.filter(i => getQty(i.id) <= getAlertVal(i.id)).map(i => {
+      const q = getQty(i.id);
+      const sel = inList[i.id] || 0;
+      return `<button onclick="olTapItem('${i.id}','ol-low-items')" style="width:calc(50% - 3px);padding:10px 8px;border-radius:10px;border:1.5px solid ${sel ? '#e07b4f' : '#f0c8c8'};background:${sel ? '#fdf0e9' : '#fff'};text-align:left;cursor:pointer;font-family:inherit">
+        <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px;line-height:19px">${sel
+          ? `注文 <span style="color:#e07b4f;font-weight:800;font-size:15px">${fmt(sel)}</span>${i.unit}｜在庫 ${fmt(q)}${i.unit}`
+          : `在庫 <span style="color:#d32f2f;font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜目安 ${fmt(getAlertVal(i.id))}${i.unit}未満`}</div>
+      </button>`;
+    }).join('');
+    const cats = ['frp','sub','drain','tool','consume'];
+    const catRowHtml = cats.map(c => `<button class="filter-btn ${_olCat === c ? 'active' : ''}" style="flex-shrink:0" onclick="olPickCat('${c}')">${CAT_LABELS[c]}</button>`).join('');
+    const catItemsHtml = !_olCat ? '' : ITEMS_MASTER.filter(i => i.category === _olCat).map(i => {
+      const q = getQty(i.id);
+      const sel = inList[i.id] || 0;
+      return `<button onclick="olTapItem('${i.id}','ol-cat-items')" style="width:calc(50% - 3px);padding:10px 8px;border-radius:10px;border:1.5px solid ${sel ? '#e07b4f' : '#e0d8d0'};background:${sel ? '#fdf0e9' : '#fff'};text-align:left;cursor:pointer;font-family:inherit">
+        <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px;line-height:19px">${sel
+          ? `注文 <span style="color:#e07b4f;font-weight:800;font-size:15px">${fmt(sel)}</span>${i.unit}｜在庫 ${fmt(q)}${i.unit}`
+          : `在庫 <span style="color:#2d2a26;font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜タップで追加`}</div>
+      </button>`;
+    }).join('');
+    bottomHtml = `
+      ${items.filter(i => !i.received).length ? `<div style="margin-top:10px"><button onclick="olCopyText()" style="width:100%;padding:12px;background:#fff;color:#2858b0;border:1.5px solid #2858b0;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📋 注文内容を文字にしてコピー（LINE・メール用）</button></div>` : ''}
+      <div style="margin-top:8px">
+        ${checkedCnt
+          ? `<button class="btn-primary" style="background:#4a7c4a" onclick="olSubmitDelivery()">📦 チェックした${checkedCnt}品目を入庫する（納品登録）</button>`
+          : `<div style="text-align:center;font-size:12px;color:#c49a6a;font-weight:700;background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px">届いた材料にチェックを入れると、ここに納品ボタンが出ます</div>`}
+      </div>
+      <div style="margin-top:14px;background:#fff;border-radius:12px;padding:12px;border:1.5px solid #f0c8c8">
+        <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:8px">⚠️ 在庫が少ない材料（タップで追加）</div>
+        <div id="ol-low-items" style="display:flex;flex-wrap:wrap;gap:6px">${lowHtml || '<div style="font-size:12px;color:#aaa">今は目安を下回っている材料はありません</div>'}</div>
+      </div>
+      <div style="margin-top:12px;background:#fff;border-radius:12px;padding:12px;border:1.5px dashed #e0d8d0">
+        <div style="font-size:12px;font-weight:600;color:#aaa;margin-bottom:8px">＋ 材料を追加（種類から選ぶ）</div>
+        <div id="ol-cat-row" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px">${catRowHtml}</div>
+        <div id="ol-cat-items" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${catItemsHtml}</div>
+      </div>
+      <div style="margin-top:12px">
+        <button onclick="olDeleteList()" style="width:100%;padding:10px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🗑 このリストを削除</button>
+      </div>`;
+  }
+
+  content.innerHTML = `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="showOrderlistHome()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:#2d2a26">🛒 ${formatLlDate(l.date)}　注文リスト</div>
+        <div style="font-size:11px;color:#aaa">${isOpen ? '届いた材料をタップしてチェック → 納品ボタンで在庫に足されます' : 'このリストは納品済みです（見るだけ）'}</div>
+      </div>
+    </div>
+    ${rowsHtml}
+    ${bottomHtml}
+  </div>`;
+}
+
+function olTapItem(itemId, srcId) {
+  const l = orderLists[_olCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  if (!item) return;
+  if (!l.items) l.items = [];
+  const ex = l.items.find(e => e.itemId === itemId && !e.received);
+  if (ex) { ex.qty = Math.round((ex.qty + 1) * 10) / 10; ex.checked = false; }
+  else l.items.push({ itemId: item.id, itemName: item.name, qty: 1, checked: false, received: false });
+  // タップしたボタンの位置がずれないように、描き直し前後で画面位置を合わせる
+  const grid = document.getElementById(srcId);
+  const before = grid ? grid.getBoundingClientRect().top : null;
+  renderOrderlistEdit();
+  if (before !== null) { const after = document.getElementById(srcId); if (after) window.scrollBy(0, after.getBoundingClientRect().top - before); }
+  olSave();
+}
+
+function olPickCat(cat) {
+  _olCat = (_olCat === cat) ? null : cat;
+  const el = document.getElementById('ol-cat-row');
+  const before = el ? el.getBoundingClientRect().top : null;
+  renderOrderlistEdit();
+  if (before !== null) { const after = document.getElementById('ol-cat-row'); if (after) window.scrollBy(0, after.getBoundingClientRect().top - before); }
+}
+
+function olToggleItem(idx) {
+  const l = orderLists[_olCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const it = l.items[idx];
+  if (!it || it.received) return;
+  it.checked = !it.checked;
+  renderOrderlistEdit();
+  olSave();
+}
+
+function olChangeQty(idx, delta) {
+  const l = orderLists[_olCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const it = l.items[idx];
+  if (!it || it.received) return;
+  const nv = Math.round(((it.qty || 0) + delta) * 10) / 10;
+  if (nv <= 0) return;
+  it.qty = nv;
+  renderOrderlistEdit();
+  olSave();
+}
+
+function olSetQty(idx, val) {
+  const l = orderLists[_olCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const it = l.items[idx];
+  if (!it || it.received) return;
+  const v = Math.round(Math.max(0, parseFloat(val) || 0) * 10) / 10;
+  if (v <= 0) { renderOrderlistEdit(); return; }
+  it.qty = v;
+  renderOrderlistEdit();
+  olSave();
+}
+
+function olRemoveItem(idx) {
+  const l = orderLists[_olCurrentKey];
+  if (!l || l.status !== 'open') return;
+  const it = l.items[idx];
+  if (!it || it.received) return;
+  l.items.splice(idx, 1);
+  renderOrderlistEdit();
+  olSave();
+}
+
+async function olSave() {
+  try {
+    await dbFetch('/orderLists/' + _olCurrentKey + '/items.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(orderLists[_olCurrentKey].items || []) });
+  } catch(e) { alert('保存に失敗しました。電波の良い場所でもう一度お試しください。'); }
+}
+
+function olCopyText() {
+  const l = orderLists[_olCurrentKey];
+  if (!l) return;
+  const pend = (l.items || []).filter(i => !i.received);
+  if (!pend.length) { alert('注文する材料がありません'); return; }
+  const lines = pend.map(it => {
+    const item = ITEMS_MASTER.find(i => i.id === it.itemId);
+    return '・' + it.itemName + '　' + it.qty + (item ? item.unit : '');
+  });
+  const txt = '【注文】' + formatLlDate(l.date) + '\n' + lines.join('\n');
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('📋 コピーしました'); } catch(e) { alert(txt); }
+    document.body.removeChild(ta);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => showToast('📋 コピーしました'), fallback);
+  } else fallback();
+}
+
+// 納品：チェックした分だけ入庫登録（在庫に加算）。全部届いたらリスト完了
+async function olSubmitDelivery() {
+  if (window._zkBusy) return;
+  const l = orderLists[_olCurrentKey];
+  if (!l || l.status !== 'open' || !adminLoggedIn) return;
+  const items = l.items || [];
+  const checked = items.filter(i => i.checked && !i.received);
+  if (!checked.length) { alert('納品された材料にチェックを入れてください。'); return; }
+  const lines = checked.map(it => {
+    const item = ITEMS_MASTER.find(i => i.id === it.itemId);
+    return '・' + it.itemName + '　' + it.qty + (item ? item.unit : '');
+  }).join('\n');
+  if (!confirm('チェックした' + checked.length + '品目を入庫（在庫に加算）します。\n\n' + lines + '\n\nよろしいですか？')) return;
+  window._zkBusy = true;
+  try {
+    for (const it of checked) {
+      const item = ITEMS_MASTER.find(i => i.id === it.itemId);
+      await safeAdjustInventory(it.itemId, it.qty);
+      const movement = { type: 'in', itemId: it.itemId, itemName: it.itemName, unit: item ? item.unit : '', qty: it.qty, staff: '外注', date: getToday(), note: '注文リスト納品', createdAt: Date.now() };
+      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      it.received = true;
+      it.checked = false;
+    }
+    await olSave();
+    if (items.every(i => i.received)) {
+      l.status = 'done';
+      l.doneAt = Date.now();
+      await dbFetch('/orderLists/' + _olCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
+      showToast('📦 ' + checked.length + '品目を入庫しました！納品完了です');
+      showOrderlistHome();
+    } else {
+      showToast('📦 ' + checked.length + '品目を入庫しました（残りあり）');
+      renderOrderlistEdit();
+    }
+  } catch(e) { alert('登録に失敗しました。'); }
+  finally { window._zkBusy = false; }
+}
+
+async function olDeleteList() {
+  const l = orderLists[_olCurrentKey];
+  if (!l || !adminLoggedIn) return;
+  if (!confirm('この注文リストを削除しますか？\n（すでに入庫登録した分は消えません）')) return;
+  try {
+    await dbFetch('/orderLists/' + _olCurrentKey + '.json', { method: 'DELETE' });
+    delete orderLists[_olCurrentKey];
+    showOrderlistHome();
+  } catch(e) { alert('削除に失敗しました。'); }
+}
+
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
