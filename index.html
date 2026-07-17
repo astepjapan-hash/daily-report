@@ -7586,12 +7586,13 @@ function renderOrderlistEdit() {
     const catRowHtml = cats.map(c => `<button class="filter-btn ${_olCat === c ? 'active' : ''}" style="flex-shrink:0" onclick="olPickCat('${c}')">${CAT_LABELS[c]}</button>`).join('');
     const catItemsHtml = !_olCat ? '' : ITEMS_MASTER.filter(i => i.category === _olCat).map(i => {
       const q = getQty(i.id);
+      const al = getAlertVal(i.id);
       const sel = inList[i.id] || 0;
       return `<button onclick="olTapItem('${i.id}','ol-cat-items')" style="width:calc(50% - 3px);padding:10px 8px;border-radius:10px;border:1.5px solid ${sel ? '#e07b4f' : '#e0d8d0'};background:${sel ? '#fdf0e9' : '#fff'};text-align:left;cursor:pointer;font-family:inherit">
         <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
         <div style="font-size:11px;color:#aaa;margin-top:2px;line-height:19px">${sel
           ? `注文 <span style="color:#e07b4f;font-weight:800;font-size:15px">${fmt(sel)}</span>${i.unit}｜在庫 ${fmt(q)}${i.unit}`
-          : `在庫 <span style="color:#2d2a26;font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜タップで追加`}</div>
+          : `在庫 <span style="color:${q <= al ? '#d32f2f' : '#2d2a26'};font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜目安 ${fmt(al)}${i.unit}`}</div>
       </button>`;
     }).join('');
     bottomHtml = `
@@ -7601,14 +7602,14 @@ function renderOrderlistEdit() {
           ? `<button class="btn-primary" style="background:#4a7c4a" onclick="olSubmitDelivery()">📦 チェックした${checkedCnt}品目を入庫する（納品登録）</button>`
           : `<div style="text-align:center;font-size:12px;color:#c49a6a;font-weight:700;background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px">届いた材料にチェックを入れると、ここに納品ボタンが出ます</div>`}
       </div>
-      <div style="margin-top:14px;background:#fff;border-radius:12px;padding:12px;border:1.5px solid #f0c8c8">
-        <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:8px">⚠️ 在庫が少ない材料（タップで追加）</div>
-        <div id="ol-low-items" style="display:flex;flex-wrap:wrap;gap:6px">${lowHtml || '<div style="font-size:12px;color:#aaa">今は目安を下回っている材料はありません</div>'}</div>
-      </div>
-      <div style="margin-top:12px;background:#fff;border-radius:12px;padding:12px;border:1.5px dashed #e0d8d0">
+      <div style="margin-top:14px;background:#fff;border-radius:12px;padding:12px;border:1.5px dashed #e0d8d0">
         <div style="font-size:12px;font-weight:600;color:#aaa;margin-bottom:8px">＋ 材料を追加（種類から選ぶ）</div>
         <div id="ol-cat-row" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px">${catRowHtml}</div>
         <div id="ol-cat-items" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${catItemsHtml}</div>
+      </div>
+      <div style="margin-top:12px;background:#fff;border-radius:12px;padding:12px;border:1.5px solid #f0c8c8">
+        <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:8px">⚠️ 在庫が少ない材料（タップで追加）</div>
+        <div id="ol-low-items" style="display:flex;flex-wrap:wrap;gap:6px">${lowHtml || '<div style="font-size:12px;color:#aaa">今は目安を下回っている材料はありません</div>'}</div>
       </div>
       <div style="margin-top:12px">
         <button onclick="olDeleteList()" style="width:100%;padding:10px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🗑 このリストを削除</button>
