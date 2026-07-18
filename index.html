@@ -2794,16 +2794,19 @@ function renderSiteListInner(){
       rk+=Math.floor(rw/10);rw=rw%10;
     }
     const resinKg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
-    headerHtml=`<div class="month-nav" style="margin-bottom:8px">
+    // 月の合計欄はスクロールしても画面上部に固定表示する
+    headerHtml=`<div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px 4px;padding:4px 16px 8px">
+    <div class="month-nav" style="margin-bottom:8px">
       <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx+1]||''}')" ${!months[idx+1]?'disabled style="opacity:0.3"':''}>◀</button>
       <span class="month-nav-label" style="font-size:15px">${y}年${parseInt(mo)}月 完了 ${list.length}件</span>
       <button class="month-nav-btn" onclick="changeSiteMonth('${months[idx-1]||''}')" ${!months[idx-1]?'disabled style="opacity:0.3"':''}>▶</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       <span class="material-chip" style="text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
       <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
       <span class="material-chip" style="text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
       ${areaChipHtml(list,{showCount:true,resin:_resinCache})}
+    </div>
     </div>`;
   }
 
