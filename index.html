@@ -2812,14 +2812,12 @@ function renderSiteListInner(){
       stAreaSum=list.reduce((s2,s)=>s2+(parseFloat(siteMeta[s.name]?.area)||0),0);
     }
     const perSqm=stAreaSum>0?Math.round(resinKg/stAreaSum*100)/100:0;
-    // 材料費（管理者だけに表示。プライマーＳ-１・ポリルーフ樹脂・ポリルーフトップの仕入値で概算）
+    // 材料費（管理者だけに表示。現場ごとに会社別の単価で計算し、パーメック小1%も加算）
     let costChip='';
-    if(adminLoggedIn){
+    if(adminLoggedIn&&!siteStaffFilters.length){
       let cost=0;
-      if(getPrice('primer'))cost+=pk/KAN_KG.primerKg*getPrice('primer');
-      if(getPrice('resin'))cost+=resinKg/RESIN_KG_PER_KAN*getPrice('resin');
-      if(getPrice('top'))cost+=tk/KAN_KG.topKg*getPrice('top');
-      if(cost>0)costChip=`<span class="material-chip" style="text-align:center;grid-column:1 / -1;background:#fdf8f2;border:1px solid #f0e4d4;color:#c97a1f">💰 材料費 約${Math.round(cost).toLocaleString()}円${stAreaSum>0?`（1㎡あたり約${Math.round(cost/stAreaSum).toLocaleString()}円）`:''}<br><span style="font-size:10px;color:#c49a6a;font-weight:500">プライマー・樹脂・トップ分｜管理者のみ表示</span></span>`;
+      list.forEach(s=>{cost+=siteMaterialCost(s);});
+      if(cost>0)costChip=`<span class="material-chip" style="text-align:center;grid-column:1 / -1;background:#fdf8f2;border:1px solid #f0e4d4;color:#c97a1f">💰 材料費 約${Math.round(cost).toLocaleString()}円${stAreaSum>0?`（1㎡あたり約${Math.round(cost/stAreaSum).toLocaleString()}円）`:''}<br><span style="font-size:10px;color:#c49a6a;font-weight:500">会社別の単価・パーメック込み｜管理者のみ表示</span></span>`;
     }
     // 月の合計欄はスクロールしても画面上部に固定表示する
     headerHtml=`<div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px 4px;padding:4px 16px 8px">
@@ -2990,16 +2988,13 @@ function showSiteDetail(nameEnc){
           <tbody>${dayRows}</tbody>
         </table>
       </div>`:'';
-  // この現場の材料費（管理者のみ・主要3材料の仕入値で概算）
+  // この現場の材料費（管理者のみ。会社別の単価で計算し、パーメック小1%も加算）
   let siteCostHtml='';
   if(adminLoggedIn){
-    let c=0;
-    if(getPrice('primer'))c+=s.primerKg/KAN_KG.primerKg*getPrice('primer');
-    if(getPrice('resin'))c+=resinKg/RESIN_KG_PER_KAN*getPrice('resin');
-    if(getPrice('top'))c+=s.topKg/KAN_KG.topKg*getPrice('top');
+    const c=siteMaterialCost(s);
     if(c>0){
       const ar=parseFloat(siteMeta[s.name]?.area)||0;
-      siteCostHtml=`<div style="background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:#c97a1f">💰 この現場の材料費 約${Math.round(c).toLocaleString()}円${ar>0?`（1㎡あたり約${Math.round(c/ar).toLocaleString()}円）`:''} <span style="font-size:10px;color:#c49a6a;font-weight:500">プライマー・樹脂・トップ分／管理者のみ表示</span></div>`;
+      siteCostHtml=`<div style="background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:#c97a1f">💰 この現場の材料費 約${Math.round(c).toLocaleString()}円${ar>0?`（1㎡あたり約${Math.round(c/ar).toLocaleString()}円）`:''} <span style="font-size:10px;color:#c49a6a;font-weight:500">会社別の単価・パーメック込み／管理者のみ表示</span></div>`;
     }
   }
   content.innerHTML=`
@@ -7720,12 +7715,30 @@ async function stApplyDiff() {
 // ══════════ 年間レポート（管理者用。件数・㎡・材料・材料費の年間まとめ） ══════════
 let _yrYear = '';
 
-// プライマー・樹脂・トップの仕入値から材料費（円）を概算
-function calc3Cost(pk, resinKg, tk) {
-  let c = 0;
-  if (getPrice('primer')) c += pk / KAN_KG.primerKg * getPrice('primer');
-  if (getPrice('resin')) c += resinKg / RESIN_KG_PER_KAN * getPrice('resin');
-  if (getPrice('top')) c += tk / KAN_KG.topKg * getPrice('top');
+// 現場ごとの材料費（円）。会社・面積で使う材料の単価を使い分ける
+// ・ポラテック／グランディハウス＝三井（プライマー16kg缶・三井樹脂・三井グレー）
+// ・住協メンテ＝プライマーＳ-１Ｒ（16kg缶）
+// ・施工面積0㎡の現場＝プライマーＳ-１Ｘ小（3kg缶）
+// ・それ以外＝プライマーＳ-１（16kg缶）
+// ・パーメック小＝樹脂＋トップ使用量の1%（1本=1kg）を自動追加
+function siteMaterialCost(s) {
+  const comp = s.company || '';
+  const mitsui = comp.indexOf('ポラテック') >= 0 || comp.indexOf('グランディハウス') >= 0;
+  const areaZero = hasArea(s.name) && (parseFloat(siteMeta[s.name].area) || 0) === 0;
+  // プライマーの円/kg
+  let pPerKg = 0;
+  if (mitsui && getPrice('primer3')) pPerKg = getPrice('primer3') / 16;
+  else if (comp.indexOf('住協メンテ') >= 0 && getPrice('primer_r')) pPerKg = getPrice('primer_r') / 16;
+  else if (areaZero && getPrice('primer_x')) pPerKg = getPrice('primer_x') / 3;
+  else if (getPrice('primer')) pPerKg = getPrice('primer') / KAN_KG.primerKg;
+  // 樹脂・トップの円/kg（三井現場は三井樹脂・三井グレー）
+  const rId = (mitsui && getPrice('resin3')) ? 'resin3' : 'resin';
+  const tId = (mitsui && getPrice('gray3')) ? 'gray3' : 'top';
+  const rPerKg = getPrice(rId) ? getPrice(rId) / RESIN_KG_PER_KAN : 0;
+  const tPerKg = getPrice(tId) ? getPrice(tId) / KAN_KG.topKg : 0;
+  const resinKg = (s.resinKan * 10 + s.resinWari) * RESIN_KG_PER_KAN / 10;
+  let c = s.primerKg * pPerKg + resinKg * rPerKg + s.topKg * tPerKg;
+  if (getPrice('parmec')) c += (resinKg + s.topKg) * 0.01 * getPrice('parmec');
   return c;
 }
 
@@ -7755,16 +7768,18 @@ function yrChangeYear(delta) {
 // 年間の集計データをまとめて計算
 function yrCalc(year) {
   const sites = Object.values(aggregateSites()).filter(s => s.completed && (s.completedDate || '').startsWith(year));
-  let areaSum = 0, pk = 0, tk = 0, rkT = 0, rwT = 0, areaMiss = 0;
+  let areaSum = 0, pk = 0, tk = 0, rkT = 0, rwT = 0, areaMiss = 0, costSum = 0;
   const months = {}, byCompany = {};
   sites.forEach(s => {
     const ar = parseFloat(siteMeta[s.name]?.area) || 0;
     if (!hasArea(s.name)) areaMiss++;
     areaSum += ar; pk += s.primerKg; tk += s.topKg;
     rkT += s.resinKan; rwT += s.resinWari;
+    const sc = siteMaterialCost(s);
+    costSum += sc;
     const mo = s.completedDate.slice(5, 7);
-    if (!months[mo]) months[mo] = { count: 0, area: 0, resinTen: 0, pk: 0, tk: 0 };
-    months[mo].count++; months[mo].area += ar; months[mo].resinTen += s.resinKan * 10 + s.resinWari; months[mo].pk += s.primerKg; months[mo].tk += s.topKg;
+    if (!months[mo]) months[mo] = { count: 0, area: 0, resinTen: 0, pk: 0, tk: 0, cost: 0 };
+    months[mo].count++; months[mo].area += ar; months[mo].resinTen += s.resinKan * 10 + s.resinWari; months[mo].pk += s.primerKg; months[mo].tk += s.topKg; months[mo].cost += sc;
     if (!byCompany[s.company]) byCompany[s.company] = { count: 0, area: 0 };
     byCompany[s.company].count++; byCompany[s.company].area += ar;
   });
@@ -7779,7 +7794,7 @@ function yrCalc(year) {
     (r.sites || []).forEach(x => { ten += (parseInt(x.resinKan) || 0) * 10 + (parseInt(x.resinWari) || 0); });
     if (ten > 0) resinByStaff[r.staffName] = (resinByStaff[r.staffName] || 0) + ten;
   });
-  return { count: sites.length, areaSum, pk, tk, rkT, rwT, resinKg, areaMiss, months, byCompany, areaBy, resinByStaff };
+  return { count: sites.length, areaSum, pk, tk, rkT, rwT, resinKg, areaMiss, months, byCompany, areaBy, resinByStaff, cost: costSum };
 }
 
 function yrFmt(v) { return v % 1 === 0 ? v : v.toFixed(1); }
@@ -7791,8 +7806,7 @@ function yrTables(d) {
     const key = String(m).padStart(2, '0');
     const v = d.months[key];
     if (!v) continue;
-    const mResinKg = Math.round(v.resinTen * RESIN_KG_PER_KAN / 10 * 10) / 10;
-    const mc = calc3Cost(v.pk, mResinKg, v.tk);
+    const mc = v.cost || 0;
     monthRows.push([m + '月', v.count + '件', yrFmt(Math.round(v.area * 10) / 10) + '㎡', Math.floor(v.resinTen / 10) + '缶' + (v.resinTen % 10) + '割', mc > 0 ? Math.round(mc).toLocaleString() : '-']);
   }
   const staffNames = [...new Set([...Object.keys(d.areaBy.byStaff), ...Object.keys(d.resinByStaff)])].filter(n => n !== '外注').sort((a, b) => (d.resinByStaff[b] || 0) - (d.resinByStaff[a] || 0));
@@ -7812,7 +7826,7 @@ function yrTables(d) {
 function renderYearReport() {
   const content = document.getElementById('admin-content');
   const d = yrCalc(_yrYear);
-  const cost = calc3Cost(d.pk, d.resinKg, d.tk);
+  const cost = d.cost;
   const t = yrTables(d);
   const tableHtml = rows => `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden">
     <thead><tr>${rows[0].map((h, i) => `<th style="padding:7px 6px;font-size:11px;font-weight:700;color:#2d2a26;background:#f5f0ea;border-bottom:2px solid #e0d8d0;white-space:nowrap;text-align:${i === 0 ? 'left' : 'center'}">${h}</th>`).join('')}</tr></thead>
@@ -7841,7 +7855,7 @@ function renderYearReport() {
       ${stat('完了現場', d.count + '件', '')}
       ${stat('施工数量', yrFmt(Math.round(d.areaSum * 10) / 10) + '㎡', d.areaMiss ? '未入力' + d.areaMiss + '件あり' : '')}
       ${stat('樹脂', d.rkT + '缶' + d.rwT + '割', d.resinKg + 'kg')}
-      ${cost > 0 ? stat('材料費', '約' + Math.round(cost).toLocaleString() + '円', 'プライマー・樹脂・トップ分') : stat('プライマー／トップ', yrFmt(Math.round(d.pk * 10) / 10) + '／' + yrFmt(Math.round(d.tk * 10) / 10) + 'kg', '')}
+      ${cost > 0 ? stat('材料費', '約' + Math.round(cost).toLocaleString() + '円', '会社別の単価・パーメック込み') : stat('プライマー／トップ', yrFmt(Math.round(d.pk * 10) / 10) + '／' + yrFmt(Math.round(d.tk * 10) / 10) + 'kg', '')}
     </div>
     ${cost > 0 ? `<div style="font-size:11px;color:#aaa;margin-bottom:10px;text-align:center">プライマー ${yrFmt(Math.round(d.pk * 10) / 10)}kg／トップ ${yrFmt(Math.round(d.tk * 10) / 10)}kg</div>` : ''}
     <div class="section-title" style="margin-top:6px">📅 月別</div>
@@ -7857,7 +7871,7 @@ function renderYearReport() {
 
 function yrExportPdf() {
   const d = yrCalc(_yrYear);
-  const cost = calc3Cost(d.pk, d.resinKg, d.tk);
+  const cost = d.cost;
   const t = yrTables(d);
   const summary = [['項目', '数値'],
     ['完了現場', d.count + '件'],
@@ -7865,7 +7879,7 @@ function yrExportPdf() {
     ['樹脂', d.rkT + '缶' + d.rwT + '割（' + d.resinKg + 'kg）'],
     ['プライマー', yrFmt(Math.round(d.pk * 10) / 10) + 'kg'],
     ['トップ', yrFmt(Math.round(d.tk * 10) / 10) + 'kg']];
-  if (cost > 0) summary.push(['材料費（プライマー・樹脂・トップ分）', '約' + Math.round(cost).toLocaleString() + '円']);
+  if (cost > 0) summary.push(['材料費（会社別の単価・パーメック込み）', '約' + Math.round(cost).toLocaleString() + '円']);
   const inner = '<h1>年間レポート</h1><div class="sub">' + _yrYear + '年（完了日ベース）</div>'
     + pdfTableHtml(summary)
     + '<h2>月別</h2>' + pdfTableHtml(t.monthRows)
