@@ -2794,6 +2794,23 @@ function renderSiteListInner(){
       rk+=Math.floor(rw/10);rw=rw%10;
     }
     const resinKg=Math.round((rk*10+rw)*RESIN_KG_PER_KAN/10*10)/10;
+    // 1㎡あたりの樹脂量（数量チップと同じ数え方の㎡で割った目安）
+    let stAreaSum=0;
+    if(siteStaffFilters.length){
+      const rb=_resinCache||computeResinBySite();
+      list.forEach(s=>{
+        const ar=parseFloat(siteMeta[s.name]?.area)||0;
+        if(!ar)return;
+        const resins=rb[s.name]||{};
+        const sum=Object.values(resins).reduce((x,y)=>x+y,0);
+        if(sum<=0)return;
+        const q=siteStaffFilters.reduce((x,m2)=>x+(resins[m2]||0),0);
+        stAreaSum+=ar*q/sum;
+      });
+    }else{
+      stAreaSum=list.reduce((s2,s)=>s2+(parseFloat(siteMeta[s.name]?.area)||0),0);
+    }
+    const perSqm=stAreaSum>0?Math.round(resinKg/stAreaSum*100)/100:0;
     // 月の合計欄はスクロールしても画面上部に固定表示する
     headerHtml=`<div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px 4px;padding:4px 16px 8px">
     <div class="month-nav" style="margin-bottom:8px">
@@ -2803,7 +2820,7 @@ function renderSiteListInner(){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
       <span class="material-chip" style="text-align:center">プライマー ${kgToKanText(pk,KAN_KG.primerKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(pk*10)/10}kg</span></span>
-      <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg</span></span>
+      <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg${perSqm?`｜1㎡あたり${perSqm}kg`:''}</span></span>
       <span class="material-chip" style="text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
       ${areaChipHtml(list,{showCount:true,resin:_resinCache})}
     </div>
@@ -3505,7 +3522,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -3658,6 +3675,7 @@ async function renderAdminContent(){
       <div class="page-sub">作業状況・有給承認</div>
 
       <button onclick="showOrderlistHome()" style="width:100%;margin-top:10px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">🛒 注文リスト（材料の買い物メモ）<span style="color:#e07b4f">▶</span></button>
+      <button onclick="showStocktake()" style="width:100%;margin-top:8px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">📋 棚卸し（実物の数と合わせる）<span style="color:#e07b4f">▶</span></button>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-work')">⏱ 作業時間・作業日数 <span class="collapse-arrow" id="arrow-collapse-work">▶</span></div>
       <div class="collapse-body" id="collapse-work" style="margin-bottom:20px">
@@ -7505,6 +7523,126 @@ function zkUpdateAdminBadge() {
 }
 
 // ── トースト ──
+// ══════════ 棚卸しモード（実物を数えてアプリの在庫と合わせる） ══════════
+let _stCat = 'frp';
+let _stInput = {};
+
+async function showStocktake() {
+  if (!adminLoggedIn) return;
+  const content = document.getElementById('admin-content');
+  content.innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const [invRes, stRes] = await Promise.all([dbFetch('/inventory.json'), dbFetch('/stocktakes.json')]);
+    inventory = await invRes.json() || {};
+    window._stLogs = await stRes.json() || {};
+  } catch(e) { window._stLogs = {}; }
+  _stCat = 'frp';
+  _stInput = {};
+  renderStocktake();
+}
+
+// 入力欄の値を控えておく（分類を切り替えても消えないように）
+function stSaveInputs() {
+  ITEMS_MASTER.forEach(item => {
+    const el = document.getElementById('st-qty-' + item.id);
+    if (!el) return;
+    if (el.value !== '') _stInput[item.id] = el.value;
+    else delete _stInput[item.id];
+  });
+}
+
+function stPickCat(cat) {
+  stSaveInputs();
+  _stCat = cat;
+  renderStocktake();
+}
+
+function renderStocktake() {
+  const content = document.getElementById('admin-content');
+  const cats = ['frp','sub','drain','tool','consume'];
+  const catRow = cats.map(c => `<button class="filter-btn ${_stCat === c ? 'active' : ''}" style="flex-shrink:0" onclick="stPickCat('${c}')">${CAT_LABELS[c]}</button>`).join('');
+  const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+  const rows = ITEMS_MASTER.filter(i => i.category === _stCat).map(i => {
+    const q = getQty(i.id);
+    const val = _stInput[i.id] !== undefined ? _stInput[i.id] : '';
+    return `<div class="card" style="margin-bottom:6px;padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:1px">アプリ在庫 <span style="color:#2d2a26;font-weight:700">${fmt(q)}</span>${i.unit}</div>
+      </div>
+      <input type="number" min="0" step="0.1" id="st-qty-${i.id}" value="${val}" placeholder="実物" onchange="stSaveInputs()" style="width:76px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;font-weight:700;text-align:center;font-family:inherit">
+      <span style="font-size:11px;color:#aaa;flex-shrink:0">${i.unit}</span>
+    </div>`;
+  }).join('');
+  const logs = Object.values(window._stLogs || {}).sort((a,b) => (b.createdAt||0)-(a.createdAt||0)).slice(0,3);
+  const logsHtml = logs.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">最近の棚卸し</div>${logs.map(g => `
+    <div class="card" style="margin-bottom:6px;padding:10px 12px">
+      <div style="font-size:12px;font-weight:700;color:#2d2a26">${formatLlDate(g.date)}　${escHtml(g.by||'')}　<span style="color:#888;font-weight:600">${(g.changes||[]).length}品目を修正</span></div>
+      <div style="font-size:11px;color:#aaa;margin-top:2px">${(g.changes||[]).map(c => escHtml(c.name)+' '+c.before+'→'+c.after).join('、')}</div>
+    </div>`).join('')}</div>` : '';
+  content.innerHTML = `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:#2d2a26">📋 棚卸し</div>
+        <div style="font-size:11px;color:#aaa">実物を数えて入力（数えた物だけでOK）→ 一番下の「差を確認」へ</div>
+      </div>
+    </div>
+    <div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px;padding:6px 16px 4px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch">${catRow}</div>
+    <div style="margin-top:8px">${rows}</div>
+    <div style="margin-top:12px">
+      <button class="btn-primary" onclick="stCheckDiff()">🔍 差を確認する</button>
+      <div id="st-result" style="margin-top:10px"></div>
+    </div>
+    ${logsHtml}
+  </div>`;
+}
+
+function stCheckDiff() {
+  stSaveInputs();
+  const el = document.getElementById('st-result');
+  const diffs = [];
+  let matchCnt = 0;
+  ITEMS_MASTER.forEach(i => {
+    if (_stInput[i.id] === undefined) return;
+    const counted = Math.round((parseFloat(_stInput[i.id]) || 0) * 10) / 10;
+    const cur = getQty(i.id);
+    if (counted === cur) { matchCnt++; return; }
+    diffs.push({ id: i.id, name: i.name, unit: i.unit, before: cur, after: counted });
+  });
+  if (!diffs.length && !matchCnt) { el.innerHTML = '<div class="notice-empty">まだ実物の数が入力されていません。数えた品目の「実物」欄に数を入れてください</div>'; return; }
+  window._stDiffs = diffs;
+  const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+  el.innerHTML = `
+    ${matchCnt ? `<div style="font-size:12px;color:#4a7c4a;font-weight:700;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px;margin-bottom:8px">✅ ${matchCnt}品目はアプリと一致していました</div>` : ''}
+    ${diffs.length ? `
+      <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:6px">アプリと違う品目（${diffs.length}件）</div>
+      ${diffs.map(d => `<div class="card" style="margin-bottom:6px;padding:10px 12px;border-color:#e57373;background:#fdf3f3;display:flex;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#2d2a26">${escHtml(d.name)}</div>
+        <div style="font-size:14px;font-weight:800;color:#c0392b;flex-shrink:0">${fmt(d.before)} → ${fmt(d.after)}${d.unit}</div>
+      </div>`).join('')}
+      <button class="btn-primary" style="background:#c0392b;margin-top:4px" onclick="stApplyDiff()">実物の数に直す（${diffs.length}品目）</button>
+      <div style="font-size:11px;color:#aaa;margin-top:6px;text-align:center">※差が大きい品目は、直す前に「集計」→「材料」の突き合わせで原因を調べるのがおすすめです</div>`
+    : '<div style="font-size:12px;color:#4a7c4a;font-weight:700;text-align:center;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px">差はありません。在庫はぴったり合っています！</div>'}`;
+}
+
+async function stApplyDiff() {
+  const diffs = window._stDiffs || [];
+  if (!diffs.length || !adminLoggedIn) return;
+  if (!confirm(diffs.length + '品目の在庫を実物の数に直します。よろしいですか？')) return;
+  try {
+    await Promise.all(diffs.map(d => {
+      inventory[d.id] = d.after;
+      return dbFetch('/inventory/' + d.id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d.after) });
+    }));
+    const log = { date: getToday(), by: (currentUser && currentUser.name) || '', createdAt: Date.now(), changes: diffs.map(d => ({ itemId: d.id, name: d.name, before: d.before, after: d.after })) };
+    await dbFetch('/stocktakes.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(log) });
+    showToast('📋 ' + diffs.length + '品目の在庫を実物に合わせました');
+    _stInput = {};
+    showStocktake();
+  } catch(e) { alert('保存に失敗しました。'); }
+}
+
 // ══════════ 注文リスト（管理者用の買い物メモ。納品チェックで自動入庫） ══════════
 let orderLists = {};
 let _olCurrentKey = null;
