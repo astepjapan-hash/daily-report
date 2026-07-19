@@ -2817,7 +2817,7 @@ function renderSiteListInner(){
     if(adminLoggedIn&&!siteStaffFilters.length){
       let cost=0;
       list.forEach(s=>{cost+=siteMaterialCost(s);});
-      if(cost>0)costChip=`<span class="material-chip" style="text-align:center;grid-column:1 / -1;background:#fdf8f2;border:1px solid #f0e4d4;color:#c97a1f">💰 材料費 約${Math.round(cost).toLocaleString()}円${stAreaSum>0?`（1㎡あたり約${Math.round(cost/stAreaSum).toLocaleString()}円）`:''}<br><span style="font-size:10px;color:#c49a6a;font-weight:500">会社別の単価・パーメック・マット込み｜管理者のみ表示</span></span>`;
+      if(cost>0)costChip=`<span class="material-chip" style="text-align:center;grid-column:1 / -1;background:#fdf8f2;border:1px solid #f0e4d4;color:#c97a1f">💰 材料費 約${Math.round(cost).toLocaleString()}円${stAreaSum>0?`（1㎡あたり約${Math.round(cost/stAreaSum).toLocaleString()}円）`:''}<br><span style="font-size:10px;color:#c49a6a;font-weight:500">会社別の単価・パーメック・マット・ロス込み｜管理者のみ表示</span></span>`;
     }
     // 月の合計欄はスクロールしても画面上部に固定表示する
     headerHtml=`<div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px 4px;padding:4px 16px 8px">
@@ -2994,7 +2994,7 @@ function showSiteDetail(nameEnc){
     const c=siteMaterialCost(s);
     if(c>0){
       const ar=parseFloat(siteMeta[s.name]?.area)||0;
-      siteCostHtml=`<div style="background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:#c97a1f">💰 この現場の材料費 約${Math.round(c).toLocaleString()}円${ar>0?`（1㎡あたり約${Math.round(c/ar).toLocaleString()}円）`:''} <span style="font-size:10px;color:#c49a6a;font-weight:500">会社別の単価・パーメック・マット込み／管理者のみ表示</span></div>`;
+      siteCostHtml=`<div style="background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:#c97a1f">💰 この現場の材料費 約${Math.round(c).toLocaleString()}円${ar>0?`（1㎡あたり約${Math.round(c/ar).toLocaleString()}円）`:''} <span style="font-size:10px;color:#c49a6a;font-weight:500">会社別の単価・パーメック・マット・ロス込み／管理者のみ表示</span></div>`;
     }
   }
   content.innerHTML=`
@@ -4366,7 +4366,7 @@ function calcSalary(name){
   const base=paidDays*(p.dailyRate||0);
   const halfAllow=halfDays*(p.halfRate||0);
   const gross=base+halfAllow+(p.commute||0)+(p.family||0)+expense;
-  const employment=Math.round(gross*6/1000);
+  const employment=Math.round((gross-expense)*6/1000); // 経費の立替精算分は雇用保険の計算に含めない
   const deductTotal=(p.health||0)+(p.pension||0)+employment+incomeTax+(p.residentTax||0)+(p.union||0);
   const net=gross-deductTotal;
   return {p,workDays,kyukaDays,halfDays,incomeTax,expense,paidDays,base,halfAllow,gross,employment,deductTotal,net};
@@ -4385,7 +4385,7 @@ function updateSalaryPreview(name){
     <div style="display:flex;justify-content:space-between;margin-bottom:8px;color:#e07b4f"><span>支給合計</span><b>${c.gross.toLocaleString()}円</b></div>
     ${c.p.health?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>健康保険</span><span>−${c.p.health.toLocaleString()}円</span></div>`:''}
     ${c.p.pension?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>厚生年金</span><span>−${c.p.pension.toLocaleString()}円</span></div>`:''}
-    <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>雇用保険（支給額×6/1000）</span><span>−${c.employment.toLocaleString()}円</span></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>雇用保険（経費を除く支給額×6/1000）</span><span>−${c.employment.toLocaleString()}円</span></div>
     ${c.incomeTax?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>所得税</span><span>−${c.incomeTax.toLocaleString()}円</span></div>`:''}
     ${c.p.residentTax?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>市県民税</span><span>−${c.p.residentTax.toLocaleString()}円</span></div>`:''}
     ${c.p.union?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>土建組合費</span><span>−${c.p.union.toLocaleString()}円</span></div>`:''}
@@ -4414,7 +4414,7 @@ function calcSalaryFromData(name,d){
   const base=paidDays*(p.dailyRate||0);
   const halfAllow=halfDays*(p.halfRate||0);
   const gross=base+halfAllow+(p.commute||0)+(p.family||0)+expense;
-  const employment=Math.round(gross*6/1000);
+  const employment=Math.round((gross-expense)*6/1000); // 経費の立替精算分は雇用保険の計算に含めない
   const deductTotal=(p.health||0)+(p.pension||0)+employment+incomeTax+(p.residentTax||0)+(p.union||0);
   const net=gross-deductTotal;
   return {p,workDays,kyukaDays,halfDays,incomeTax,expense,paidDays,base,halfAllow,gross,employment,deductTotal,net};
@@ -4470,7 +4470,7 @@ async function exportSalaryPdfAll(){
         <tr class="sec"><td colspan="2">控除</td></tr>
         ${c.p.health?row('健康保険',c.p.health,true):''}
         ${c.p.pension?row('厚生年金',c.p.pension,true):''}
-        ${row('雇用保険（支給額×6/1000）',c.employment,true)}
+        ${row('雇用保険（経費を除く支給額×6/1000）',c.employment,true)}
         ${c.incomeTax?row('所得税',c.incomeTax,true):''}
         ${c.p.residentTax?row('市県民税',c.p.residentTax,true):''}
         ${c.p.union?row('土建組合費',c.p.union,true):''}
@@ -7721,6 +7721,7 @@ let _yrYear = '';
 // ・施工面積0㎡の現場＝プライマーＳ-１Ｘ小（3kg缶）
 // ・それ以外＝プライマーＳ-１（16kg缶）
 // ・パーメック小＝樹脂＋トップ使用量の1%（1本=1kg）を自動追加
+// ・プライマー／樹脂／トップはロス13%を上乗せして金額化（パーメックも上乗せ後の量が基準）
 // ・ガラスマット＝施工面積1㎡あたり2m＋ロス12.5%。グランディハウス=赤、ポラテック=赤と緑の半々、その他=ガラスマット
 //   巻の長さ: ガラスマット70m／450=60m／赤70m／緑70m／青64m
 function siteMaterialCost(s) {
@@ -7739,8 +7740,10 @@ function siteMaterialCost(s) {
   const rPerKg = getPrice(rId) ? getPrice(rId) / RESIN_KG_PER_KAN : 0;
   const tPerKg = getPrice(tId) ? getPrice(tId) / KAN_KG.topKg : 0;
   const resinKg = (s.resinKan * 10 + s.resinWari) * RESIN_KG_PER_KAN / 10;
-  let c = s.primerKg * pPerKg + resinKg * rPerKg + s.topKg * tPerKg;
-  if (getPrice('parmec')) c += (resinKg + s.topKg) * 0.01 * getPrice('parmec');
+  // プライマー・樹脂・トップはロス13%を上乗せして金額化（パーメックの1%も上乗せ後の量に対して）
+  const pKg = s.primerKg * 1.13, rKg = resinKg * 1.13, tKg = s.topKg * 1.13;
+  let c = pKg * pPerKg + rKg * rPerKg + tKg * tPerKg;
+  if (getPrice('parmec')) c += (rKg + tKg) * 0.01 * getPrice('parmec');
   // ガラスマット（1㎡あたり2m×ロス1.125。1mあたり単価=1巻の値段÷巻の長さ）
   const ar = parseFloat(siteMeta[s.name]?.area) || 0;
   if (ar > 0) {
@@ -7767,7 +7770,9 @@ async function showYearReport() {
       dbFetch('/reports.json'), dbFetch('/siteMeta.json'), dbFetch('/siteAliases.json'), dbFetch('/itemPrices.json'), dbFetch('/companies.json')
     ]);
     reports = await rRes.json() || {};
-    siteMeta = await smRes.json() || {};
+    // 面積データは他の画面と同じく「現場名で引ける形」に直してから使う
+    const rawSm = await smRes.json() || {};
+    siteMeta = {}; Object.values(rawSm).forEach(v => { if (v && v.name) siteMeta[v.name] = v; });
     siteAliases = await saRes.json() || {};
     itemPrices = await ipRes.json() || {};
     companies = await coRes.json() || {};
@@ -7871,7 +7876,7 @@ function renderYearReport() {
       ${stat('完了現場', d.count + '件', '')}
       ${stat('施工数量', yrFmt(Math.round(d.areaSum * 10) / 10) + '㎡', d.areaMiss ? '未入力' + d.areaMiss + '件あり' : '')}
       ${stat('樹脂', d.rkT + '缶' + d.rwT + '割', d.resinKg + 'kg')}
-      ${cost > 0 ? stat('材料費', '約' + Math.round(cost).toLocaleString() + '円', '会社別の単価・パーメック・マット込み') : stat('プライマー／トップ', yrFmt(Math.round(d.pk * 10) / 10) + '／' + yrFmt(Math.round(d.tk * 10) / 10) + 'kg', '')}
+      ${cost > 0 ? stat('材料費', '約' + Math.round(cost).toLocaleString() + '円', '会社別の単価・パーメック・マット・ロス込み') : stat('プライマー／トップ', yrFmt(Math.round(d.pk * 10) / 10) + '／' + yrFmt(Math.round(d.tk * 10) / 10) + 'kg', '')}
     </div>
     ${cost > 0 ? `<div style="font-size:11px;color:#aaa;margin-bottom:10px;text-align:center">プライマー ${yrFmt(Math.round(d.pk * 10) / 10)}kg／トップ ${yrFmt(Math.round(d.tk * 10) / 10)}kg</div>` : ''}
     <div class="section-title" style="margin-top:6px">📅 月別</div>
@@ -7895,7 +7900,7 @@ function yrExportPdf() {
     ['樹脂', d.rkT + '缶' + d.rwT + '割（' + d.resinKg + 'kg）'],
     ['プライマー', yrFmt(Math.round(d.pk * 10) / 10) + 'kg'],
     ['トップ', yrFmt(Math.round(d.tk * 10) / 10) + 'kg']];
-  if (cost > 0) summary.push(['材料費（会社別の単価・パーメック・マット込み）', '約' + Math.round(cost).toLocaleString() + '円']);
+  if (cost > 0) summary.push(['材料費（会社別の単価・パーメック・マット・ロス込み）', '約' + Math.round(cost).toLocaleString() + '円']);
   const inner = '<h1>年間レポート</h1><div class="sub">' + _yrYear + '年（完了日ベース）</div>'
     + pdfTableHtml(summary)
     + '<h2>月別</h2>' + pdfTableHtml(t.monthRows)
