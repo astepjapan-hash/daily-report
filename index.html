@@ -2514,6 +2514,7 @@ async function loadStats(){
   try{
     const res=await dbFetch('/reports.json');reports=await res.json()||{};
     try{const saRes=await dbFetch('/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){}
+    if(adminLoggedIn){try{const ipRes=await dbFetch('/itemPrices.json');itemPrices=await ipRes.json()||{};}catch(e){}}
     renderStats();
   }
   catch(e){document.getElementById('stats-content').innerHTML='<div class="loading">読み込みに失敗しました</div>';}
@@ -2811,6 +2812,15 @@ function renderSiteListInner(){
       stAreaSum=list.reduce((s2,s)=>s2+(parseFloat(siteMeta[s.name]?.area)||0),0);
     }
     const perSqm=stAreaSum>0?Math.round(resinKg/stAreaSum*100)/100:0;
+    // 材料費（管理者だけに表示。プライマーＳ-１・ポリルーフ樹脂・ポリルーフトップの仕入値で概算）
+    let costChip='';
+    if(adminLoggedIn){
+      let cost=0;
+      if(getPrice('primer'))cost+=pk/KAN_KG.primerKg*getPrice('primer');
+      if(getPrice('resin'))cost+=resinKg/RESIN_KG_PER_KAN*getPrice('resin');
+      if(getPrice('top'))cost+=tk/KAN_KG.topKg*getPrice('top');
+      if(cost>0)costChip=`<span class="material-chip" style="text-align:center;grid-column:1 / -1;background:#fdf8f2;border:1px solid #f0e4d4;color:#c97a1f">💰 材料費 約${Math.round(cost).toLocaleString()}円${stAreaSum>0?`（1㎡あたり約${Math.round(cost/stAreaSum).toLocaleString()}円）`:''}<br><span style="font-size:10px;color:#c49a6a;font-weight:500">プライマー・樹脂・トップ分｜管理者のみ表示</span></span>`;
+    }
     // 月の合計欄はスクロールしても画面上部に固定表示する
     headerHtml=`<div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px 4px;padding:4px 16px 8px">
     <div class="month-nav" style="margin-bottom:8px">
@@ -2823,6 +2833,7 @@ function renderSiteListInner(){
       <span class="material-chip" style="text-align:center">樹脂 ${rk}缶${rw}割<br><span style="font-size:10px;color:#7d967d;font-weight:500">${resinKg}kg${perSqm?`｜1㎡あたり${perSqm}kg`:''}</span></span>
       <span class="material-chip" style="text-align:center">トップ ${kgToKanText(tk,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(tk*10)/10}kg</span></span>
       ${areaChipHtml(list,{showCount:true,resin:_resinCache})}
+      ${costChip}
     </div>
     </div>`;
   }
@@ -2979,6 +2990,18 @@ function showSiteDetail(nameEnc){
           <tbody>${dayRows}</tbody>
         </table>
       </div>`:'';
+  // この現場の材料費（管理者のみ・主要3材料の仕入値で概算）
+  let siteCostHtml='';
+  if(adminLoggedIn){
+    let c=0;
+    if(getPrice('primer'))c+=s.primerKg/KAN_KG.primerKg*getPrice('primer');
+    if(getPrice('resin'))c+=resinKg/RESIN_KG_PER_KAN*getPrice('resin');
+    if(getPrice('top'))c+=s.topKg/KAN_KG.topKg*getPrice('top');
+    if(c>0){
+      const ar=parseFloat(siteMeta[s.name]?.area)||0;
+      siteCostHtml=`<div style="background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;color:#c97a1f">💰 この現場の材料費 約${Math.round(c).toLocaleString()}円${ar>0?`（1㎡あたり約${Math.round(c/ar).toLocaleString()}円）`:''} <span style="font-size:10px;color:#c49a6a;font-weight:500">プライマー・樹脂・トップ分／管理者のみ表示</span></div>`;
+    }
+  }
   content.innerHTML=`
     <button onclick="renderSiteList()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:12px">← 現場リストへ戻る</button>
     <div style="background:#fff;border-radius:14px;padding:18px;border:1.5px solid #e0d8d0">
@@ -2996,6 +3019,7 @@ function showSiteDetail(nameEnc){
         <span class="material-chip" style="text-align:center">トップ ${kgToKanText(s.topKg,KAN_KG.topKg)}<br><span style="font-size:10px;color:#7d967d;font-weight:500">${Math.round(s.topKg*10)/10}kg</span></span>
         <span class="material-chip" style="text-align:center">数量 ${hasArea(s.name)?siteMeta[s.name].area+'㎡':'-'}<br><span style="font-size:10px;font-weight:500;color:${hasArea(s.name)?'#7d967d':'#c49a6a'}">${hasArea(s.name)?'施工面積':'未入力'}</span></span>
       </div>
+      ${siteCostHtml}
 
       ${breakdownHtml}
 
@@ -3522,7 +3546,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes','itemPrices'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -5759,6 +5783,11 @@ function getAlertVal(itemId) {
   const item = ITEMS_MASTER.find(i => i.id === itemId);
   return item ? item.alert : 3;
 }
+let itemPrices = {}; // {itemId: 仕入値（1缶・1個あたりの円）} 管理者向けの材料費計算に使用
+function getPrice(itemId) {
+  const v = parseFloat(itemPrices[itemId]);
+  return isNaN(v) ? 0 : v;
+}
 let movements = {}; // Firebase movements
 let moveType = 'out';
 let moveCatFilter = 'all';
@@ -5789,14 +5818,16 @@ ITEMS_MASTER.forEach(i => { if (i.unit === '缶' && !i.step) i.step = 0.1; });
 
 async function loadAll() {
   try {
-    const [invRes, movRes, alertRes] = await Promise.all([
+    const [invRes, movRes, alertRes, priceRes] = await Promise.all([
       dbFetch('/inventory.json'),
       dbFetch('/movements.json'),
-      dbFetch('/alertSettings.json')
+      dbFetch('/alertSettings.json'),
+      dbFetch('/itemPrices.json')
     ]);
     inventory = await invRes.json() || {};
     movements = await movRes.json() || {};
     alertSettings = await alertRes.json() || {};
+    itemPrices = await priceRes.json() || {};
   } catch(e) {
     inventory = {}; movements = {}; alertSettings = {};
   }
@@ -7209,6 +7240,24 @@ function renderTableStats() {
     }
     if(a.noArea)_areaNote=`<div style="font-size:10px;color:#c49a6a;margin-top:6px">※ 面積未入力の完了現場が${a.noArea}件あります（集計→現場の詳細から入力できます）</div>`;
   }
+  // 金額列（管理者のみ。仕入値を設定した品目だけ計算）
+  let costSum = 0;
+  const bodyRows = activeItems.map(item => {
+    const d = byItemStaff[item.id];
+    const p = getPrice(item.id);
+    if (p) costSum += d.total * p;
+    return `<tr>
+      <td style="${tdNameStyle}">${item.name}</td>
+      ${STAFF.map(s => {
+        const v = d.staff[s];
+        const color = v < 0 ? 'color:#388e3c;' : '';
+        return `<td style="${tdStyle}${color}">${v !== 0 ? (v%1===0?v:v.toFixed(1)) : ''}</td>`;
+      }).join('')}
+      <td style="${tdTotalStyle}${d.total < 0 ? 'color:#388e3c;' : ''}">${d.total%1===0?d.total:d.total.toFixed(1)}</td>
+      ${adminLoggedIn ? `<td style="${tdStyle}color:#c97a1f;white-space:nowrap">${p ? Math.round(d.total*p).toLocaleString() : ''}</td>` : ''}
+    </tr>`;
+  }).join('');
+  const colCount = STAFF.length + 2 + (adminLoggedIn ? 1 : 0);
   const tableHtml = `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
     <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
       <thead>
@@ -7216,22 +7265,17 @@ function renderTableStats() {
           <th style="${thStyle}text-align:left">品目</th>
           ${STAFF_SHORT.map(s => `<th style="${thStyle}">${s}</th>`).join('')}
           <th style="${thStyle}color:#e07b4f">計</th>
+          ${adminLoggedIn ? `<th style="${thStyle}color:#c97a1f">金額(円)</th>` : ''}
         </tr>
       </thead>
       <tbody>
-        ${areaRowHtml}
-        ${activeItems.length ? activeItems.map(item => {
-          const d = byItemStaff[item.id];
-          return `<tr>
-            <td style="${tdNameStyle}">${item.name}</td>
-            ${STAFF.map(s => {
-              const v = d.staff[s];
-              const color = v < 0 ? 'color:#388e3c;' : '';
-              return `<td style="${tdStyle}${color}">${v !== 0 ? (v%1===0?v:v.toFixed(1)) : ''}</td>`;
-            }).join('')}
-            <td style="${tdTotalStyle}${d.total < 0 ? 'color:#388e3c;' : ''}">${d.total%1===0?d.total:d.total.toFixed(1)}</td>
-          </tr>`;
-        }).join('') : `<tr><td colspan="6" style="padding:24px;text-align:center;color:#aaa;font-size:14px">この月の持ち出しデータはありません</td></tr>`}
+        ${areaRowHtml ? areaRowHtml.replace('</tr>', (adminLoggedIn ? `<td style="${tdStyle}"></td></tr>` : '</tr>')) : ''}
+        ${activeItems.length ? bodyRows : `<tr><td colspan="${colCount}" style="padding:24px;text-align:center;color:#aaa;font-size:14px">この月の持ち出しデータはありません</td></tr>`}
+        ${adminLoggedIn && costSum > 0 ? `<tr style="background:#fdf8f2">
+          <td style="${tdNameStyle}font-weight:700;color:#c97a1f">💰 金額合計</td>
+          <td colspan="${STAFF.length + 1}" style="${tdStyle}"></td>
+          <td style="${tdTotalStyle}color:#c97a1f;white-space:nowrap">${Math.round(costSum).toLocaleString()}円</td>
+        </tr>` : ''}
       </tbody>
     </table>
   </div>`;
@@ -7251,6 +7295,7 @@ function renderTableStats() {
   el.innerHTML = `
     ${tableHtml}
     ${_areaNote}
+    ${adminLoggedIn?`<div style="font-size:10px;color:#c49a6a;margin-top:4px">※ 金額は仕入値（￥）を設定した品目のみの概算です。管理者だけに表示されます</div>`:''}
     <div style="margin-top:12px">
       ${adminLoggedIn?`<button class="btn-primary" onclick="exportTableExcel('${zkStatsMonth}','${moveType}')">📄 PDFで出力（管理者）</button>`:''}
     </div>`;
@@ -7298,7 +7343,7 @@ function changeStatsMonth(m) { if (m) { zkStatsMonth = m; zkRenderStats(); } }
 // ── 管理 ──
 function zkShowAdmin() {
   // 前回の編集途中の値を持ち越さない（古い値での上書き保存を防止）
-  adminQtyMap = {}; adminAlertMap = {};
+  adminQtyMap = {}; adminAlertMap = {}; adminPriceMap = {};
   const el = document.getElementById('zk-admin-content');
   if (!adminLoggedIn) {
     el.innerHTML = `<div class="admin-lock">
@@ -7314,6 +7359,7 @@ function zkShowAdmin() {
 let adminCatFilter = 'all';
 let adminQtyMap = {};   // 入力中の在庫値を保持
 let adminAlertMap = {}; // 入力中のアラート値を保持
+let adminPriceMap = {}; // 入力中の仕入値を保持
 
 function zkRenderAdminContent() {
   const el = document.getElementById('zk-admin-content');
@@ -7328,15 +7374,18 @@ function zkRenderAdminContent() {
   const itemsHtml = filteredItems.map(item => {
     const qty = adminQtyMap[item.id] !== undefined ? adminQtyMap[item.id] : getQty(item.id);
     const alertVal = adminAlertMap[item.id] !== undefined ? adminAlertMap[item.id] : getAlertVal(item.id);
+    const priceVal = adminPriceMap[item.id] !== undefined ? adminPriceMap[item.id] : (itemPrices[item.id] !== undefined ? itemPrices[item.id] : '');
     const catColor = CAT_COLORS[item.category] || 'cat-other';
     const catLabel = CAT_LABELS[item.category] || item.category;
     return '<div class="item-edit-row">' +
       '<div class="item-edit-name">' + item.name + ' <span class="cat-badge ' + catColor + '">' + catLabel + '</span></div>' +
       '<div class="item-edit-fields">' +
-      '<input type="number" min="0" step="0.1" value="' + qty + '" id="admin-qty-' + item.id + '" placeholder="0" style="flex:2">' +
+      '<input type="number" min="0" step="0.1" value="' + qty + '" id="admin-qty-' + item.id + '" placeholder="0" style="flex:2;min-width:52px">' +
       '<span>' + item.unit + '</span>' +
       '<span style="font-size:11px;color:#e07b4f;white-space:nowrap">⚠️</span>' +
       '<input type="number" min="0" step="1" value="' + alertVal + '" id="admin-alert-' + item.id + '" placeholder="0" style="flex:1;max-width:52px">' +
+      '<span style="font-size:11px;color:#2858b0;white-space:nowrap">￥</span>' +
+      '<input type="number" min="0" step="1" value="' + priceVal + '" id="admin-price-' + item.id + '" placeholder="単価" style="flex:1;max-width:68px">' +
       '</div></div>';
   }).join('');
 
@@ -7348,6 +7397,7 @@ function zkRenderAdminContent() {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
     '<div class="page-title">⚙️ 在庫管理</div></div>' +
     '<div class="page-sub">現在庫を直接設定・初期設定</div>' +
+    '<div style="font-size:11px;color:#2858b0;margin:0 0 6px">￥＝仕入値（1缶・1個あたり）。入れた品目だけ、管理者向けの材料費計算に使われます</div>' +
     '<div id="admin-cat-filter" style="position:sticky;top:102px;z-index:50;background:#f5f0ea;padding:6px 0 4px;margin:0 -16px;padding-left:16px;overflow-x:auto;display:flex;gap:6px;-webkit-overflow-scrolling:touch;margin-bottom:4px">' + filterHtml + '</div>' +
     '<div class="section-title">在庫数を設定（' + filteredItems.length + '品目）</div>' +
     (filteredItems.length ? itemsHtml : '<div class="empty">該当する品目がありません</div>') +
@@ -7370,8 +7420,10 @@ function saveAdminInputs() {
   ITEMS_MASTER.forEach(item => {
     const qtyEl = document.getElementById('admin-qty-' + item.id);
     const alertEl = document.getElementById('admin-alert-' + item.id);
+    const priceEl = document.getElementById('admin-price-' + item.id);
     if (qtyEl) adminQtyMap[item.id] = qtyEl.value;
     if (alertEl) adminAlertMap[item.id] = alertEl.value;
+    if (priceEl) adminPriceMap[item.id] = priceEl.value;
   });
 }
 
@@ -7392,12 +7444,14 @@ async function saveCatQty() {
   // 現在表示中の品目のみ保存
   const invUpdates = {};
   const alertUpdates = {};
+  const priceUpdates = {};
   const visibleItems = ITEMS_MASTER.filter(item =>
     adminCatFilter === 'all' || item.category === adminCatFilter
   );
   visibleItems.forEach(item => {
     const qtyEl = document.getElementById('admin-qty-' + item.id);
     const alertEl = document.getElementById('admin-alert-' + item.id);
+    const priceEl = document.getElementById('admin-price-' + item.id);
     const qty = parseFloat(qtyEl?.value) || 0;
     const alert = parseFloat(alertEl?.value);
     invUpdates[item.id] = qty;
@@ -7406,6 +7460,12 @@ async function saveCatQty() {
       alertUpdates[item.id] = alert;
       alertSettings[item.id] = alert;
     }
+    if (priceEl) {
+      // 空欄＝単価未設定（削除）。入っていれば円で保存
+      const pv = priceEl.value === '' ? null : (parseFloat(priceEl.value) || 0);
+      priceUpdates[item.id] = pv;
+      if (pv === null) delete itemPrices[item.id]; else itemPrices[item.id] = pv;
+    }
   });
   try {
     const promises = Object.entries(invUpdates).map(([id, qty]) =>
@@ -7413,6 +7473,9 @@ async function saveCatQty() {
     );
     Object.entries(alertUpdates).forEach(([id, val]) =>
       promises.push(dbFetch('/alertSettings/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
+    );
+    Object.entries(priceUpdates).forEach(([id, val]) =>
+      promises.push(dbFetch('/itemPrices/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
     );
     await Promise.all(promises);
     const catLabel = adminCatFilter === 'all' ? '全品目' : CAT_LABELS[adminCatFilter] || adminCatFilter;
@@ -7441,10 +7504,20 @@ async function saveAllQty() {
     alertUpdates[item.id] = !isNaN(alert) ? alert : getAlertVal(item.id);
     alertSettings[item.id] = alertUpdates[item.id];
   });
+  // 仕入値：入力中の値を優先し、空欄は未設定として除外
+  const priceObj = {};
+  ITEMS_MASTER.forEach(item => {
+    let pv;
+    if (adminPriceMap[item.id] !== undefined) pv = adminPriceMap[item.id] === '' ? null : (parseFloat(adminPriceMap[item.id]) || 0);
+    else pv = (itemPrices[item.id] !== undefined) ? itemPrices[item.id] : null;
+    if (pv !== null) priceObj[item.id] = pv;
+  });
+  itemPrices = priceObj;
   try {
     await Promise.all([
       dbFetch('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(invUpdates) }),
-      dbFetch('/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) })
+      dbFetch('/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) }),
+      dbFetch('/itemPrices.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(priceObj) })
     ]);
     showToast('✅ 保存しました！');
   } catch(e) { alert('保存に失敗しました。'); }
