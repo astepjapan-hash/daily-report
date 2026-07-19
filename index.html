@@ -3700,6 +3700,7 @@ async function renderAdminContent(){
 
       <button onclick="showOrderlistHome()" style="width:100%;margin-top:10px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">🛒 注文リスト（材料の買い物メモ）<span style="color:#e07b4f">▶</span></button>
       <button onclick="showStocktake()" style="width:100%;margin-top:8px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">📋 棚卸し（実物の数と合わせる）<span style="color:#e07b4f">▶</span></button>
+      <button onclick="showYearReport()" style="width:100%;margin-top:8px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">📊 年間レポート<span style="color:#e07b4f">▶</span></button>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-work')">⏱ 作業時間・作業日数 <span class="collapse-arrow" id="arrow-collapse-work">▶</span></div>
       <div class="collapse-body" id="collapse-work" style="margin-bottom:20px">
@@ -7716,6 +7717,163 @@ async function stApplyDiff() {
   } catch(e) { alert('保存に失敗しました。'); }
 }
 
+// ══════════ 年間レポート（管理者用。件数・㎡・材料・材料費の年間まとめ） ══════════
+let _yrYear = '';
+
+// プライマー・樹脂・トップの仕入値から材料費（円）を概算
+function calc3Cost(pk, resinKg, tk) {
+  let c = 0;
+  if (getPrice('primer')) c += pk / KAN_KG.primerKg * getPrice('primer');
+  if (getPrice('resin')) c += resinKg / RESIN_KG_PER_KAN * getPrice('resin');
+  if (getPrice('top')) c += tk / KAN_KG.topKg * getPrice('top');
+  return c;
+}
+
+async function showYearReport() {
+  if (!adminLoggedIn) return;
+  const content = document.getElementById('admin-content');
+  content.innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const [rRes, smRes, saRes, ipRes, coRes] = await Promise.all([
+      dbFetch('/reports.json'), dbFetch('/siteMeta.json'), dbFetch('/siteAliases.json'), dbFetch('/itemPrices.json'), dbFetch('/companies.json')
+    ]);
+    reports = await rRes.json() || {};
+    siteMeta = await smRes.json() || {};
+    siteAliases = await saRes.json() || {};
+    itemPrices = await ipRes.json() || {};
+    companies = await coRes.json() || {};
+  } catch(e) {}
+  if (!_yrYear) _yrYear = String(new Date().getFullYear());
+  renderYearReport();
+}
+
+function yrChangeYear(delta) {
+  _yrYear = String(parseInt(_yrYear) + delta);
+  renderYearReport();
+}
+
+// 年間の集計データをまとめて計算
+function yrCalc(year) {
+  const sites = Object.values(aggregateSites()).filter(s => s.completed && (s.completedDate || '').startsWith(year));
+  let areaSum = 0, pk = 0, tk = 0, rkT = 0, rwT = 0, areaMiss = 0;
+  const months = {}, byCompany = {};
+  sites.forEach(s => {
+    const ar = parseFloat(siteMeta[s.name]?.area) || 0;
+    if (!hasArea(s.name)) areaMiss++;
+    areaSum += ar; pk += s.primerKg; tk += s.topKg;
+    rkT += s.resinKan; rwT += s.resinWari;
+    const mo = s.completedDate.slice(5, 7);
+    if (!months[mo]) months[mo] = { count: 0, area: 0, resinTen: 0, pk: 0, tk: 0 };
+    months[mo].count++; months[mo].area += ar; months[mo].resinTen += s.resinKan * 10 + s.resinWari; months[mo].pk += s.primerKg; months[mo].tk += s.topKg;
+    if (!byCompany[s.company]) byCompany[s.company] = { count: 0, area: 0 };
+    byCompany[s.company].count++; byCompany[s.company].area += ar;
+  });
+  rkT += Math.floor(rwT / 10); rwT = rwT % 10;
+  const resinKg = Math.round((rkT * 10 + rwT) * RESIN_KG_PER_KAN / 10 * 10) / 10;
+  // 人別（その年の日報から：樹脂使用量と数量の取り分）
+  const areaBy = computeAreaByStaff(year + '-01-01', year + '-12-31');
+  const resinByStaff = {};
+  Object.values(reports).forEach(r => {
+    if (!r.staffName || !(r.date || '').startsWith(year)) return;
+    let ten = 0;
+    (r.sites || []).forEach(x => { ten += (parseInt(x.resinKan) || 0) * 10 + (parseInt(x.resinWari) || 0); });
+    if (ten > 0) resinByStaff[r.staffName] = (resinByStaff[r.staffName] || 0) + ten;
+  });
+  return { count: sites.length, areaSum, pk, tk, rkT, rwT, resinKg, areaMiss, months, byCompany, areaBy, resinByStaff };
+}
+
+function yrFmt(v) { return v % 1 === 0 ? v : v.toFixed(1); }
+
+// 月別・人別・会社別の表データ（画面とPDFで共用）
+function yrTables(d) {
+  const monthRows = [['月', '件数', '数量(㎡)', '樹脂', '材料費(円)']];
+  for (let m = 1; m <= 12; m++) {
+    const key = String(m).padStart(2, '0');
+    const v = d.months[key];
+    if (!v) continue;
+    const mResinKg = Math.round(v.resinTen * RESIN_KG_PER_KAN / 10 * 10) / 10;
+    const mc = calc3Cost(v.pk, mResinKg, v.tk);
+    monthRows.push([m + '月', v.count + '件', yrFmt(Math.round(v.area * 10) / 10) + '㎡', Math.floor(v.resinTen / 10) + '缶' + (v.resinTen % 10) + '割', mc > 0 ? Math.round(mc).toLocaleString() : '-']);
+  }
+  const staffNames = [...new Set([...Object.keys(d.areaBy.byStaff), ...Object.keys(d.resinByStaff)])].filter(n => n !== '外注').sort((a, b) => (d.resinByStaff[b] || 0) - (d.resinByStaff[a] || 0));
+  const staffRows = [['名前', '数量(取り分㎡)', '樹脂']];
+  staffNames.forEach(n => {
+    const a = d.areaBy.byStaff[n] || 0;
+    const ten = d.resinByStaff[n] || 0;
+    staffRows.push([n, a ? yrFmt(Math.round(a * 10) / 10) + '㎡' : '-', ten ? Math.floor(ten / 10) + '缶' + (ten % 10) + '割' : '-']);
+  });
+  const compRows = [['会社', '件数', '数量(㎡)']];
+  Object.entries(d.byCompany).sort((a, b) => b[1].count - a[1].count).forEach(([c, v]) => {
+    compRows.push([c, v.count + '件', yrFmt(Math.round(v.area * 10) / 10) + '㎡']);
+  });
+  return { monthRows, staffRows, compRows };
+}
+
+function renderYearReport() {
+  const content = document.getElementById('admin-content');
+  const d = yrCalc(_yrYear);
+  const cost = calc3Cost(d.pk, d.resinKg, d.tk);
+  const t = yrTables(d);
+  const tableHtml = rows => `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden">
+    <thead><tr>${rows[0].map((h, i) => `<th style="padding:7px 6px;font-size:11px;font-weight:700;color:#2d2a26;background:#f5f0ea;border-bottom:2px solid #e0d8d0;white-space:nowrap;text-align:${i === 0 ? 'left' : 'center'}">${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.slice(1).map(r => `<tr>${r.map((c, i) => `<td style="padding:7px 6px;font-size:12px;border-bottom:1px solid #f0ede8;color:#2d2a26;white-space:nowrap;text-align:${i === 0 ? 'left' : 'center'}">${escHtml(String(c))}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+  const stat = (label, val, sub) => `<div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:12px;text-align:center">
+    <div style="font-size:11px;color:#888;font-weight:700">${label}</div>
+    <div style="font-size:20px;font-weight:800;color:#2d2a26;margin-top:2px">${val}</div>
+    ${sub ? `<div style="font-size:10px;color:#aaa;margin-top:1px">${sub}</div>` : ''}
+  </div>`;
+  content.innerHTML = `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:#2d2a26">📊 年間レポート</div>
+        <div style="font-size:11px;color:#aaa">完了日ベースの年間まとめ（管理者のみ）</div>
+      </div>
+    </div>
+    <div class="month-nav" style="margin-bottom:10px">
+      <button class="month-nav-btn" onclick="yrChangeYear(-1)">◀</button>
+      <span class="month-nav-label">${_yrYear}年</span>
+      <button class="month-nav-btn" onclick="yrChangeYear(1)">▶</button>
+    </div>
+    ${d.count ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      ${stat('完了現場', d.count + '件', '')}
+      ${stat('施工数量', yrFmt(Math.round(d.areaSum * 10) / 10) + '㎡', d.areaMiss ? '未入力' + d.areaMiss + '件あり' : '')}
+      ${stat('樹脂', d.rkT + '缶' + d.rwT + '割', d.resinKg + 'kg')}
+      ${cost > 0 ? stat('材料費', '約' + Math.round(cost).toLocaleString() + '円', 'プライマー・樹脂・トップ分') : stat('プライマー／トップ', yrFmt(Math.round(d.pk * 10) / 10) + '／' + yrFmt(Math.round(d.tk * 10) / 10) + 'kg', '')}
+    </div>
+    ${cost > 0 ? `<div style="font-size:11px;color:#aaa;margin-bottom:10px;text-align:center">プライマー ${yrFmt(Math.round(d.pk * 10) / 10)}kg／トップ ${yrFmt(Math.round(d.tk * 10) / 10)}kg</div>` : ''}
+    <div class="section-title" style="margin-top:6px">📅 月別</div>
+    ${tableHtml(t.monthRows)}
+    <div class="section-title" style="margin-top:14px">👤 人別</div>
+    ${tableHtml(t.staffRows)}
+    <div class="section-title" style="margin-top:14px">🏢 会社別</div>
+    ${tableHtml(t.compRows)}
+    <div style="margin-top:14px"><button class="btn-primary" onclick="yrExportPdf()">📄 PDFで出力</button></div>
+    ` : '<div class="empty">この年の完了現場がありません</div>'}
+  </div>`;
+}
+
+function yrExportPdf() {
+  const d = yrCalc(_yrYear);
+  const cost = calc3Cost(d.pk, d.resinKg, d.tk);
+  const t = yrTables(d);
+  const summary = [['項目', '数値'],
+    ['完了現場', d.count + '件'],
+    ['施工数量', yrFmt(Math.round(d.areaSum * 10) / 10) + '㎡' + (d.areaMiss ? '（未入力' + d.areaMiss + '件）' : '')],
+    ['樹脂', d.rkT + '缶' + d.rwT + '割（' + d.resinKg + 'kg）'],
+    ['プライマー', yrFmt(Math.round(d.pk * 10) / 10) + 'kg'],
+    ['トップ', yrFmt(Math.round(d.tk * 10) / 10) + 'kg']];
+  if (cost > 0) summary.push(['材料費（プライマー・樹脂・トップ分）', '約' + Math.round(cost).toLocaleString() + '円']);
+  const inner = '<h1>年間レポート</h1><div class="sub">' + _yrYear + '年（完了日ベース）</div>'
+    + pdfTableHtml(summary)
+    + '<h2>月別</h2>' + pdfTableHtml(t.monthRows)
+    + '<h2>人別</h2>' + pdfTableHtml(t.staffRows)
+    + '<h2>会社別</h2>' + pdfTableHtml(t.compRows);
+  openPdfWindow('年間レポート_' + _yrYear + '年', inner);
+}
+
 // ══════════ 注文リスト（管理者用の買い物メモ。納品チェックで自動入庫） ══════════
 let orderLists = {};
 let _olCurrentKey = null;
@@ -7726,10 +7884,11 @@ async function showOrderlistHome() {
   const content = document.getElementById('admin-content');
   content.innerHTML = '<div class="loading">読み込み中...</div>';
   try {
-    const [oRes, invRes, alRes] = await Promise.all([dbFetch('/orderLists.json'), dbFetch('/inventory.json'), dbFetch('/alertSettings.json')]);
+    const [oRes, invRes, alRes, movRes] = await Promise.all([dbFetch('/orderLists.json'), dbFetch('/inventory.json'), dbFetch('/alertSettings.json'), dbFetch('/movements.json')]);
     orderLists = await oRes.json() || {};
     inventory = await invRes.json() || {};
     alertSettings = await alRes.json() || {};
+    movements = await movRes.json() || {};
   } catch(e) { orderLists = {}; }
   _olCurrentKey = null;
   const entries = Object.entries(orderLists);
@@ -7778,6 +7937,21 @@ function openOrderlist(key) {
   renderOrderlistEdit();
 }
 
+// 直近30日の使用ペース（持ち出し−返却。加工・外注の納品は除く）から「在庫があと約何日もつか」を出す
+function calcDaysLeft(itemId) {
+  const d = new Date(); d.setDate(d.getDate() - 30);
+  const from = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  let used = 0;
+  Object.values(movements || {}).forEach(m => {
+    if (!m || m.itemId !== itemId || m.processing || m.handover) return;
+    if ((m.date || '') < from) return;
+    if (m.type === 'out') used += (parseFloat(m.qty) || 0);
+    else if ((m.staff || '') !== '外注') used -= (parseFloat(m.qty) || 0);
+  });
+  if (used <= 0) return null;
+  return Math.floor(getQty(itemId) / (used / 30));
+}
+
 function renderOrderlistEdit() {
   const content = document.getElementById('admin-content');
   const l = orderLists[_olCurrentKey];
@@ -7820,15 +7994,18 @@ function renderOrderlistEdit() {
     // 注文中（未納品）の材料一覧を注文数つきで持つ
     const inList = {};
     items.forEach(it => { if (!it.received) inList[it.itemId] = it.qty; });
-    // ⚠️ 在庫が少ない材料（警告ラインの目安以下）
-    const lowHtml = ITEMS_MASTER.filter(i => getQty(i.id) <= getAlertVal(i.id)).map(i => {
-      const q = getQty(i.id);
+    // ⚠️ 在庫が少ない材料（目安以下）＋ 使用ペースから2週間以内に切れそうな材料
+    const lowHtml = ITEMS_MASTER.map(i => ({ i, q: getQty(i.id), al: getAlertVal(i.id), dl: calcDaysLeft(i.id) }))
+      .filter(x => x.q <= x.al || (x.dl !== null && x.dl <= 14))
+      .map(x => {
+      const { i, q, al, dl } = x;
       const sel = inList[i.id] || 0;
+      const dlTxt = (dl !== null && dl <= 30) ? `｜<span style="color:#c0392b;font-weight:700">あと約${dl}日</span>` : '';
       return `<button onclick="olTapItem('${i.id}','ol-low-items')" style="width:calc(50% - 3px);padding:10px 8px;border-radius:10px;border:1.5px solid ${sel ? '#e07b4f' : '#f0c8c8'};background:${sel ? '#fdf0e9' : '#fff'};text-align:left;cursor:pointer;font-family:inherit">
         <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
         <div style="font-size:11px;color:#aaa;margin-top:2px;line-height:19px">${sel
-          ? `注文 <span style="color:#e07b4f;font-weight:800;font-size:15px">${fmt(sel)}</span>${i.unit}｜在庫 ${fmt(q)}${i.unit}`
-          : `在庫 <span style="color:#d32f2f;font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜目安 ${fmt(getAlertVal(i.id))}${i.unit}未満`}</div>
+          ? `注文 <span style="color:#e07b4f;font-weight:800;font-size:15px">${fmt(sel)}</span>${i.unit}｜在庫 ${fmt(q)}${i.unit}${dlTxt}`
+          : `在庫 <span style="color:${q <= al ? '#d32f2f' : '#2d2a26'};font-weight:700;font-size:13px">${fmt(q)}</span>${i.unit}｜目安${fmt(al)}${i.unit}${dlTxt}`}</div>
       </button>`;
     }).join('');
     const cats = ['frp','sub','drain','tool','consume'];
@@ -7857,8 +8034,8 @@ function renderOrderlistEdit() {
         <div id="ol-cat-items" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${catItemsHtml}</div>
       </div>
       <div style="margin-top:12px;background:#fff;border-radius:12px;padding:12px;border:1.5px solid #f0c8c8">
-        <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:8px">⚠️ 在庫が少ない材料（タップで追加）</div>
-        <div id="ol-low-items" style="display:flex;flex-wrap:wrap;gap:6px">${lowHtml || '<div style="font-size:12px;color:#aaa">今は目安を下回っている材料はありません</div>'}</div>
+        <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:8px">⚠️ 在庫が少ない・切れそうな材料（タップで追加）</div>
+        <div id="ol-low-items" style="display:flex;flex-wrap:wrap;gap:6px">${lowHtml || '<div style="font-size:12px;color:#aaa">今は目安を下回っている材料も、近く切れそうな材料もありません</div>'}</div>
       </div>
       <div style="margin-top:12px">
         <button onclick="olDeleteList()" style="width:100%;padding:10px;background:#fff;color:#e07b4f;border:1.5px solid #e07b4f;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🗑 このリストを削除</button>
