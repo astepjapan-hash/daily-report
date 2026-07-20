@@ -7103,16 +7103,21 @@ function renderHistory() {
     const dayInTotal = dayList.filter(([,m]) => m.type === 'in').length;
     const daySt = (stByDate[dateKey] || []).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
 
-    // 棚卸しのカード（青）。登録時刻は管理者だけに表示
-    const stCardsHtml = daySt.map(g =>
-      `<div class="history-item" style="border-left:3px solid #2858b0">
+    // 棚卸しのカード（青）。一致した品目・修正した品目の両方を表示。登録時刻は管理者だけに表示
+    const stCardsHtml = daySt.map(g => {
+      const gItems = g.items || g.changes || [];
+      const gMatched = gItems.filter(c => c.before === c.after);
+      const gChanged = gItems.filter(c => c.before !== c.after);
+      return `<div class="history-item" style="border-left:3px solid #2858b0">
         <div class="hist-badge" style="background:#eaf0fb;color:#2858b0">棚卸し</div>
         <div class="hist-info">
-          <div class="hist-name">📋 棚卸し（${(g.changes||[]).length}品目を修正）</div>
+          <div class="hist-name">📋 棚卸し（${gItems.length}品目を確認${gChanged.length ? '・'+gChanged.length+'品目を修正' : ''}）</div>
           <div class="hist-meta">${escHtml(g.by||'')}${adminLoggedIn && g.createdAt ? ' ・ 🕐 ' + fmtTime(g.createdAt) + ' 登録' : ''}</div>
-          ${(g.changes||[]).length ? `<div class="hist-meta" style="margin-top:2px">${(g.changes||[]).map(c => escHtml(c.name)+' '+c.before+'→'+c.after).join('、')}</div>` : ''}
+          ${gChanged.length ? `<div class="hist-meta" style="margin-top:2px;color:#c0392b">修正：${stNamesTrunc(gChanged.map(c => escHtml(c.name)+' '+c.before+'→'+c.after), 10)}</div>` : ''}
+          ${gMatched.length ? `<div class="hist-meta" style="margin-top:2px;color:#4a7c4a">✅ 一致：${stNamesTrunc(gMatched.map(c => escHtml(c.name)), 8)}</div>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     const itemsHtml = dayList.map(([key, m]) =>
       `<div class="history-item">
@@ -7672,6 +7677,7 @@ let _stCat = 'frp';
 let _stInput = {};
 let _stBy = '全員';   // だれの棚卸しか（全員 or 名前）
 let _stDate = '';     // 棚卸しの日付
+let _stDatePickerOpen = false; // 日付入力欄を開いているか（タップ選択のとき）
 
 async function showStocktake() {
   // 在庫タブの入出庫画面から全員が使える
@@ -7692,6 +7698,7 @@ async function showStocktake() {
   _stInput = {};
   _stBy = '全員';
   _stDate = getToday();
+  _stDatePickerOpen = false;
   renderStocktake();
 }
 
@@ -7701,7 +7708,9 @@ function stBack() {
 }
 
 function stSetBy(v) { stSaveInputs(); _stBy = v; renderStocktake(); }
-function stSetDate(v) { stSaveInputs(); if (v) _stDate = v; renderStocktake(); }
+function stSetDate(v) { stSaveInputs(); if (v) _stDate = v; _stDatePickerOpen = false; renderStocktake(); }
+function stSetToday() { stSaveInputs(); _stDate = getToday(); _stDatePickerOpen = false; renderStocktake(); }
+function stToggleDatePicker() { stSaveInputs(); _stDatePickerOpen = !_stDatePickerOpen; renderStocktake(); }
 
 // 入力欄の値を控えておく（分類を切り替えても消えないように）
 function stSaveInputs() {
@@ -7719,22 +7728,32 @@ function stPickCat(cat) {
   renderStocktake();
 }
 
+// 名前をタップの度に何品目分再表示しても短い文字列内に収める（長い一致リストの読みやすさ用）
+function stNamesTrunc(names, n) {
+  if (names.length <= n) return names.join('、');
+  return names.slice(0, n).join('、') + `、他${names.length - n}件`;
+}
+
 function renderStocktake() {
   const content = document.getElementById('stocktake-view');
   const cats = ['frp','sub','drain','tool','consume'];
   const catRow = cats.map(c => `<button class="filter-btn ${_stCat === c ? 'active' : ''}" style="flex-shrink:0" onclick="stPickCat('${c}')">${CAT_LABELS[c]}</button>`).join('');
   const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
-  // 前回の棚卸し（選んだ日以前で一番新しい記録）
-  const logsAll = Object.values(window._stLogs || {});
-  const prev = logsAll.filter(g => (g.date||'') <= _stDate)
-    .sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.createdAt||0)-(a.createdAt||0))[0];
-  // 前回の棚卸しから選んだ日までに持ち出した量（人を選んでいればその人の分だけ。加工・受け渡しは除く）
+
+  // 品目ごとに「最後に棚卸しで確認した記録」を調べる（倉庫ごとに別々に棚卸しするため、品目ごとに判定する）
+  const logsAll = Object.values(window._stLogs || {}).filter(g => g && (g.date || '') <= _stDate);
+  logsAll.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const lastConfirmedMap = {}; // itemId -> その品目を最後に確認した棚卸し記録
+  logsAll.forEach(g => { (g.items || g.changes || []).forEach(c => { lastConfirmedMap[c.itemId] = g; }); });
+
+  // 品目ごとに「最後に確認されてから」選んだ日までに持ち出した量（人を選んでいればその人の分だけ。加工・受け渡しは除く）
   const outMap = {};
   Object.values(movements || {}).forEach(m => {
     if (!m || m.type !== 'out' || m.processing || m.handover) return;
     if (_stBy !== '全員' && m.staff !== _stBy) return;
     if ((m.date||'') > _stDate) return;
-    if (prev && (m.createdAt||0) <= (prev.createdAt||0)) return;
+    const lastLog = lastConfirmedMap[m.itemId];
+    if (lastLog && (m.createdAt||0) <= (lastLog.createdAt||0)) return;
     outMap[m.itemId] = (outMap[m.itemId]||0) + (parseFloat(m.qty)||0);
   });
   const rows = ITEMS_MASTER.filter(i => i.category === _stCat).map(i => {
@@ -7750,13 +7769,29 @@ function renderStocktake() {
       <span style="font-size:11px;color:#aaa;flex-shrink:0">${i.unit}</span>
     </div>`;
   }).join('');
-  const logs = logsAll.sort((a,b) => (b.createdAt||0)-(a.createdAt||0)).slice(0,3);
-  const logsHtml = logs.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">最近の棚卸し</div>${logs.map(g => `
-    <div class="card" style="margin-bottom:6px;padding:10px 12px">
-      <div style="font-size:12px;font-weight:700;color:#2d2a26">${formatLlDate(g.date)}　${escHtml(g.by||'')}　<span style="color:#888;font-weight:600">${(g.changes||[]).length}品目を修正</span></div>
-      <div style="font-size:11px;color:#aaa;margin-top:2px">${(g.changes||[]).map(c => escHtml(c.name)+' '+c.before+'→'+c.after).join('、')}</div>
-    </div>`).join('')}</div>` : '';
-  const staffOpts = ['全員', ...getStaffNames()].map(n => `<option ${_stBy===n?'selected':''}>${escHtml(n)}</option>`).join('');
+  const logs = Object.values(window._stLogs || {}).sort((a,b) => (b.createdAt||0)-(a.createdAt||0)).slice(0,3);
+  const logsHtml = logs.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">最近の棚卸し</div>${logs.map(g => {
+    const items = g.items || g.changes || [];
+    const changed = items.filter(c => c.before !== c.after);
+    return `<div class="card" style="margin-bottom:6px;padding:10px 12px">
+      <div style="font-size:12px;font-weight:700;color:#2d2a26">${formatLlDate(g.date)}　${escHtml(g.by||'')}　<span style="color:#888;font-weight:600">${items.length}品目を確認${changed.length ? '・'+changed.length+'品目を修正' : ''}</span></div>
+      ${changed.length ? `<div style="font-size:11px;color:#aaa;margin-top:2px">${changed.map(c => escHtml(c.name)+' '+c.before+'→'+c.after).join('、')}</div>` : ''}
+    </div>`;
+  }).join('')}</div>` : '';
+
+  // 👤 だれの棚卸しか（タップで選択）
+  const staffChipRow = ['全員', ...getStaffNames()].map(n =>
+    `<button class="filter-btn ${_stBy===n?'active':''}" style="flex-shrink:0" onclick="stSetBy('${n.replace(/'/g,"\\'")}')">${escHtml(n)}</button>`
+  ).join('');
+  // 📅 いつの棚卸しか（タップで選択。今日以外は日付欄を開いて選ぶ）
+  const isToday = _stDate === getToday();
+  const dateChipRow = `
+    <button class="filter-btn ${isToday?'active':''}" onclick="stSetToday()">今日</button>
+    <button class="filter-btn ${!isToday?'active':''}" onclick="stToggleDatePicker()">${isToday?'📅 日付を選ぶ':'📅 '+formatLlDate(_stDate)}</button>`;
+  const datePickerHtml = _stDatePickerOpen
+    ? `<input type="date" id="st-date" value="${_stDate}" onchange="stSetDate(this.value)" style="margin-top:8px;width:100%;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">`
+    : '';
+
   content.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <button onclick="stBack()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
@@ -7766,11 +7801,12 @@ function renderStocktake() {
       </div>
     </div>
     <div class="card" style="margin-bottom:8px;padding:10px 12px">
-      <div style="display:flex;gap:8px">
-        <select id="st-by" onchange="stSetBy(this.value)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;background:#fff">${staffOpts}</select>
-        <input type="date" id="st-date" value="${_stDate}" onchange="stSetDate(this.value)" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">
-      </div>
-      <div style="font-size:11px;color:#c49a6a;margin-top:6px;line-height:1.6">🟠 色付き＝${prev?`前回の棚卸し（${formatLlDate(prev.date)}）`:'記録の始まり'}から${formatLlDate(_stDate)}までに${_stBy==='全員'?'':escHtml(_stBy)+'さんが'}持ち出した材料です。数えるときの目印にしてください</div>
+      <div style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px">👤 だれの棚卸し？</div>
+      <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${staffChipRow}</div>
+      <div style="font-size:11px;font-weight:700;color:#888;margin:10px 0 6px">📅 いつの棚卸し？</div>
+      <div style="display:flex;gap:6px">${dateChipRow}</div>
+      ${datePickerHtml}
+      <div style="font-size:11px;color:#c49a6a;margin-top:8px;line-height:1.6">🟠 色付き＝その品目を最後に棚卸しで確認してから${formatLlDate(_stDate)}までに${_stBy==='全員'?'':escHtml(_stBy)+'さんが'}持ち出した材料です。倉庫ごとに分けて確認してもOK（確認できた品目は、次に持ち出すまで色が付きません）</div>
     </div>
     <div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px;padding:6px 16px 4px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch">${catRow}</div>
     <div style="margin-top:8px">${rows}</div>
@@ -7784,43 +7820,56 @@ function renderStocktake() {
 function stCheckDiff() {
   stSaveInputs();
   const el = document.getElementById('st-result');
+  const matched = [];
   const diffs = [];
-  let matchCnt = 0;
   ITEMS_MASTER.forEach(i => {
     if (_stInput[i.id] === undefined) return;
     const counted = Math.round((parseFloat(_stInput[i.id]) || 0) * 10) / 10;
     const cur = getQty(i.id);
-    if (counted === cur) { matchCnt++; return; }
-    diffs.push({ id: i.id, name: i.name, unit: i.unit, before: cur, after: counted });
+    if (counted === cur) matched.push({ itemId: i.id, name: i.name, unit: i.unit, qty: cur });
+    else diffs.push({ itemId: i.id, name: i.name, unit: i.unit, before: cur, after: counted });
   });
-  if (!diffs.length && !matchCnt) { el.innerHTML = '<div class="notice-empty">まだ実物の数が入力されていません。数えた品目の「実物」欄に数を入れてください</div>'; return; }
+  if (!diffs.length && !matched.length) { el.innerHTML = '<div class="notice-empty">まだ実物の数が入力されていません。数えた品目の「実物」欄に数を入れてください</div>'; return; }
+  window._stMatched = matched;
   window._stDiffs = diffs;
   const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+  const total = matched.length + diffs.length;
   el.innerHTML = `
-    ${matchCnt ? `<div style="font-size:12px;color:#4a7c4a;font-weight:700;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px;margin-bottom:8px">✅ ${matchCnt}品目はアプリと一致していました</div>` : ''}
+    ${matched.length ? `<div style="font-size:12px;color:#4a7c4a;font-weight:700;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px;margin-bottom:8px">✅ ${matched.length}品目はアプリと一致していました</div>` : ''}
     ${diffs.length ? `
       <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:6px">アプリと違う品目（${diffs.length}件）</div>
       ${diffs.map(d => `<div class="card" style="margin-bottom:6px;padding:10px 12px;border-color:#e57373;background:#fdf3f3;display:flex;align-items:center;gap:8px">
         <div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#2d2a26">${escHtml(d.name)}</div>
         <div style="font-size:14px;font-weight:800;color:#c0392b;flex-shrink:0">${fmt(d.before)} → ${fmt(d.after)}${d.unit}</div>
       </div>`).join('')}
-      <button class="btn-primary" style="background:#c0392b;margin-top:4px" onclick="stApplyDiff()">実物の数に直す（${diffs.length}品目）</button>
-      <div style="font-size:11px;color:#aaa;margin-top:6px;text-align:center">※差が大きい品目は、直す前に「集計」→「材料」の突き合わせで原因を調べるのがおすすめです</div>`
-    : '<div style="font-size:12px;color:#4a7c4a;font-weight:700;text-align:center;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px">差はありません。在庫はぴったり合っています！</div>'}`;
+      <div style="font-size:11px;color:#aaa;margin:2px 0 6px;text-align:center">※差が大きい品目は、直す前に「集計」→「材料」の突き合わせで原因を調べるのがおすすめです</div>`
+    : '<div style="font-size:12px;color:#4a7c4a;font-weight:700;text-align:center;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px;margin-bottom:6px">差はありません。在庫はぴったり合っています！</div>'}
+    <button class="btn-primary" style="${diffs.length?'background:#c0392b;':''}margin-top:4px" onclick="stApplyDiff()">${diffs.length ? `実物の数に直して記録する（${total}品目）` : `この内容で棚卸しを記録する（${total}品目）`}</button>`;
 }
 
 async function stApplyDiff() {
   const diffs = window._stDiffs || [];
-  if (!diffs.length) return;
-  if (!confirm(diffs.length + '品目の在庫を実物の数に直します。よろしいですか？')) return;
+  const matched = window._stMatched || [];
+  if (!diffs.length && !matched.length) return;
+  const msg = diffs.length
+    ? diffs.length + '品目の在庫を実物の数に直します。よろしいですか？'
+    : matched.length + '品目を「確認済み」として記録します（在庫数の変更はありません）。よろしいですか？';
+  if (!confirm(msg)) return;
   try {
-    await Promise.all(diffs.map(d => {
-      inventory[d.id] = d.after;
-      return dbFetch('/inventory/' + d.id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d.after) });
-    }));
-    const log = { date: _stDate || getToday(), by: _stBy || ((currentUser && currentUser.name) || ''), createdAt: Date.now(), changes: diffs.map(d => ({ itemId: d.id, name: d.name, before: d.before, after: d.after })) };
+    if (diffs.length) {
+      await Promise.all(diffs.map(d => {
+        inventory[d.itemId] = d.after;
+        return dbFetch('/inventory/' + d.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d.after) });
+      }));
+    }
+    // 一致した品目・修正した品目の両方を記録する（一致した品目も「確認できた」証跡として残す）
+    const items = [
+      ...matched.map(m => ({ itemId: m.itemId, name: m.name, before: m.qty, after: m.qty })),
+      ...diffs.map(d => ({ itemId: d.itemId, name: d.name, before: d.before, after: d.after }))
+    ];
+    const log = { date: _stDate || getToday(), by: _stBy || ((currentUser && currentUser.name) || ''), createdAt: Date.now(), items };
     await dbFetch('/stocktakes.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(log) });
-    showToast('📋 ' + diffs.length + '品目の在庫を実物に合わせました');
+    showToast('📋 ' + items.length + '品目の棚卸しを記録しました');
     _stInput = {};
     showStocktake();
   } catch(e) { alert('保存に失敗しました。'); }
