@@ -7675,9 +7675,8 @@ function zkUpdateAdminBadge() {
 // ══════════ 棚卸しモード（実物を数えてアプリの在庫と合わせる） ══════════
 let _stCat = 'frp';
 let _stInput = {};
-let _stBy = '全員';   // だれの棚卸しか（全員 or 名前）
-let _stDate = '';     // 棚卸しの日付
-let _stDatePickerOpen = false; // 日付入力欄を開いているか（タップ選択のとき）
+let _stBy = '全員';   // だれが棚卸ししたか（全員 or 名前）
+let _stDate = '';     // 棚卸しの日付（常に当日）
 
 async function showStocktake() {
   // 在庫タブの入出庫画面から全員が使える
@@ -7698,7 +7697,6 @@ async function showStocktake() {
   _stInput = {};
   _stBy = '全員';
   _stDate = getToday();
-  _stDatePickerOpen = false;
   renderStocktake();
 }
 
@@ -7708,9 +7706,6 @@ function stBack() {
 }
 
 function stSetBy(v) { stSaveInputs(); _stBy = v; renderStocktake(); }
-function stSetDate(v) { stSaveInputs(); if (v) _stDate = v; _stDatePickerOpen = false; renderStocktake(); }
-function stSetToday() { stSaveInputs(); _stDate = getToday(); _stDatePickerOpen = false; renderStocktake(); }
-function stToggleDatePicker() { stSaveInputs(); _stDatePickerOpen = !_stDatePickerOpen; renderStocktake(); }
 
 // 入力欄の値を控えておく（分類を切り替えても消えないように）
 function stSaveInputs() {
@@ -7779,18 +7774,10 @@ function renderStocktake() {
     </div>`;
   }).join('')}</div>` : '';
 
-  // 👤 だれの棚卸しか（タップで選択）
+  // 👤 だれが棚卸ししたか（タップで選択）
   const staffChipRow = ['全員', ...getStaffNames()].map(n =>
     `<button class="filter-btn ${_stBy===n?'active':''}" style="flex-shrink:0" onclick="stSetBy('${n.replace(/'/g,"\\'")}')">${escHtml(n)}</button>`
   ).join('');
-  // 📅 いつの棚卸しか（タップで選択。今日以外は日付欄を開いて選ぶ）
-  const isToday = _stDate === getToday();
-  const dateChipRow = `
-    <button class="filter-btn ${isToday?'active':''}" onclick="stSetToday()">今日</button>
-    <button class="filter-btn ${!isToday?'active':''}" onclick="stToggleDatePicker()">${isToday?'📅 日付を選ぶ':'📅 '+formatLlDate(_stDate)}</button>`;
-  const datePickerHtml = _stDatePickerOpen
-    ? `<input type="date" id="st-date" value="${_stDate}" onchange="stSetDate(this.value)" style="margin-top:8px;width:100%;padding:10px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit">`
-    : '';
 
   content.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
@@ -7801,12 +7788,12 @@ function renderStocktake() {
       </div>
     </div>
     <div class="card" style="margin-bottom:8px;padding:10px 12px">
-      <div style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px">👤 だれの棚卸し？</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:700;color:#888">👤 だれが棚卸しした？</div>
+        <div style="font-size:11px;color:#aaa">📅 ${formatLlDate(_stDate)}</div>
+      </div>
       <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${staffChipRow}</div>
-      <div style="font-size:11px;font-weight:700;color:#888;margin:10px 0 6px">📅 いつの棚卸し？</div>
-      <div style="display:flex;gap:6px">${dateChipRow}</div>
-      ${datePickerHtml}
-      <div style="font-size:11px;color:#c49a6a;margin-top:8px;line-height:1.6">🟠 色付き＝その品目を最後に棚卸しで確認してから${formatLlDate(_stDate)}までに${_stBy==='全員'?'':escHtml(_stBy)+'さんが'}持ち出した材料です。倉庫ごとに分けて確認してもOK（確認できた品目は、次に持ち出すまで色が付きません）</div>
+      <div style="font-size:11px;color:#c49a6a;margin-top:8px;line-height:1.6">🟠 色付き＝その品目を最後に棚卸しで確認してから${_stBy==='全員'?'':escHtml(_stBy)+'さんが'}持ち出した材料です。倉庫ごとに分けて確認してもOK（確認できた品目は、次に持ち出すまで色が付きません）</div>
     </div>
     <div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px;padding:6px 16px 4px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch">${catRow}</div>
     <div style="margin-top:8px">${rows}</div>
