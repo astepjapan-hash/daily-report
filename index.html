@@ -2906,13 +2906,22 @@ function renderSiteListInner(){
         ${areaChipHtml(items,{small:true,resin:_resinCache})}
       </div>`;
     }
+    // 会社ごとの材料費（管理者のみ。個人絞り込み中は取り分表示のため非表示）
+    let compCostHtml='';
+    if(open&&adminLoggedIn&&!siteStaffFilters.length){
+      let cc=0;items.forEach(s=>{cc+=siteMaterialCost(s);});
+      if(cc>0){
+        const compArea=items.reduce((a,s)=>a+(parseFloat(siteMeta[s.name]?.area)||0),0);
+        compCostHtml=`<div style="background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:8px 12px;margin:2px 0 8px 2px;font-size:12px;font-weight:700;color:#c97a1f">💰 材料費 約${Math.round(cc).toLocaleString()}円${compArea>0?`（1㎡あたり約${Math.round(cc/compArea).toLocaleString()}円）`:''}<br><span style="font-size:10px;color:#c49a6a;font-weight:500">${siteViewMode==='company'?'この会社の完了現場すべての合計｜':'この月のこの会社分｜'}単価・パーメック・マット・ロス込み｜管理者のみ表示</span></div>`;
+      }
+    }
     return `
     <div style="margin-bottom:10px">
       <div onclick="toggleSiteCompany('${company.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px;cursor:pointer;font-weight:700;font-size:15px">
         <span>🏢 ${company}<span style="color:#aaa;font-weight:400;font-size:13px;margin-left:6px">(${items.length})</span>${missCnt?`<span style="color:#e07b4f;font-weight:700;font-size:11px;margin-left:6px;background:#fdf0e9;padding:2px 7px;border-radius:8px">📐未入力${missCnt}件</span>`:''}</span>
         <span class="collapse-arrow ${open?'open':''}">▶</span>
       </div>
-      ${open?`<div style="padding:8px 0 0 8px">${matHtml}${itemsHtml}</div>`:''}
+      ${open?`<div style="padding:8px 0 0 8px">${matHtml}${compCostHtml}${itemsHtml}</div>`:''}
     </div>`;
   }).join('');
 }
