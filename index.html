@@ -7741,11 +7741,10 @@ function renderStocktake() {
   const lastConfirmedMap = {}; // itemId -> その品目を最後に確認した棚卸し記録
   logsAll.forEach(g => { (g.items || g.changes || []).forEach(c => { lastConfirmedMap[c.itemId] = g; }); });
 
-  // 品目ごとに「最後に確認されてから」選んだ日までに持ち出した量（人を選んでいればその人の分だけ。加工・受け渡しは除く）
+  // 品目ごとに「最後に確認されてから」選んだ日までに持ち出した量（だれが棚卸しするかに関わらず、全員分の持ち出しを対象にする。加工・受け渡しは除く）
   const outMap = {};
   Object.values(movements || {}).forEach(m => {
     if (!m || m.type !== 'out' || m.processing || m.handover) return;
-    if (_stBy !== '全員' && m.staff !== _stBy) return;
     if ((m.date||'') > _stDate) return;
     const lastLog = lastConfirmedMap[m.itemId];
     if (lastLog && (m.createdAt||0) <= (lastLog.createdAt||0)) return;
@@ -7793,7 +7792,7 @@ function renderStocktake() {
         <div style="font-size:11px;color:#aaa">📅 ${formatLlDate(_stDate)}</div>
       </div>
       <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${staffChipRow}</div>
-      <div style="font-size:11px;color:#c49a6a;margin-top:8px;line-height:1.6">🟠 色付き＝その品目を最後に棚卸しで確認してから${_stBy==='全員'?'':escHtml(_stBy)+'さんが'}持ち出した材料です。倉庫ごとに分けて確認してもOK（確認できた品目は、次に持ち出すまで色が付きません）</div>
+      <div style="font-size:11px;color:#c49a6a;margin-top:8px;line-height:1.6">🟠 色付き＝その品目を最後に棚卸しで確認してから、だれかが持ち出した材料です（全員分が対象）。倉庫ごとに分けて確認してもOK（確認できた品目は、次に持ち出すまで色が付きません）</div>
     </div>
     <div style="position:sticky;top:102px;z-index:50;background:#f5f0ea;margin:0 -16px;padding:6px 16px 4px;display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch">${catRow}</div>
     <div style="margin-top:8px">${rows}</div>
