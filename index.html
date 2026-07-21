@@ -6625,20 +6625,28 @@ async function llSubmitConfirmed() {
     return;
   }
   window._zkBusy = true;
+  let doneCount = 0;
   try {
     for (const it of items) {
+      if (it.moved) { doneCount++; continue; } // 前回の通信エラーで途中まで登録済みの品目は、もう一度登録しない（二重計上を防ぐ）
       const item = ITEMS_MASTER.find(i => i.id === it.itemId);
       await safeAdjustInventory(it.itemId, -it.qty);
       // 日付はリストを作った日ではなく「登録ボタンを押した日」で記録する
       const movement = { type: 'out', itemId: it.itemId, itemName: it.itemName, unit: item ? item.unit : '', qty: it.qty, staff: l.staff, date: getToday(), note: '積み込みリスト', createdAt: Date.now() };
       await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      it.moved = true;
+      await llSave(); // 品目ごとに保存。途中で通信エラーが起きても、次に押したときに残りだけ続きから登録されるようにする
+      doneCount++;
     }
     l.status = 'done';
     l.doneAt = Date.now();
     await dbFetch('/loadingLists/' + _llCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
     showToast('📤 ' + items.length + '品目を持ち出し登録しました！');
     showLoadlistHome();
-  } catch(e) { alert('登録に失敗しました。'); }
+  } catch(e) {
+    alert(doneCount + '/' + items.length + '品目までは登録できました（在庫・記録は正しく反映されています）が、途中で通信エラーが起きました。もう一度「この内容で持ち出し登録する」を押せば、残りだけ続きから登録されます。');
+    backToLoadlistEdit();
+  }
   finally { window._zkBusy = false; }
 }
 
@@ -8349,6 +8357,7 @@ async function olSubmitDelivery() {
   }).join('\n');
   if (!confirm('チェックした' + checked.length + '品目を入庫（在庫に加算）します。\n\n' + lines + '\n\nよろしいですか？')) return;
   window._zkBusy = true;
+  let doneCount = 0;
   try {
     for (const it of checked) {
       const item = ITEMS_MASTER.find(i => i.id === it.itemId);
@@ -8357,8 +8366,9 @@ async function olSubmitDelivery() {
       await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
       it.received = true;
       it.checked = false;
+      await olSave(); // 品目ごとに保存。途中で通信エラーが起きても、在庫・記録・チェック状態がズレたり二重登録になったりしないようにする
+      doneCount++;
     }
-    await olSave();
     if (items.every(i => i.received)) {
       l.status = 'done';
       l.doneAt = Date.now();
@@ -8369,7 +8379,14 @@ async function olSubmitDelivery() {
       showToast('📦 ' + checked.length + '品目を入庫しました（残りあり）');
       renderOrderlistEdit();
     }
-  } catch(e) { alert('登録に失敗しました。'); }
+  } catch(e) {
+    if (doneCount > 0) {
+      alert(doneCount + '品目までは入庫できました（在庫・記録は正しく反映されています）が、途中で通信エラーが起きました。画面を開き直して、残りをもう一度チェックしてください。');
+      renderOrderlistEdit();
+    } else {
+      alert('登録に失敗しました。');
+    }
+  }
   finally { window._zkBusy = false; }
 }
 
