@@ -1534,6 +1534,11 @@ function fillNameSelect(id, names, own){
     el.style.background = '';
   }
 }
+// 氏名欄のリセット：管理者は「選択してください」に戻し、一般ユーザーは本人の名前のまま残す
+// （固定欄を空にすると本人が選び直せず登録できなくなるため）
+function resetNameSelect(id, names){
+  fillNameSelect(id, names, true);
+}
 function fillAllNameSelects(){
   fillNameSelect('staff-name', MEMBERS, true);
   fillNameSelect('exp-staff', MEMBERS, true);
@@ -1692,7 +1697,7 @@ async function submitReport(){
   }catch(e){alert('送信に失敗しました。');}
 }
 function resetForm(){
-  document.getElementById('staff-name').value='';
+  resetNameSelect('staff-name', MEMBERS);
   document.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));
   selectedWeather='';document.getElementById('sites-container').innerHTML='';
   document.getElementById('tomorrow').value='';siteCount=0;addSite();showView('form');
@@ -1738,7 +1743,7 @@ async function saveDraft(){
     window._savingDraft=false;
     localStorage.removeItem(draftKey());
     // フォームをリセットしてから一覧へ
-    document.getElementById('staff-name').value='';
+    resetNameSelect('staff-name', MEMBERS);
     document.querySelectorAll('.weather-btn').forEach(b=>b.classList.remove('selected'));
     selectedWeather='';
     document.getElementById('sites-container').innerHTML='';
@@ -5498,7 +5503,7 @@ async function openProcessModal(){
     calc();
   };
   fromQty.oninput=calc;
-  document.getElementById('process-staff').value='';
+  resetNameSelect('process-staff', MEMBERS);
   fromQty.value='';toQty.value='';
   document.getElementById('process-date').value=getToday();
   document.getElementById('process-modal').style.display='flex';
@@ -6270,7 +6275,7 @@ async function submitBulkOut() {
     document.getElementById('move-step2').style.display = 'none';
     document.getElementById('move-step1').style.display = 'block';
     // スタッフ・日付もリセット
-    document.getElementById('move-staff-top').value = '';
+    resetNameSelect('move-staff-top', MEMBERS);
     document.getElementById('move-date-top').value = getToday();
   } catch(e) { alert('登録に失敗しました。'); }
   finally { window._zkBusy = false; }
