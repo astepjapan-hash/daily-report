@@ -849,6 +849,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         <button class="filter-btn" onclick="setHistTypeFilter('in',this)">📥 入庫</button>
         <button class="filter-btn" onclick="setHistTypeFilter('handover',this)">🔄 受け渡し</button>
         <button class="filter-btn" onclick="setHistTypeFilter('process',this)">✂️ 加工</button>
+        <button class="filter-btn" onclick="setHistTypeFilter('stocktake',this)">📋 棚卸し</button>
       </div>
       <div class="filter-row" id="hist-cat-filter-row" style="margin-bottom:6px"></div>
       <div class="filter-row" id="hist-staff-filter-row" style="margin-bottom:10px">
@@ -1247,6 +1248,14 @@ async function dbFetch(path, opts){
   try{ t = await getIdToken(); }catch(e){}
   const url = DB + path + (t ? (path.indexOf('?')>=0?'&':'?')+'auth='+t : '');
   return fetch(url, opts);
+}
+
+// 書き込み用：サーバーがエラー応答（503など）を返したら失敗として扱う
+// （fetchは通信自体が通るとエラー応答でも成功扱いになるため、ここで必ず確認する）
+async function dbWrite(path, opts){
+  const res = await dbFetch(path, opts);
+  if(!res.ok) throw new Error('DB書き込み失敗: ' + res.status);
+  return res;
 }
 
 function buildLoginListObj(users){
@@ -5534,10 +5543,10 @@ async function submitProcess(){
   try{
     const now=Date.now();
     await safeAdjustInventory(fi.id,-fromQty);
-    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbWrite('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'out',itemId:fi.id,itemName:fi.name,unit:fi.unit,qty:fromQty,staff,date,note:'加工 → '+ti.name,processing:true,createdAt:now})});
     await safeAdjustInventory(ti.id,toQty);
-    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbWrite('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'in',itemId:ti.id,itemName:ti.name,unit:ti.unit,qty:toQty,staff,date,note:'加工 ← '+fi.name,processing:true,createdAt:now+1})});
     closeProcessModal();
     showToast('✂️ 加工を登録しました！');
@@ -5593,11 +5602,11 @@ async function submitHandover(){
     const now=Date.now();
     // 渡す人: 入庫扱い（帳簿上いったん返却） → 在庫+
     await safeAdjustInventory(itemId, qty);
-    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbWrite('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'in',itemId,itemName:item.name,unit:item.unit,qty,staff:from,date,note:'受け渡し → '+to,handover:true,createdAt:now})});
     // 受け取る人: 持ち出し扱い → 在庫−（差し引きゼロ）
     await safeAdjustInventory(itemId, -qty);
-    await dbFetch('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
+    await dbWrite('/movements.json',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({type:'out',itemId,itemName:item.name,unit:item.unit,qty,staff:to,date,note:'受け渡し ← '+from,handover:true,createdAt:now+1})});
     closeHandoverModal();
     showToast('🔄 受け渡しを登録しました！');
@@ -5904,16 +5913,31 @@ function getQty(itemId) {
 
 // Firebaseから最新の在庫値を取得してから増減させる（同時操作対策）
 async function safeAdjustInventory(itemId, delta) {
-  const res = await dbFetch('/inventory/' + itemId + '.json');
-  const latestQty = parseFloat(await res.json()) || 0;
-  const newQty = Math.round(Math.max(0, latestQty + delta) * 10) / 10;
-  await dbFetch('/inventory/' + itemId + '.json', {
-    method: 'PUT',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(newQty)
-  });
-  inventory[itemId] = newQty;
-  return newQty;
+  // 最大5回まで自動でやり直す：
+  // ・読み取り→書き込みの間に他の人が同じ品目を更新したら（412応答）、最新値で計算し直す
+  // ・サーバーがエラー応答を返したら失敗として止める（成功と勘違いして先に進まない）
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await dbFetch('/inventory/' + itemId + '.json', { headers: { 'X-Firebase-ETag': 'true' } });
+    if (!res.ok) throw new Error('在庫の読み取りに失敗: ' + res.status);
+    const etag = res.headers.get('ETag');
+    const latestQty = parseFloat(await res.json()) || 0;
+    const newQty = Math.round(Math.max(0, latestQty + delta) * 10) / 10;
+    const putHeaders = { 'Content-Type': 'application/json' };
+    if (etag) putHeaders['if-match'] = etag; // 読み取ったときの値のままなら書き込む（変わっていたら412）
+    const putRes = await dbFetch('/inventory/' + itemId + '.json', {
+      method: 'PUT',
+      headers: putHeaders,
+      body: JSON.stringify(newQty)
+    });
+    if (putRes.ok) {
+      inventory[itemId] = newQty;
+      return newQty;
+    }
+    if (putRes.status !== 412) throw new Error('在庫の書き込みに失敗: ' + putRes.status);
+    // 412＝他の人が同時に更新した。少し待ってからやり直す
+    await new Promise(r => setTimeout(r, 150 + attempt * 150));
+  }
+  throw new Error('在庫の更新が混み合っています');
 }
 
 function renderStock() {
@@ -6265,7 +6289,7 @@ async function submitBulkOut() {
     for (const entry of confirmEntries) {
       await safeAdjustInventory(entry.itemId, -entry.qty);
       const movement = { type: 'out', itemId: entry.itemId, itemName: entry.itemName, unit: entry.unit, qty: entry.qty, staff, date, note: '', createdAt: Date.now() };
-      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      await dbWrite('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
     }
     showToast('📤 ' + confirmEntries.length + '品目を登録しました！');
     confirmEntries = [];
@@ -6357,7 +6381,7 @@ async function createLoadlist() {
   if (currentUser && currentUser.role !== 'admin' && staff !== currentUser.name && staff !== '外注') { alert('リストを作れるのは自分の分（または外注の分）だけです。'); return; }
   const rec = { staff, date, createdBy: (currentUser && currentUser.name) || '', createdAt: Date.now(), status: 'open', items: [] };
   try {
-    const res = await dbFetch('/loadingLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
+    const res = await dbWrite('/loadingLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
     const out = await res.json();
     loadingLists[out.name] = rec;
     openLoadlist(out.name);
@@ -6518,7 +6542,7 @@ function renderLoadlistEdit() {
 
 async function llSave() {
   try {
-    await dbFetch('/loadingLists/' + _llCurrentKey + '/items.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(loadingLists[_llCurrentKey].items || []) });
+    await dbWrite('/loadingLists/' + _llCurrentKey + '/items.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(loadingLists[_llCurrentKey].items || []) });
   } catch(e) { alert('保存に失敗しました。電波の良い場所でもう一度お試しください。'); }
 }
 
@@ -6637,14 +6661,14 @@ async function llSubmitConfirmed() {
       await safeAdjustInventory(it.itemId, -it.qty);
       // 日付はリストを作った日ではなく「登録ボタンを押した日」で記録する
       const movement = { type: 'out', itemId: it.itemId, itemName: it.itemName, unit: item ? item.unit : '', qty: it.qty, staff: l.staff, date: getToday(), note: '積み込みリスト', createdAt: Date.now() };
-      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      await dbWrite('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
       it.moved = true;
       await llSave(); // 品目ごとに保存。途中で通信エラーが起きても、次に押したときに残りだけ続きから登録されるようにする
       doneCount++;
     }
     l.status = 'done';
     l.doneAt = Date.now();
-    await dbFetch('/loadingLists/' + _llCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
+    await dbWrite('/loadingLists/' + _llCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
     showToast('📤 ' + items.length + '品目を持ち出し登録しました！');
     showLoadlistHome();
   } catch(e) {
@@ -6660,7 +6684,7 @@ async function deleteLoadlist() {
   if (!canManage(l.createdBy) && !canManage(l.staff)) { alert('このリストを削除できるのは、作った本人・積む本人・管理者だけです。'); return; }
   if (!confirm('このリストを削除しますか？\n（すでに持ち出し登録した記録は消えません）')) return;
   try {
-    await dbFetch('/loadingLists/' + _llCurrentKey + '.json', { method: 'DELETE' });
+    await dbWrite('/loadingLists/' + _llCurrentKey + '.json', { method: 'DELETE' });
     delete loadingLists[_llCurrentKey];
     showLoadlistHome();
   } catch(e) { alert('削除に失敗しました。'); }
@@ -6765,7 +6789,7 @@ async function submitItemMove() {
   window._zkBusy = true;
   try {
     await safeAdjustInventory(currentItemId, delta);
-    await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) });
+    await dbWrite('/movements.json', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(movement) });
     closeItemMoveModal();
     showToast(moveType === 'in' ? '📥 入庫登録しました！' : '📤 持ち出し登録しました！');
     document.getElementById('in-step1').style.display = 'block';
@@ -6813,7 +6837,7 @@ async function submitBulk() {
     for (const { item, qty } of entries) {
       await safeAdjustInventory(item.id, -qty);
       const movement = { type: 'out', itemId: item.id, itemName: item.name, unit: item.unit, qty, staff, date, note: '一括持ち出し', createdAt: Date.now() };
-      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      await dbWrite('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
     }
     closeBulkModal();
     showToast(`📤 ${entries.length}品目を一括登録しました！`);
@@ -6831,6 +6855,7 @@ function histTypeMatch(m){
     case 'all': return true;
     case 'handover': return !!m.handover;
     case 'process': return !!m.processing;
+    case 'stocktake': return false; // 棚卸しは入出庫の記録ではないため、棚卸しカードだけを表示する
     case 'out': return m.type==='out' && !m.handover && !m.processing;
     case 'in': return m.type==='in' && !m.handover && !m.processing;
     default: return true;
@@ -7069,9 +7094,9 @@ function renderHistory() {
     );
   }
 
-  // 棚卸しの記録（絞り込みなしのときに表示。人の絞り込みは実施者名で対応）
+  // 棚卸しの記録（「すべて」と「📋 棚卸し」で表示。検索は品目名・実施者名・「棚卸し」で一致）
   let stList = [];
-  if (histTypeFilter === 'all' && histCatFilter === 'all' && !histSearchQuery) {
+  if ((histTypeFilter === 'all' || histTypeFilter === 'stocktake') && histCatFilter === 'all') {
     stList = Object.values(stocktakes || {}).filter(g => {
       if (!g) return false;
       const d = g.date || '';
@@ -7083,6 +7108,13 @@ function renderHistory() {
         if (!(from && to && d >= from && d <= to)) return false;
       }
       if (histStaffFilter !== 'all' && g.by !== histStaffFilter && g.by !== '全員') return false;
+      if (histSearchQuery) {
+        const q = histSearchQuery.toLowerCase();
+        const hit = '棚卸し'.includes(q)
+          || (g.by || '').toLowerCase().includes(q)
+          || (g.items || g.changes || []).some(c => (c.name || '').toLowerCase().includes(q));
+        if (!hit) return false;
+      }
       return true;
     });
   }
@@ -7170,7 +7202,7 @@ async function deleteMovement(key, e) {
     // 削除時は逆方向に増減（最新値を取得してから計算）
     const delta = m.type === 'in' ? -m.qty : m.qty;
     await safeAdjustInventory(m.itemId, delta);
-    await dbFetch('/movements/' + key + '.json', { method: 'DELETE' });
+    await dbWrite('/movements/' + key + '.json', { method: 'DELETE' });
     delete movements[key];
     showToast('削除しました');
     renderHistory();
@@ -7522,7 +7554,7 @@ function saveAdminInputs() {
 async function saveItemQty(itemId) {
   const qty = parseFloat(document.getElementById('admin-qty-' + itemId)?.value) || 0;
   try {
-    await dbFetch('/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) });
+    await dbWrite('/inventory/' + itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) });
     inventory[itemId] = qty;
     showToast('保存しました');
   } catch(e) { alert('保存に失敗しました。'); }
@@ -7557,13 +7589,13 @@ async function saveCatQty() {
   });
   try {
     const promises = Object.entries(invUpdates).map(([id, qty]) =>
-      dbFetch('/inventory/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) })
+      dbWrite('/inventory/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(qty) })
     );
     Object.entries(alertUpdates).forEach(([id, val]) =>
-      promises.push(dbFetch('/alertSettings/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
+      promises.push(dbWrite('/alertSettings/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
     );
     Object.entries(priceUpdates).forEach(([id, val]) =>
-      promises.push(dbFetch('/itemPrices/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
+      promises.push(dbWrite('/itemPrices/' + id + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(val) }))
     );
     await Promise.all(promises);
     const catLabel = adminCatFilter === 'all' ? '全品目' : CAT_LABELS[adminCatFilter] || adminCatFilter;
@@ -7603,9 +7635,9 @@ async function saveAllQty() {
   itemPrices = priceObj;
   try {
     await Promise.all([
-      dbFetch('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(invUpdates) }),
-      dbFetch('/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) }),
-      dbFetch('/itemPrices.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(priceObj) })
+      dbWrite('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(invUpdates) }),
+      dbWrite('/alertSettings.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(alertUpdates) }),
+      dbWrite('/itemPrices.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(priceObj) })
     ]);
     showToast('✅ 保存しました！');
   } catch(e) { alert('保存に失敗しました。'); }
@@ -7668,7 +7700,7 @@ async function importInventoryExcel(input) {
         }
       });
       if (!confirm(count + '品目の在庫を復元します。よろしいですか？')) return;
-      await dbFetch('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+      await dbWrite('/inventory.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
       showToast('✅ ' + count + '品目の在庫を復元しました！');
       zkRenderAdminContent();
     } catch(e) { alert('読み込みに失敗しました。正しいバックアップファイルか確認してください。'); }
@@ -7857,7 +7889,7 @@ async function stApplyDiff() {
     if (diffs.length) {
       await Promise.all(diffs.map(d => {
         inventory[d.itemId] = d.after;
-        return dbFetch('/inventory/' + d.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d.after) });
+        return dbWrite('/inventory/' + d.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d.after) });
       }));
     }
     // 一致した品目・修正した品目の両方を記録する（一致した品目も「確認できた」証跡として残す）
@@ -7866,7 +7898,7 @@ async function stApplyDiff() {
       ...diffs.map(d => ({ itemId: d.itemId, name: d.name, before: d.before, after: d.after }))
     ];
     const log = { date: _stDate || getToday(), by: _stBy || ((currentUser && currentUser.name) || ''), createdAt: Date.now(), items };
-    await dbFetch('/stocktakes.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(log) });
+    await dbWrite('/stocktakes.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(log) });
     showToast('📋 ' + items.length + '品目の棚卸しを記録しました');
     _stInput = {};
     showStocktake();
@@ -8120,7 +8152,7 @@ async function createOrderlist() {
   if (!adminLoggedIn) return;
   const rec = { date: getToday(), createdBy: (currentUser && currentUser.name) || '', createdAt: Date.now(), status: 'open', items: [] };
   try {
-    const res = await dbFetch('/orderLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
+    const res = await dbWrite('/orderLists.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
     const out = await res.json();
     orderLists[out.name] = rec;
     openOrderlist(out.name);
@@ -8322,7 +8354,7 @@ function olRemoveItem(idx) {
 
 async function olSave() {
   try {
-    await dbFetch('/orderLists/' + _olCurrentKey + '/items.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(orderLists[_olCurrentKey].items || []) });
+    await dbWrite('/orderLists/' + _olCurrentKey + '/items.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(orderLists[_olCurrentKey].items || []) });
   } catch(e) { alert('保存に失敗しました。電波の良い場所でもう一度お試しください。'); }
 }
 
@@ -8367,7 +8399,7 @@ async function olSubmitDelivery() {
       const item = ITEMS_MASTER.find(i => i.id === it.itemId);
       await safeAdjustInventory(it.itemId, it.qty);
       const movement = { type: 'in', itemId: it.itemId, itemName: it.itemName, unit: item ? item.unit : '', qty: it.qty, staff: '外注', date: getToday(), note: '注文リスト納品', createdAt: Date.now() };
-      await dbFetch('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
+      await dbWrite('/movements.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(movement) });
       it.received = true;
       it.checked = false;
       await olSave(); // 品目ごとに保存。途中で通信エラーが起きても、在庫・記録・チェック状態がズレたり二重登録になったりしないようにする
@@ -8376,7 +8408,7 @@ async function olSubmitDelivery() {
     if (items.every(i => i.received)) {
       l.status = 'done';
       l.doneAt = Date.now();
-      await dbFetch('/orderLists/' + _olCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
+      await dbWrite('/orderLists/' + _olCurrentKey + '.json', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'done', doneAt: l.doneAt }) });
       showToast('📦 ' + checked.length + '品目を入庫しました！納品完了です');
       showOrderlistHome();
     } else {
@@ -8399,7 +8431,7 @@ async function olDeleteList() {
   if (!l || !adminLoggedIn) return;
   if (!confirm('この注文リストを削除しますか？\n（すでに入庫登録した分は消えません）')) return;
   try {
-    await dbFetch('/orderLists/' + _olCurrentKey + '.json', { method: 'DELETE' });
+    await dbWrite('/orderLists/' + _olCurrentKey + '.json', { method: 'DELETE' });
     delete orderLists[_olCurrentKey];
     showOrderlistHome();
   } catch(e) { alert('削除に失敗しました。'); }
