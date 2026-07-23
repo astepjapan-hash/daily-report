@@ -3112,15 +3112,17 @@ function toggleTotalStaffFilter(name){
   else totalStaffFilters.push(name);
   renderTotalStats();
 }
-function setTotalMonth(){
-  const mv=document.getElementById('total-month')?.value;
-  if(!mv)return;
-  const [y,m]=mv.split('-');
-  const lastDay=new Date(parseInt(y),parseInt(m),0).getDate();
+function totalNavMonth(delta){
+  // 表示中の月（期間のはじまりの月）を基準に、◀▶で前後の月へ動かす
   const fromEl=document.getElementById('total-date-from');
+  const base=((fromEl&&fromEl.value)?fromEl.value:new Date().toLocaleDateString('sv')).slice(0,7);
+  const [y,m]=base.split('-').map(n=>parseInt(n));
+  const d=new Date(y,(m-1)+delta,1);
+  const ny=d.getFullYear(),nm=d.getMonth()+1;
+  const p=n=>String(n).padStart(2,'0');
+  if(fromEl)fromEl.value=`${ny}-${p(nm)}-01`;
   const toEl=document.getElementById('total-date-to');
-  if(fromEl)fromEl.value=mv+'-01';
-  if(toEl)toEl.value=mv+'-'+String(lastDay).padStart(2,'0');
+  if(toEl)toEl.value=`${ny}-${p(nm)}-${p(new Date(ny,nm,0).getDate())}`;
   renderTotalStats();
 }
 
@@ -3129,7 +3131,6 @@ function renderTotalStats(){
   const fromEl=document.getElementById('total-date-from');
   let from=fromEl?fromEl.value:'';
   let to=document.getElementById('total-date-to')?.value||'';
-  let monthVal=document.getElementById('total-month')?.value||'';
   // 初めて開いたときは「今月」を表示する（日付を消して「表示」を押せば全期間になる）
   if(!fromEl){
     const now=new Date();
@@ -3137,7 +3138,6 @@ function renderTotalStats(){
     const p=n=>String(n).padStart(2,'0');
     from=`${y}-${p(mo)}-01`;
     to=`${y}-${p(mo)}-${p(new Date(y,mo,0).getDate())}`;
-    monthVal=`${y}-${p(mo)}`;
   }
   let allList=Object.entries(reports).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let filtered=from&&to?allList.filter(([,r])=>r.date>=from&&r.date<=to):allList;
@@ -3156,11 +3156,14 @@ function renderTotalStats(){
     ${MEMBERS.map(m=>`<button class="filter-btn ${totalStaffFilters.includes(m)?'active':''}" onclick="toggleTotalStaffFilter('${m}')">${SURNAME_MAP[m]||m}</button>`).join('')}
   </div>`;
 
+  const navBase=(from||new Date().toLocaleDateString('sv')).slice(0,7);
+  const navLbl=`${parseInt(navBase.slice(0,4))}年${parseInt(navBase.slice(5,7))}月`;
   content.innerHTML=`
     ${staffChips}
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <input type="month" id="total-month" value="${monthVal}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
-      <button onclick="setTotalMonth()" style="padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">月で検索</button>
+    <div class="month-nav" style="margin-bottom:10px">
+      <button class="month-nav-btn" onclick="totalNavMonth(-1)">◀</button>
+      <span class="month-nav-label">${navLbl}</span>
+      <button class="month-nav-btn" onclick="totalNavMonth(1)">▶</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <input type="date" id="total-date-from" value="${from}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:13px;font-family:inherit">
