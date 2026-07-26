@@ -2171,6 +2171,8 @@ async function loadReports(){
     try{const smRes=await dbFetch('/siteMeta.json');const raw=await smRes.json()||{};siteMeta={};Object.values(raw).forEach(v=>{if(v&&v.name)siteMeta[v.name]=v;});}catch(e){siteMeta={};}
     try{const saRes=await dbFetch('/siteAliases.json');siteAliases=await saRes.json()||{};}catch(e){siteAliases={};}
     try{const coRes=await dbFetch('/companies.json');companies=await coRes.json()||{};}catch(e){companies={};}
+    // 経費も読み込む（経費ページを開かなくても、管理タブの承認待ちバッジに反映させるため）
+    try{const exRes=await dbFetch('/expenses.json');expenses=await exRes.json()||{};}catch(e){}
     const todayStr=new Date().toLocaleDateString('sv');
     const todayCount=Object.values(reports).filter(r=>r.date===todayStr).length;
     document.getElementById('badge').textContent=todayCount||'';
@@ -3281,8 +3283,10 @@ function renderPersonStats(){
 // ── 有給 ─────────────────────────
 function setKyukaSeg(seg){kyukaSeg=seg;document.querySelectorAll('#view-kyuka .seg-btn').forEach(b=>b.classList.remove('active'));document.getElementById('kseg-'+seg).classList.add('active');renderKyuka();}
 function updateAdminBadge(){
+  // 承認待ちの件数（有給・休み・経費）
   const pending=Object.values(leaves).filter(l=>l.status==='pending').length
-    + Object.values(absences).filter(a=>a.status==='pending').length;
+    + Object.values(absences).filter(a=>a.status==='pending').length
+    + Object.values(expenses||{}).filter(e=>e&&e.status==='pending').length;
   const el=document.getElementById('admin-badge');
   if(!el)return;
   if(pending>0){el.textContent=pending;el.style.display='inline';}
@@ -3390,6 +3394,7 @@ async function loadExpenses(){
   const dEl = document.getElementById('exp-date');
   if(dEl && !dEl.value) dEl.value = new Date().toLocaleDateString('sv');
   renderExpense();
+  updateAdminBadge(); // 経費の承認待ち件数もバッジに反映する
 }
 
 function changeExpenseMonth(delta){
@@ -3490,6 +3495,7 @@ async function deleteExpense(key, fromAdmin){
   try{
     await dbFetch('/expenses/' + key + '.json', { method:'DELETE' });
     delete expenses[key];
+    updateAdminBadge();
     if(fromAdmin){
       alert('却下しました');
       renderAdminContent();
@@ -3510,6 +3516,7 @@ async function setExpenseStatus(key, status){
   try{
     await dbFetch('/expenses/' + key + '/status.json', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(status) });
     if(expenses[key]) expenses[key].status = status;
+    updateAdminBadge();
     alert(status === 'approved' ? '承認しました' : '承認を取り消しました');
     renderAdminContent();
   }catch(e){ alert('更新に失敗しました。'); }
