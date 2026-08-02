@@ -3557,31 +3557,31 @@ function exportExpensePdf(monthArg){
       '<tr><td style="text-align:center;color:#bbb">／</td><td></td><td></td><td></td></tr>').join('');
     return `<table class="exp">
       <tr class="hd">
-        <th style="width:16%">年月日</th>
-        <th style="width:18%">${name}</th>
-        <th style="width:20%">金　額</th>
-        <th>現場名／内容／目的</th>
+        <th style="width:14%">年月日</th>
+        <th style="width:16%">${name}</th>
+        <th style="width:16%">金　額</th>
+        <th>現場名　／　内容　／　目的</th>
       </tr>
       ${body}${blanks}
       <tr class="sum"><td colspan="2" style="text-align:center">合計</td><td style="text-align:right">${sum.toLocaleString()}</td><td></td></tr>
     </table>`;
   });
-  // A4用紙1枚に4人分（2列×2段）で並べる
+  // A4用紙（縦）1枚に4人分を上から順に並べる
   let tablesHtml='';
   for(let i=0;i<tables.length;i+=4){
     tablesHtml+=`<div class="exp-sheet">${tables.slice(i,i+4).map(t=>`<div class="exp-cell">${t}</div>`).join('')}</div>`;
   }
   const inner = `<h1>経費台帳</h1><div class="sub">${label}　／　総合計 ¥${grand.toLocaleString()}</div>
     <style>
-      @page{size:A4;margin:8mm}
+      @page{size:A4 portrait;margin:8mm}
       @media print{body{margin:0}}
-      .exp-sheet{display:grid;grid-template-columns:1fr 1fr;gap:5mm;page-break-after:always;box-sizing:border-box}
+      .exp-sheet{page-break-after:always;box-sizing:border-box}
       .exp-sheet:last-child{page-break-after:auto}
-      .exp-cell{page-break-inside:avoid}
-      table.exp{margin-bottom:0;font-size:9px;table-layout:fixed}
-      table.exp th,table.exp td{padding:2px 4px;word-break:break-all}
+      .exp-cell{page-break-inside:avoid;margin-bottom:5mm}
+      table.exp{margin-bottom:0;font-size:10px;table-layout:fixed}
+      table.exp th,table.exp td{padding:2px 5px;word-break:break-all}
       table.exp .hd th{background:#fff;text-align:center;font-weight:700}
-      table.exp td{height:18px}
+      table.exp td{height:19px}
       table.exp .sum td{background:#f5f0ea;font-weight:700}
     </style>
     ${tablesHtml}`;
