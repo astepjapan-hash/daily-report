@@ -3557,23 +3557,34 @@ function exportExpensePdf(monthArg){
       '<tr><td style="text-align:center;color:#bbb">／</td><td></td><td></td><td></td></tr>').join('');
     return `<table class="exp">
       <tr class="hd">
-        <th style="width:14%">年月日</th>
-        <th style="width:16%">${name}</th>
-        <th style="width:16%">金　額</th>
-        <th>現場名　／　内容　／　目的</th>
+        <th style="width:16%">年月日</th>
+        <th style="width:18%">${name}</th>
+        <th style="width:20%">金　額</th>
+        <th>現場名／内容／目的</th>
       </tr>
       ${body}${blanks}
       <tr class="sum"><td colspan="2" style="text-align:center">合計</td><td style="text-align:right">${sum.toLocaleString()}</td><td></td></tr>
     </table>`;
-  }).join('');
+  });
+  // A4用紙1枚に4人分（2列×2段）で並べる
+  let tablesHtml='';
+  for(let i=0;i<tables.length;i+=4){
+    tablesHtml+=`<div class="exp-sheet">${tables.slice(i,i+4).map(t=>`<div class="exp-cell">${t}</div>`).join('')}</div>`;
+  }
   const inner = `<h1>経費台帳</h1><div class="sub">${label}　／　総合計 ¥${grand.toLocaleString()}</div>
     <style>
-      table.exp{margin-bottom:22px}
+      @page{size:A4;margin:8mm}
+      @media print{body{margin:0}}
+      .exp-sheet{display:grid;grid-template-columns:1fr 1fr;gap:5mm;page-break-after:always;box-sizing:border-box}
+      .exp-sheet:last-child{page-break-after:auto}
+      .exp-cell{page-break-inside:avoid}
+      table.exp{margin-bottom:0;font-size:9px;table-layout:fixed}
+      table.exp th,table.exp td{padding:2px 4px;word-break:break-all}
       table.exp .hd th{background:#fff;text-align:center;font-weight:700}
-      table.exp td{height:24px}
+      table.exp td{height:18px}
       table.exp .sum td{background:#f5f0ea;font-weight:700}
     </style>
-    ${tables}`;
+    ${tablesHtml}`;
   openPdfWindow(`経費台帳_${label}`, inner);
 }
 
@@ -4484,7 +4495,8 @@ async function exportSalaryPdfAll(){
   if(!slips.length){alert('日給単価が設定されているスタッフがいません');return;}
 
   const row=(lbl,val,minus)=>`<tr><td>${lbl}</td><td style="text-align:right">${minus?'−':''}${val.toLocaleString()}円</td></tr>`;
-  const pages=slips.map(({name,c})=>`
+  // A4用紙1枚に4人分（2列×2段）で並べる
+  const slipHtml=slips.map(({name,c})=>`
     <div class="slip">
       <h1>給料明細書</h1>
       <div class="slip-head">
@@ -4513,31 +4525,43 @@ async function exportSalaryPdfAll(){
         <tr class="total"><td>控除合計</td><td style="text-align:right">−${c.deductTotal.toLocaleString()}円</td></tr>
         <tr class="net"><td>差引支給額</td><td style="text-align:right">${c.net.toLocaleString()}円</td></tr>
       </table>
-    </div>`).join('');
+    </div>`);
+  // 4人ずつのまとまりにして、1まとまり＝A4用紙1枚にする
+  const pages=(()=>{
+    let out='';
+    for(let i=0;i<slipHtml.length;i+=4){
+      const group=slipHtml.slice(i,i+4);
+      out+=`<div class="sheet">${group.join('')}</div>`;
+    }
+    return out;
+  })();
 
   const w=window.open('','_blank');
   if(!w){alert('ポップアップがブロックされました。ポップアップを許可してください。');return;}
   w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>給料明細_${label}</title>
   <style>
+    @page{size:A4;margin:8mm}
     body{font-family:'Hiragino Kaku Gothic ProN',sans-serif;color:#222;margin:0;padding:0}
-    .slip{padding:40px 48px;page-break-after:always;max-width:640px;margin:0 auto}
-    .slip:last-child{page-break-after:auto}
-    h1{font-size:22px;text-align:center;margin:0 0 20px;letter-spacing:0.2em}
-    .slip-head{display:flex;justify-content:space-between;font-size:15px;margin-bottom:16px}
-    .slip-name{font-size:17px;font-weight:700}
-    table{width:100%;border-collapse:collapse;font-size:14px}
-    td{padding:7px 10px;border-bottom:1px solid #ddd}
-    tr.sec td{background:#f0ede8;font-weight:700;border-bottom:1px solid #ccc;padding:6px 10px;font-size:13px}
-    tr.total td{font-weight:700;border-bottom:2px solid #999}
-    tr.net td{font-weight:800;font-size:17px;border-bottom:none;padding-top:14px}
+    /* A4用紙1枚＝4人分（2列×2段） */
+    .sheet{display:grid;grid-template-columns:1fr 1fr;gap:6mm;page-break-after:always;padding:6mm;max-width:210mm;margin:0 auto;box-sizing:border-box}
+    .sheet:last-child{page-break-after:auto}
+    .slip{border:1px solid #ccc;border-radius:4px;padding:5mm;box-sizing:border-box;page-break-inside:avoid}
+    h1{font-size:13px;text-align:center;margin:0 0 6px;letter-spacing:0.15em}
+    .slip-head{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;margin-bottom:6px;border-bottom:1px solid #ddd;padding-bottom:4px}
+    .slip-name{font-size:12px;font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:9.5px}
+    td{padding:2px 4px;border-bottom:1px solid #e5e5e5}
+    tr.sec td{background:#f0ede8;font-weight:700;border-bottom:1px solid #ccc;padding:2px 4px;font-size:9px}
+    tr.total td{font-weight:700;border-bottom:1.5px solid #999}
+    tr.net td{font-weight:800;font-size:11.5px;border-bottom:none;padding-top:5px}
     @media print{
       .noprint{display:none}
-      .slip{padding:24px 32px}
+      .sheet{padding:0;gap:5mm}
     }
   </style></head><body>
   <div class="noprint" style="padding:16px;text-align:center;background:#fdf0e8">
     <button onclick="window.print()" style="padding:12px 32px;background:#e07b4f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">🖨 印刷 / PDFに保存</button>
-    <div style="font-size:12px;color:#888;margin-top:8px">印刷画面で「PDFとして保存」を選ぶとPDFになります（${slips.length}人分・1人1ページ）</div>
+    <div style="font-size:12px;color:#888;margin-top:8px">印刷画面で「PDFとして保存」を選ぶとPDFになります（${slips.length}人分・A4用紙1枚に4人分）</div>
   </div>
   ${pages}
   </body></html>`);
