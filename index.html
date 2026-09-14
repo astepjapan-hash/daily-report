@@ -7830,6 +7830,31 @@ function stNamesTrunc(names, n) {
   return names.slice(0, n).join('、') + `、他${names.length - n}件`;
 }
 
+// 品目1行の説明文。数えた数を入れるまでアプリの在庫数は隠す
+// （先にアプリの数字を見ると、無意識にその数に合わせてしまうため）
+function stInfoHtml(item, moved) {
+  const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+  const movedTxt = moved ? `　<span style="color:#c97a1f;font-weight:700">📤 持ち出し ${fmt(Math.round(moved * 10) / 10)}${item.unit}</span>` : '';
+  const raw = _stInput[item.id];
+  const entered = raw !== undefined && String(raw).trim() !== '';
+  if (!entered) return `<span style="color:#aaa">実物を数えて入力（アプリの数は入力後に出ます）</span>${movedTxt}`;
+  const q = getQty(item.id);
+  const counted = Math.round((parseFloat(raw) || 0) * 10) / 10;
+  const diff = Math.round((counted - q) * 10) / 10;
+  const judge = diff === 0
+    ? '<span style="color:#4a7c4a;font-weight:700">✅ 一致</span>'
+    : `<span style="color:#c0392b;font-weight:700">⚠️ ${diff > 0 ? '+' : ''}${fmt(diff)}${item.unit} ちがいます</span>`;
+  return `<span style="color:#aaa">アプリでは <span style="color:#2d2a26;font-weight:700">${fmt(q)}</span>${item.unit} でした</span>　${judge}${movedTxt}`;
+}
+
+// 数を入れた直後に、その1行だけ表示を更新する（全体を描き直さないので入力の邪魔をしない）
+function stReveal(itemId) {
+  const el = document.getElementById('st-info-' + itemId);
+  const item = ITEMS_MASTER.find(i => i.id === itemId);
+  if (!el || !item) return;
+  el.innerHTML = stInfoHtml(item, (window._stMoved || {})[itemId]);
+}
+
 function renderStocktake() {
   const content = document.getElementById('stocktake-view');
   const cats = ['frp','sub','drain','tool','consume'];
@@ -7851,16 +7876,16 @@ function renderStocktake() {
     if (lastLog && (m.createdAt||0) <= (lastLog.createdAt||0)) return;
     outMap[m.itemId] = (outMap[m.itemId]||0) + (parseFloat(m.qty)||0);
   });
+  window._stMoved = outMap; // 入力後に1行だけ描き直すときに使う
   const rows = ITEMS_MASTER.filter(i => i.category === _stCat).map(i => {
-    const q = getQty(i.id);
     const val = _stInput[i.id] !== undefined ? _stInput[i.id] : '';
     const moved = outMap[i.id];
     return `<div class="card" style="margin-bottom:6px;padding:10px 12px;display:flex;align-items:center;gap:8px${moved?';border-color:#f0c890;background:#fdf8f2':''}">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:700;color:#2d2a26">${i.name}</div>
-        <div style="font-size:11px;color:#aaa;margin-top:1px">アプリ在庫 <span style="color:#2d2a26;font-weight:700">${fmt(q)}</span>${i.unit}${moved?`　<span style="color:#c97a1f;font-weight:700">📤 持ち出し ${fmt(Math.round(moved*10)/10)}${i.unit}</span>`:''}</div>
+        <div style="font-size:11px;margin-top:1px" id="st-info-${i.id}">${stInfoHtml(i, moved)}</div>
       </div>
-      <input type="number" min="0" step="0.1" id="st-qty-${i.id}" value="${val}" placeholder="実物" onchange="stSaveInputs()" style="width:76px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;font-weight:700;text-align:center;font-family:inherit">
+      <input type="number" min="0" step="0.1" id="st-qty-${i.id}" value="${val}" placeholder="実物" onchange="stSaveInputs();stReveal('${i.id}')" style="width:76px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;font-weight:700;text-align:center;font-family:inherit">
       <span style="font-size:11px;color:#aaa;flex-shrink:0">${i.unit}</span>
     </div>`;
   }).join('');
@@ -7885,6 +7910,7 @@ function renderStocktake() {
       <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:#2d2a26">📋 棚卸し</div>
         <div style="font-size:11px;color:#aaa">実物を数えて入力（数えた物だけでOK）→ 一番下の「差を確認」へ</div>
+        <div style="font-size:11px;color:#c0392b;font-weight:700">先に実物を数えてください。アプリの在庫数は入力後に出ます</div>
       </div>
     </div>
     <div class="card" style="margin-bottom:8px;padding:10px 12px">
