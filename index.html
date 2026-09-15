@@ -682,6 +682,7 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
         <button class="btn-secondary" style="margin-top:8px" onclick="openHandoverModal()">🔄 受け渡し（スタッフ間で材料を渡す）</button>
         <button class="btn-secondary" style="margin-top:8px" onclick="openProcessModal()">✂️ 加工・小分け（切り出し・詰め替え）</button>
         <button class="btn-secondary" style="margin-top:8px" onclick="showStocktake()">📋 棚卸し（実物の数と合わせる）</button>
+        <button class="btn-secondary" style="margin-top:8px" onclick="showTruck()">🚚 車の棚卸し（毎月20日〜月末に1回）<span id="truck-remind"></span></button>
       </div>
 
       <!-- STEP2: 品目リスト -->
@@ -801,6 +802,8 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
 
       <!-- 棚卸し（実物の数と合わせる） -->
       <div id="stocktake-view" style="display:none"></div>
+      <!-- 車の棚卸し（各自の車に積んである主要材料を毎月数える） -->
+      <div id="truck-view" style="display:none"></div>
 
     </div>
   </div>
@@ -3592,7 +3595,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes','itemPrices'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes','itemPrices','truckStocktakes'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -5299,8 +5302,9 @@ async function renderTsukiawase(from,to){
   if(end<start){el.innerHTML='';return;}
   try{
     if(!_tsukiMovements||Date.now()-_tsukiFetchedAt>60000){
-      const res=await dbFetch('/movements.json');
+      const [res,trRes]=await Promise.all([dbFetch('/movements.json'),dbFetch('/truckStocktakes.json')]);
       _tsukiMovements=await res.json()||{};
+      truckStocktakes=await trRes.json()||{}; // 車の棚卸しの記録も照らし合わせに使う
       _tsukiFetchedAt=Date.now();
     }
   }catch(e){el.innerHTML='';return;}
@@ -5348,6 +5352,26 @@ async function renderTsukiawase(from,to){
   });
   const clipped=(!from||from<TSUKIAWASE_START);
   const label=`${start} 〜 ${to||'今日'}`;
+
+  // ── 🚚 車の棚卸しで照らし合わせ（車に積み置きしていた分を除いた「本当の差」）──
+  // 期間の始まり以前で最後の車の棚卸し → 期間の終わり以前で最後の車の棚卸し、の間の持ち出し・返却・日報で計算する
+  const trAdmin=trIsAdmin();
+  const trVisible=name=>trAdmin||!!(currentUser&&currentUser.name===name); // 差の結果は本人と管理者だけ
+  const trTo=to||getToday();
+  const truckSpanOf=name=>{
+    const recs=trRecordsOf(name).map(([,g])=>g).filter(g=>(g.date||'')<=trTo);
+    if(recs.length<2)return null;
+    let startRec=null;
+    if(from)recs.forEach(g=>{if((g.date||'')<=from)startRec=g;});
+    if(!startRec)startRec=recs[0];
+    const endRec=recs[recs.length-1];
+    if(startRec===endRec)return null;
+    return {startRec,endRec,calc:trCalc(endRec,startRec,_tsukiMovements)};
+  };
+  const TRUCK_OF_CAT={'プライマー系':'primer','樹脂系':'resin','トップ系':'top'};
+  const trNames=(trAdmin?getStaffNames():[(currentUser&&currentUser.name)||'']).filter(n=>n&&staffOk(n));
+  const trRows=[],trLack=[];
+  trNames.forEach(n=>{const sp=truckSpanOf(n);if(sp)trRows.push({n,sp});else trLack.push(n);});
 
   // ── 「原因を探す」：人ごとの差 → 日ごとの記録の並べ表示 ──
   const unitsOf=(c,mv)=>{const q=Number(mv.qty)||0;return c.kg?q*(c.kg[mv.itemId]||c.baseKg)/c.baseKg:q;};
@@ -5430,11 +5454,18 @@ async function renderTsukiawase(from,to){
       }
       causeHtml=`<div style="margin:6px 0 4px 0;background:#fdf8f2;border:1px solid #f0e4d4;border-radius:10px;padding:10px 12px">
         <div style="font-size:12px;font-weight:700;color:#2d2a26;margin-bottom:6px">👤 人ごとの差（名前をタップすると日ごとの記録が見られます）</div>
-        ${pRows.map(p=>`<div onclick="tsukiPickStaff('${p.n}')" style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #f0e8dc;font-size:12px;cursor:pointer;border-radius:6px;${_tsukiCauseStaff===p.n?'background:#fff3e2;':''}">
+        ${pRows.map(p=>{
+          // 車の棚卸しの記録があれば、積み置き分を除いた差も1行で添える（本人と管理者だけ）
+          const tid=TRUCK_OF_CAT[c.label];
+          const sp=(tid&&trVisible(p.n))?truckSpanOf(p.n):null;
+          const tIt=tid?ITEMS_MASTER.find(i=>i.id===tid):null;
+          const tLine=sp?`<div style="font-size:11px;color:#2858b0;padding:0 4px 7px 76px;border-bottom:1px solid #f0e8dc;line-height:1.5">🚚 車の棚卸し（${escHtml(tIt?tIt.name:tid)}・${sp.startRec.date.slice(5).replace('-','/')}→${sp.endRec.date.slice(5).replace('-','/')}）で見ると ${trJudgeHtml(sp.calc[tid].diff,'缶')}</div>`:'';
+          return `<div onclick="tsukiPickStaff('${p.n}')" style="display:flex;align-items:center;gap:8px;padding:7px 4px;${sp?'':'border-bottom:1px solid #f0e8dc;'}font-size:12px;cursor:pointer;border-radius:6px;${_tsukiCauseStaff===p.n?'background:#fff3e2;':''}">
           <b style="min-width:64px">${SURNAME_MAP[p.n]||p.n}</b>
           <span style="color:#999;font-size:11px">日報 ${p.u}缶 ／ 持ち出し ${p.o}缶</span>
           <span style="margin-left:auto;font-weight:700;color:${Math.abs(p.d)>1?'#c0392b':'#5a8a5a'}">${Math.abs(p.d)>1?'🔴':'🟢'} ${p.d>0?'+':''}${p.d}缶</span>
-        </div>`).join('')||'<div style="color:#aaa;font-size:12px">この期間の記録はありません</div>'}
+        </div>${tLine}`;
+        }).join('')||'<div style="color:#aaa;font-size:12px">この期間の記録はありません</div>'}
         ${dayHtml}
       </div>`;
     }
@@ -5451,15 +5482,44 @@ async function renderTsukiawase(from,to){
     return `<div style="padding:8px 0;border-bottom:1px solid #f5f0ea;font-size:13px">
       <div style="display:flex;align-items:center;gap:8px"><span>🔴</span><b style="min-width:86px">${r.label}</b><span style="color:#c0392b;font-weight:700">${Math.abs(r.diff)}缶 合いません</span></div>
       <div style="font-size:11px;color:#a4610f;margin:3px 0 0 30px;line-height:1.5">${minus?'持ち出しの方が多い → 日報の書き漏れか、車に積み置きの可能性':'日報の方が多い → 持ち出し（出庫）の登録漏れの可能性'}</div>
+      ${trRows.length?`<div style="font-size:11px;color:#2858b0;margin:3px 0 0 30px;line-height:1.5">👇 車に積み置きしていた分を除いた差は、下の「🚚 車の棚卸しで照らし合わせ」で見られます</div>`:''}
       <button onclick="tsukiFindCause('${r.label}')" style="margin:6px 0 0 30px;padding:5px 12px;background:${openCause?'#b5aca0':'#e07b4f'};color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🔍 原因を探す${openCause?'（閉じる）':''}</button>
       ${openCause?causeHtml:''}
     </div>`;
   }).join('');
+  // 🚚 車の棚卸しで照らし合わせ（人ごと・3品目ごと。本人と管理者だけ）
+  let truckBlockHtml='';
+  if(Object.keys(truckStocktakes||{}).length&&trNames.length){
+    const over={},under={};TRUCK_ITEMS.forEach(id=>{over[id]=0;under[id]=0;});
+    trRows.forEach(({sp})=>TRUCK_ITEMS.forEach(id=>{
+      const d=Math.round(sp.calc[id].diff*10)/10;
+      if(d>TRUCK_TOLERANCE)over[id]+=d;else if(d<-TRUCK_TOLERANCE)under[id]+=-d;
+    }));
+    truckBlockHtml=`<div style="margin-top:12px;background:#f5f8fc;border:1px solid #d6e2f0;border-radius:10px;padding:10px 12px">
+      <div style="font-size:12px;font-weight:800;color:#2858b0;margin-bottom:2px">🚚 車の棚卸しで照らし合わせ${trAdmin?'':'（自分の分）'}</div>
+      <div style="font-size:10px;color:#7a8aa0;line-height:1.6;margin-bottom:6px">車に積み置きしていた分を除いた「本当の差」です。期間をはさむ車の棚卸しの日から日までで計算します（車の棚卸しは月1回なので、数日だけの期間では出ません）</div>
+      ${trRows.map(({n,sp})=>`<div style="padding:6px 0;border-top:1px solid #e3ebf5">
+        <div style="font-size:12px;font-weight:700;color:#2d2a26">${escHtml(SURNAME_MAP[n]||n)}　<span style="font-size:10px;color:#999;font-weight:500">${formatLlDate(sp.startRec.date)} → ${formatLlDate(sp.endRec.date)}</span></div>
+        ${TRUCK_ITEMS.map(id=>{
+          const it=ITEMS_MASTER.find(i=>i.id===id);
+          const cc=sp.calc[id];
+          return `<div style="font-size:11px;padding:2px 0 0 8px;display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap"><span>${escHtml(it?it.name:id)}</span><span>${trJudgeHtml(cc.diff,'缶')}</span></div>
+          <div style="font-size:10px;color:#999;padding-left:8px;line-height:1.5">前回 ${trFmt(cc.base)} ＋ 持ち出し ${trFmt(cc.taken)} − 返却・渡した ${trFmt(cc.returned)} − 日報 ${trFmt(cc.used)} ＝ あるはず ${trFmt(cc.expected)}／数えた ${trFmt(cc.counted)}</div>`;
+        }).join('')}
+      </div>`).join('')||'<div style="font-size:11px;color:#999;padding:4px 0">この期間をはさむ車の棚卸しの記録がありません</div>'}
+      ${trAdmin&&trRows.length?`<div style="font-size:11px;color:#2d2a26;border-top:1px solid #d6e2f0;margin-top:4px;padding-top:6px;line-height:1.7">
+        <b>合計</b><br>${TRUCK_ITEMS.map(id=>{const it=ITEMS_MASTER.find(i=>i.id===id);return `${escHtml(it?it.name:id)}：多い ${trFmt(over[id])}缶／少ない ${trFmt(under[id])}缶`;}).join('<br>')}
+        <div style="font-size:10px;color:#7a8aa0;margin-top:2px">多い＝持ち出し登録をせずに積んだ可能性（倉庫の在庫が「アプリの方が多い」ときの原因候補）／少ない＝日報の書き漏れ、または返却・受け渡しの登録漏れの可能性</div>
+      </div>`:''}
+      ${trAdmin&&trLack.length?`<div style="font-size:10px;color:#999;margin-top:4px">記録が足りない人（2回以上の車の棚卸しが必要）：${trLack.map(n=>escHtml(SURNAME_MAP[n]||n)).join('、')}</div>`:''}
+    </div>`;
+  }
   el.innerHTML=`<div style="margin-top:16px">
     <div class="section-title">⚖️ 出庫との突き合わせ</div>
     <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:14px 16px">
       <div style="font-size:11px;color:#aaa;margin-bottom:6px">${label}｜「日報に書いた量」と「倉庫から出した量」が合っているかの確認</div>
       ${verdictHtml}
+      ${truckBlockHtml}
       <details style="margin-top:10px">
         <summary style="font-size:12px;color:#c97a1f;font-weight:700;cursor:pointer">▼ くわしい数字を見る</summary>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
@@ -5885,6 +5945,7 @@ async function zkInit() {
   renderStock();
   renderMoveList();
   zkUpdateAdminBadge();
+  updateTruckRemind();
 }
 
 function getToday() {
@@ -5903,18 +5964,20 @@ ITEMS_MASTER.forEach(i => { if (i.unit === '缶' && !i.step) i.step = 0.1; });
 
 async function loadAll() {
   try {
-    const [invRes, movRes, alertRes, priceRes, stRes] = await Promise.all([
+    const [invRes, movRes, alertRes, priceRes, stRes, trRes] = await Promise.all([
       dbFetch('/inventory.json'),
       dbFetch('/movements.json'),
       dbFetch('/alertSettings.json'),
       dbFetch('/itemPrices.json'),
-      dbFetch('/stocktakes.json')
+      dbFetch('/stocktakes.json'),
+      dbFetch('/truckStocktakes.json')
     ]);
     inventory = await invRes.json() || {};
     movements = await movRes.json() || {};
     alertSettings = await alertRes.json() || {};
     itemPrices = await priceRes.json() || {};
     stocktakes = await stRes.json() || {};
+    truckStocktakes = await trRes.json() || {};
   } catch(e) {
     inventory = {}; movements = {}; alertSettings = {};
   }
@@ -5935,8 +5998,10 @@ function zkShowView(name) {
     document.getElementById('move-step2').style.display = 'none';
     const stv = document.getElementById('stocktake-view');
     if (stv) stv.style.display = 'none';
+    const trv = document.getElementById('truck-view');
+    if (trv) trv.style.display = 'none';
     document.getElementById('move-date-top').value = getToday();
-    loadAll().then(() => {});
+    loadAll().then(() => updateTruckRemind());
   }
   if (name === 'history') { loadAll().then(() => { renderHistCalendar(); renderHistory(); }); }
   if (name === 'stats') { loadAll().then(() => zkRenderStats()); }
@@ -8050,6 +8115,282 @@ async function stApplyDiff() {
     showStocktake();
   } catch(e) { alert('保存に失敗しました。'); }
   finally { window._zkBusy = false; }
+}
+
+// ══════════ 車の棚卸し（各自の車に積んである主要材料を毎月20日〜月末に数える） ══════════
+// 倉庫の在庫数は変えない。前回の車の棚卸しからの動きで「あるはずの量」を出し、数えた量と比べる
+const TRUCK_ITEMS = ['primer', 'resin', 'top']; // プライマーＳ-１・ポリルーフ樹脂・ポリルーフトップ
+const TRUCK_TOLERANCE = 0.5; // 開けた缶は目分量なので、差が0.5缶以内なら「ほぼ合っている」とみなす
+let truckStocktakes = {};
+let _trStaff = '';
+let _trInput = {};
+
+function trIsAdmin() { return !!(adminLoggedIn || (currentUser && currentUser.role === 'admin')); }
+function trFmt(v) { const r = Math.round((parseFloat(v) || 0) * 10) / 10; return r % 1 === 0 ? String(r) : r.toFixed(1); }
+
+// 今月の20日〜月末に、その人の車の棚卸しが済んでいるか
+function trDoneThisMonth(staff) {
+  const ym = getToday().slice(0, 7);
+  return Object.values(truckStocktakes || {}).some(g => g && g.staff === staff && (g.date || '') >= ym + '-20' && (g.date || '') <= ym + '-31');
+}
+function trIsDue(staff) { return parseInt(getToday().slice(8, 10), 10) >= 20 && !trDoneThisMonth(staff); }
+
+// 入出庫画面の「車の棚卸し」ボタンに、20日以降まだの人がいればお知らせを出す
+function updateTruckRemind() {
+  const el = document.getElementById('truck-remind');
+  if (!el) return;
+  if (parseInt(getToday().slice(8, 10), 10) < 20) { el.innerHTML = ''; return; }
+  const badge = t => `<span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;background:#c0392b;color:#fff;font-size:11px;font-weight:700">${t}</span>`;
+  if (trIsAdmin()) {
+    const yet = getStaffNames().filter(n => !trDoneThisMonth(n)).length;
+    el.innerHTML = yet ? badge('まだ' + yet + '人') : '';
+  } else {
+    const me = currentUser && currentUser.name;
+    el.innerHTML = (me && !trDoneThisMonth(me)) ? badge('今月まだ') : '';
+  }
+}
+
+// 日報のその現場の材料が、車の3品目の使用に当たるか（材料費と同じ決まりで判断）
+// ポラテック・グランディハウス＝三井の材料／住協メンテ＝Ｓ-１Ｒ／施工面積0㎡＝Ｓ-１Ｘ小 は車の3品目から引かない
+function trDiaryCountsFor(rawSiteName, itemId) {
+  const raw = (rawSiteName || '').trim();
+  const name = siteAliases[raw] || siteAliases[siteKey(raw)] || raw;
+  const comp = getCompanyName(name) || '';
+  if (comp.indexOf('ポラテック') >= 0 || comp.indexOf('グランディハウス') >= 0) return false;
+  if (itemId === 'primer') {
+    if (comp.indexOf('住協メンテ') >= 0) return false;
+    if (hasArea(name) && (parseFloat(siteMeta[name].area) || 0) === 0) return false;
+  }
+  return true;
+}
+
+function trRecordsOf(staff) {
+  return Object.entries(truckStocktakes || {})
+    .filter(([, g]) => g && g.staff === staff)
+    .sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
+}
+
+// 前回の車の棚卸しから今回までの動きで「あるはずの量」を出す
+// 持ち出し・返却・受け渡しは登録した時刻で、日報は作業日で区切る（日報を出してから数える決まりのため）
+// mvSrc：持ち出し・入庫の記録（省略時は在庫タブで読み込んだ記録を使う）
+function trCalc(rec, prev, mvSrc) {
+  const out = {};
+  TRUCK_ITEMS.forEach(id => {
+    const counted = parseFloat((rec.counts || {})[id]) || 0;
+    if (!prev) { out[id] = { counted, first: true }; return; }
+    const base = parseFloat((prev.counts || {})[id]) || 0;
+    let taken = 0, returned = 0, used = 0;
+    Object.values(mvSrc || movements || {}).forEach(m => {
+      if (!m || m.staff !== rec.staff || m.itemId !== id || m.processing) return;
+      const t = m.createdAt || 0;
+      if (t <= (prev.createdAt || 0) || t > (rec.createdAt || 0)) return;
+      const q = parseFloat(m.qty) || 0;
+      if (m.type === 'out') taken += q; else returned += q; // 受け取った分は持ち出し、渡した分・返した分は入庫として記録されている
+    });
+    Object.values(reports || {}).forEach(r => {
+      if (!r || r.staffName !== rec.staff) return;
+      const d = r.date || '';
+      if (d <= (prev.date || '') || d > (rec.date || '')) return;
+      (r.sites || []).forEach(s => {
+        if (!trDiaryCountsFor(s.name, id)) return;
+        if (id === 'primer') used += (parseFloat(s.primerKg) || 0) / KAN_KG.primerKg;
+        else if (id === 'top') used += (parseFloat(s.topKg) || 0) / KAN_KG.topKg;
+        else used += (parseInt(s.resinKan) || 0) + (parseInt(s.resinWari) || 0) / 10;
+      });
+    });
+    const expected = base + taken - returned - used;
+    out[id] = { counted, base, taken, returned, used, expected, diff: counted - expected };
+  });
+  return out;
+}
+
+function trJudgeHtml(diff, unit) {
+  const d = Math.round(diff * 10) / 10;
+  if (Math.abs(d) <= TRUCK_TOLERANCE) return `<span style="color:#4a7c4a;font-weight:700">✅ ほぼ合っています${d ? '（' + (d > 0 ? '+' : '') + trFmt(d) + unit + '）' : ''}</span>`;
+  return d > 0
+    ? `<span style="color:#c0392b;font-weight:700">⚠️ ${trFmt(d)}${unit} 多い</span>`
+    : `<span style="color:#c0392b;font-weight:700">⚠️ ${trFmt(-d)}${unit} 少ない</span>`;
+}
+
+async function showTruck() {
+  ['move-step1','move-step2','move-step3','loadlist-home','loadlist-edit','loadlist-confirm','stocktake-view'].forEach(id => {
+    const d = document.getElementById(id); if (d) d.style.display = 'none';
+  });
+  const view = document.getElementById('truck-view');
+  view.style.display = 'block';
+  view.innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const resList = await Promise.all([
+      dbFetch('/truckStocktakes.json'), dbFetch('/movements.json'), dbFetch('/reports.json'),
+      dbFetch('/siteMeta.json'), dbFetch('/siteAliases.json'), dbFetch('/companies.json')
+    ]);
+    if (!resList.every(x => x.ok)) throw new Error('read');
+    const [tRes, mRes, rRes, smRes, saRes, coRes] = resList;
+    truckStocktakes = await tRes.json() || {};
+    movements = await mRes.json() || {};
+    reports = await rRes.json() || {};
+    const rawSm = await smRes.json() || {};
+    siteMeta = {}; Object.values(rawSm).forEach(v => { if (v && v.name) siteMeta[v.name] = v; });
+    siteAliases = await saRes.json() || {};
+    companies = await coRes.json() || {};
+  } catch(e) {
+    view.innerHTML = `<button onclick="truckBack()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;margin-bottom:12px">← 戻る</button>
+      <div class="notice-empty">読み込みに失敗しました。電波の良い場所でもう一度開いてください</div>`;
+    return;
+  }
+  _trInput = {};
+  if (!trIsAdmin()) _trStaff = (currentUser && currentUser.name) || '';
+  else if (!_trStaff || !getStaffNames().includes(_trStaff)) _trStaff = getStaffNames()[0] || '';
+  renderTruck();
+}
+
+function truckBack() {
+  document.getElementById('truck-view').style.display = 'none';
+  document.getElementById('move-step1').style.display = 'block';
+  updateTruckRemind();
+}
+
+function trSetStaff(n) { _trStaff = n; _trInput = {}; renderTruck(); }
+
+function trSaveInputs() {
+  TRUCK_ITEMS.forEach(id => {
+    const el = document.getElementById('tr-qty-' + id);
+    if (!el) return;
+    if (el.value !== '') _trInput[id] = el.value; else delete _trInput[id];
+  });
+}
+
+// 入力するまで「あるはずの量」は見せない（数字に引っ張られずに数えるため）
+function trInfoHtml(id) {
+  const item = ITEMS_MASTER.find(i => i.id === id);
+  const unit = item ? item.unit : '缶';
+  const raw = _trInput[id];
+  if (raw === undefined || String(raw).trim() === '') return '<span style="color:#aaa">車にある量を数えて入力（あるはずの量は入力後に出ます）</span>';
+  const recs = trRecordsOf(_trStaff);
+  if (!recs.length) return '<span style="color:#7d967d;font-weight:700">初回のため比べる記録はありません（今回が基準になります）</span>';
+  const prev = recs[recs.length - 1][1];
+  const counts = {}; counts[id] = parseFloat(raw) || 0;
+  const c = trCalc({ staff: _trStaff, date: getToday(), createdAt: Date.now(), counts }, prev)[id];
+  return `<span style="color:#aaa">計算上は <b style="color:#2d2a26">${trFmt(c.expected)}</b>${unit} あるはず</span>　${trJudgeHtml(c.diff, unit)}`;
+}
+function trReveal(id) { const el = document.getElementById('tr-info-' + id); if (el) el.innerHTML = trInfoHtml(id); }
+
+function renderTruck() {
+  const view = document.getElementById('truck-view');
+  const admin = trIsAdmin();
+  const today = getToday();
+  const month = parseInt(today.slice(5, 7), 10);
+  const canRecord = !!_trStaff && (admin || (currentUser && currentUser.name === _trStaff));
+  const staffRow = admin
+    ? `<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${getStaffNames().map(n => `<button class="filter-btn ${_trStaff === n ? 'active' : ''}" style="flex-shrink:0" onclick="trSetStaff('${n.replace(/'/g, "\\'")}')">${escHtml(n)}${trIsDue(n) ? ' 🔴' : (trDoneThisMonth(n) ? ' ✅' : '')}</button>`).join('')}</div>`
+    : `<div style="font-size:14px;font-weight:700;color:#2d2a26">${escHtml(_trStaff)}</div>`;
+  const done = trDoneThisMonth(_trStaff);
+  const statusHtml = done
+    ? `<div style="font-size:12px;font-weight:700;color:#4a7c4a;margin-top:8px">✅ 今月（${month}月20日〜末）の車の棚卸しは済んでいます</div>`
+    : parseInt(today.slice(8, 10), 10) >= 20
+      ? `<div style="font-size:12px;font-weight:700;color:#c0392b;margin-top:8px">🔴 今月の車の棚卸しがまだです（月末までに1回）</div>`
+      : `<div style="font-size:12px;color:#888;margin-top:8px">今月の車の棚卸しは ${month}月20日〜月末 に行ってください</div>`;
+  const rows = TRUCK_ITEMS.map(id => {
+    const item = ITEMS_MASTER.find(i => i.id === id);
+    const val = _trInput[id] !== undefined ? _trInput[id] : '';
+    return `<div class="card" style="margin-bottom:6px;padding:10px 12px;display:flex;align-items:center;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:#2d2a26">${escHtml(item ? item.name : id)}</div>
+        <div style="font-size:11px;margin-top:2px" id="tr-info-${id}">${trInfoHtml(id)}</div>
+      </div>
+      <input type="number" min="0" step="0.1" inputmode="decimal" id="tr-qty-${id}" value="${val}" placeholder="車の中" onchange="trSaveInputs();trReveal('${id}')" style="width:80px;padding:8px 6px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:16px;font-weight:700;text-align:center;font-family:inherit">
+      <span style="font-size:11px;color:#aaa;flex-shrink:0">${item ? item.unit : '缶'}</span>
+    </div>`;
+  }).join('');
+  const asc = trRecordsOf(_trStaff);
+  const histHtml = asc.map(([key, g], idx) => {
+    const prev = idx > 0 ? asc[idx - 1][1] : null;
+    const calc = trCalc(g, prev);
+    const lines = TRUCK_ITEMS.map(id => {
+      const item = ITEMS_MASTER.find(i => i.id === id);
+      const u = item ? item.unit : '缶';
+      const nm = escHtml(item ? item.name : id);
+      const c = calc[id];
+      if (c.first) return `<div style="font-size:12px;padding:4px 0;border-top:1px solid #f0ebe4"><b>${nm}</b>　${trFmt(c.counted)}${u}</div>`;
+      return `<div style="font-size:12px;padding:5px 0;border-top:1px solid #f0ebe4">
+        <div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap"><b>${nm}</b><span>数えた ${trFmt(c.counted)}${u}　${trJudgeHtml(c.diff, u)}</span></div>
+        <div style="font-size:10px;color:#999;margin-top:2px;line-height:1.5">前回 ${trFmt(c.base)} ＋ 持ち出し ${trFmt(c.taken)} − 返却・渡した ${trFmt(c.returned)} − 日報で使用 ${trFmt(c.used)} ＝ あるはず ${trFmt(c.expected)}${u}</div>
+      </div>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:8px;padding:10px 12px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;font-size:12px;font-weight:700;color:#2d2a26">${formatLlDate(g.date)}　${escHtml(g.staff || '')}${prev ? '' : '　<span style="color:#7d967d">基準（初回）</span>'}${admin && g.createdAt ? '　<span style="color:#aaa;font-weight:500">🕐 ' + fmtTime(g.createdAt) + '</span>' : ''}${g.by && g.by !== g.staff ? '　<span style="color:#aaa;font-weight:500">（入力：' + escHtml(g.by) + '）</span>' : ''}</div>
+        ${admin ? `<button onclick="trDelete('${key}')" style="border:none;background:#fce8e8;color:#d32f2f;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer;font-family:inherit">🗑</button>` : ''}
+      </div>
+      ${lines}
+    </div>`;
+  }).reverse().slice(0, 6).join('');
+  view.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="truckBack()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:#2d2a26">🚚 車の棚卸し</div>
+        <div style="font-size:11px;color:#aaa">車に積んである材料を数えて入力（毎月20日〜月末に1回）</div>
+        <div style="font-size:11px;color:#c0392b;font-weight:700">その日の日報を出し、積み込みの持ち出し登録を済ませてから数えてください</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:8px;padding:10px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:700;color:#888">👤 だれの車？</div>
+        <div style="font-size:11px;color:#aaa">📅 ${formatLlDate(today)}</div>
+      </div>
+      ${staffRow}
+      ${statusHtml}
+    </div>
+    ${canRecord ? `
+      <div>${rows}</div>
+      <div style="font-size:11px;color:#aaa;margin:2px 2px 8px">0.1缶きざみで入力できます。開けた缶は目分量でOK（半分なら0.5）。車に無い材料は 0 と入力してください。倉庫の在庫数は変わりません。</div>
+      <button class="btn-primary" onclick="trRecord()">🚚 車の棚卸しを記録する</button>` : ''}
+    <div style="margin-top:18px">
+      <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">これまでの車の棚卸し（本人と管理者だけに表示）</div>
+      ${histHtml || '<div class="notice-empty">まだ記録がありません。1回目が基準になり、翌月から差が分かります</div>'}
+      <div style="font-size:10px;color:#b5aca0;line-height:1.7;margin-top:6px">
+        ✅ ほぼ合っています＝差が${TRUCK_TOLERANCE}缶以内<br>
+        ⚠️ 多い＝倉庫から持ち出し登録をせずに積んだ可能性<br>
+        ⚠️ 少ない＝日報の書き漏れ、または返却・受け渡しの登録漏れの可能性<br>
+        ※ポラテック・グランディハウス（三井の材料）、住協メンテのプライマー（Ｓ-１Ｒ）、施工面積0㎡の現場のプライマー（Ｓ-１Ｘ小）は、日報の使用量から引いていません
+      </div>
+    </div>`;
+}
+
+async function trRecord() {
+  trSaveInputs();
+  if (!_trStaff) return;
+  if (!trIsAdmin() && !(currentUser && currentUser.name === _trStaff)) return;
+  const missing = TRUCK_ITEMS.filter(id => _trInput[id] === undefined || String(_trInput[id]).trim() === '');
+  if (missing.length) { alert('3つとも入力してください（車に積んでいない材料は 0 と入力）'); return; }
+  const counts = {};
+  TRUCK_ITEMS.forEach(id => { counts[id] = Math.round(Math.max(0, parseFloat(_trInput[id]) || 0) * 10) / 10; });
+  const lines = TRUCK_ITEMS.map(id => {
+    const it = ITEMS_MASTER.find(i => i.id === id);
+    return '・' + (it ? it.name : id) + '　' + trFmt(counts[id]) + (it ? it.unit : '缶');
+  }).join('\n');
+  if (!confirm(_trStaff + 'さんの車の棚卸しを記録します。\n\n' + lines + '\n\nよろしいですか？\n（倉庫の在庫数は変わりません）')) return;
+  if (window._trBusy) return;
+  window._trBusy = true;
+  try {
+    const rec = { staff: _trStaff, by: (currentUser && currentUser.name) || '', date: getToday(), createdAt: Date.now(), counts };
+    await dbWrite('/truckStocktakes.json', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(rec) });
+    showToast('🚚 車の棚卸しを記録しました');
+    _trInput = {};
+    await showTruck();
+  } catch(e) { alert('保存に失敗しました。電波の良い場所でもう一度お試しください。'); }
+  finally { window._trBusy = false; }
+}
+
+async function trDelete(key) {
+  if (!trIsAdmin()) return;
+  if (!confirm('この車の棚卸しの記録を削除しますか？\n（前後の月の差の計算も変わります）')) return;
+  try {
+    await dbWrite('/truckStocktakes/' + key + '.json', { method: 'DELETE' });
+    delete truckStocktakes[key];
+    renderTruck();
+  } catch(e) { alert('削除に失敗しました。'); }
 }
 
 // ══════════ 年間レポート（管理者用。件数・㎡・材料・材料費の年間まとめ） ══════════
