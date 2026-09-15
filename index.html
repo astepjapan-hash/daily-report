@@ -7794,6 +7794,9 @@ async function showStocktake() {
     movements = await movRes.json() || {};
   } catch(e) {}
   window._stLogs = stocktakes;
+  // 画面を開いた時刻と、そのときの在庫数を控える（棚卸し中に他の人が持ち出したかを見分けるため）
+  window._stLoadedAt = Date.now();
+  window._stLoadedInv = Object.assign({}, inventory);
   _stCat = 'frp';
   _stInput = {};
   _stBy = '全員';
@@ -7930,25 +7933,58 @@ function renderStocktake() {
     ${logsHtml}`;
 }
 
-function stCheckDiff() {
+async function stCheckDiff() {
   stSaveInputs();
   const el = document.getElementById('st-result');
+  const counted = ITEMS_MASTER.filter(i => _stInput[i.id] !== undefined);
+  if (!counted.length) { el.innerHTML = '<div class="notice-empty">まだ実物の数が入力されていません。数えた品目の「実物」欄に数を入れてください</div>'; return; }
+  el.innerHTML = '<div class="loading">最新の在庫を確認中...</div>';
+  // 比べる直前に最新の在庫と記録を読み直す（画面を開いている間に他の人が持ち出した分を反映するため）
+  try {
+    const [invRes, movRes] = await Promise.all([dbFetch('/inventory.json'), dbFetch('/movements.json')]);
+    if (!invRes.ok || !movRes.ok) throw new Error('read');
+    inventory = await invRes.json() || {};
+    movements = await movRes.json() || {};
+  } catch(e) {
+    el.innerHTML = '<div class="notice-empty">最新の在庫を読み込めませんでした。電波の良い場所でもう一度「差を確認する」を押してください</div>';
+    return;
+  }
+  const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
+  const r1 = v => Math.round((parseFloat(v) || 0) * 10) / 10;
+  const loadedAt = window._stLoadedAt || 0;
+  const loadedInv = window._stLoadedInv || {};
   const matched = [];
   const diffs = [];
-  ITEMS_MASTER.forEach(i => {
-    if (_stInput[i.id] === undefined) return;
-    const counted = Math.round((parseFloat(_stInput[i.id]) || 0) * 10) / 10;
-    const cur = getQty(i.id);
-    if (counted === cur) matched.push({ itemId: i.id, name: i.name, unit: i.unit, qty: cur });
-    else diffs.push({ itemId: i.id, name: i.name, unit: i.unit, before: cur, after: counted });
+  const moved = []; // 画面を開いた後に在庫が動いた品目
+  counted.forEach(i => {
+    const cnt = r1(_stInput[i.id]);
+    const cur = r1(getQty(i.id));
+    if (cnt === cur) matched.push({ itemId: i.id, name: i.name, unit: i.unit, qty: cur });
+    else diffs.push({ itemId: i.id, name: i.name, unit: i.unit, before: cur, after: cnt });
+    const was = r1(loadedInv[i.id]);
+    if (was !== cur) {
+      const recs = Object.values(movements || {})
+        .filter(m => m && m.itemId === i.id && (m.createdAt || 0) > loadedAt)
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      moved.push({ name: i.name, unit: i.unit, was, cur, recs });
+    }
+    stReveal(i.id); // 行の「アプリでは◯でした」も最新の数に更新
   });
-  if (!diffs.length && !matched.length) { el.innerHTML = '<div class="notice-empty">まだ実物の数が入力されていません。数えた品目の「実物」欄に数を入れてください</div>'; return; }
   window._stMatched = matched;
   window._stDiffs = diffs;
-  const fmt = v => (v % 1 === 0 ? v : v.toFixed(1));
   const total = matched.length + diffs.length;
+  const movedHtml = moved.length ? `<div style="background:#fff4e0;border:1.5px solid #e0a040;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:800;color:#a4610f;margin-bottom:4px">⚠️ 棚卸しの途中で在庫が動いた品目があります（${moved.length}件）</div>
+      <div style="font-size:11px;color:#7a5a2a;line-height:1.6;margin-bottom:6px">下の持ち出し・入庫より<b>前に数えた</b>場合は、数え直してから記録してください。そのまま記録すると在庫がずれます。<b>後に数えた</b>場合はそのまま記録してOKです。</div>
+      ${moved.map(x => `<div style="font-size:12px;color:#2d2a26;padding:5px 0;border-top:1px solid #f0dcb8"><b>${escHtml(x.name)}</b>　画面を開いたとき ${fmt(x.was)}${x.unit} → 今 ${fmt(x.cur)}${x.unit}
+        ${x.recs.length
+          ? x.recs.map(m => `<div style="font-size:11px;color:#888;margin-left:8px">🕐 ${fmtTime(m.createdAt)}　${escHtml(m.staff || '')}　${m.type === 'in' ? '入庫 +' : '持ち出し −'}${fmt(r1(m.qty))}${x.unit}${m.note ? '（' + escHtml(m.note) + '）' : ''}</div>`).join('')
+          : '<div style="font-size:11px;color:#888;margin-left:8px">在庫数が直接変更されました</div>'}
+      </div>`).join('')}
+    </div>` : '';
   el.innerHTML = `
-    ${matched.length ? `<div style="font-size:12px;color:#4a7c4a;font-weight:700;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px;margin-bottom:8px">✅ ${matched.length}品目はアプリと一致していました</div>` : ''}
+    ${movedHtml}
+    ${matched.length ?`<div style="font-size:12px;color:#4a7c4a;font-weight:700;background:#f0f7f0;border:1px solid #bcd8bc;border-radius:10px;padding:10px;margin-bottom:8px">✅ ${matched.length}品目はアプリと一致していました</div>` : ''}
     ${diffs.length ? `
       <div style="font-size:12px;font-weight:700;color:#c0392b;margin-bottom:6px">アプリと違う品目（${diffs.length}件）</div>
       ${diffs.map(d => `<div class="card" style="margin-bottom:6px;padding:10px 12px;border-color:#e57373;background:#fdf3f3;display:flex;align-items:center;gap:8px">
@@ -7968,12 +8004,39 @@ async function stApplyDiff() {
     ? diffs.length + '品目の在庫を実物の数に直します。よろしいですか？'
     : matched.length + '品目を「確認済み」として記録します（在庫数の変更はありません）。よろしいですか？';
   if (!confirm(msg)) return;
+  if (window._zkBusy) return;
+  window._zkBusy = true;
   try {
-    if (diffs.length) {
-      await Promise.all(diffs.map(d => {
-        inventory[d.itemId] = d.after;
-        return dbWrite('/inventory/' + d.itemId + '.json', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(d.after) });
-      }));
+    // 記録する直前にもう一度確認：「差を確認」の後に持ち出し・入庫が登録されていたら、上書きせずに止める
+    const r1 = v => Math.round((parseFloat(v) || 0) * 10) / 10;
+    const checks = [
+      ...matched.map(m => ({ itemId: m.itemId, name: m.name, expect: m.qty })),
+      ...diffs.map(d => ({ itemId: d.itemId, name: d.name, expect: d.before }))
+    ];
+    const tags = {};
+    const changed = [];
+    for (const x of checks) {
+      const res = await dbFetch('/inventory/' + x.itemId + '.json', { headers: { 'X-Firebase-ETag': 'true' } });
+      if (!res.ok) throw new Error('read');
+      tags[x.itemId] = res.headers.get('ETag');
+      if (r1(await res.json()) !== r1(x.expect)) changed.push(x.name);
+    }
+    if (changed.length) {
+      alert('「差を確認」の後に、次の品目の在庫が変わりました：\n' + changed.map(n => '・' + n).join('\n') + '\n\n在庫がずれるのを防ぐため、記録を止めました。内容を確認して、もう一度「実物の数に直して記録する」を押してください。');
+      stCheckDiff();
+      return;
+    }
+    for (const d of diffs) {
+      const h = { 'Content-Type': 'application/json' };
+      if (tags[d.itemId]) h['if-match'] = tags[d.itemId]; // 確認した時の値のままなら書き込む
+      const put = await dbFetch('/inventory/' + d.itemId + '.json', { method: 'PUT', headers: h, body: JSON.stringify(d.after) });
+      if (put.status === 412) {
+        alert('記録の直前に「' + d.name + '」の在庫が変わりました。在庫がずれるのを防ぐため、ここで止めました。もう一度「差を確認する」を押してください。');
+        stCheckDiff();
+        return;
+      }
+      if (!put.ok) throw new Error('write');
+      inventory[d.itemId] = d.after;
     }
     // 一致した品目・修正した品目の両方を記録する（一致した品目も「確認できた」証跡として残す）
     const items = [
@@ -7986,6 +8049,7 @@ async function stApplyDiff() {
     _stInput = {};
     showStocktake();
   } catch(e) { alert('保存に失敗しました。'); }
+  finally { window._zkBusy = false; }
 }
 
 // ══════════ 年間レポート（管理者用。件数・㎡・材料・材料費の年間まとめ） ══════════
