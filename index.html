@@ -5370,7 +5370,7 @@ async function renderTsukiawase(from,to){
     return {startRec,endRec,calc:trCalc(endRec,startRec,_tsukiMovements)};
   };
   const TRUCK_OF_CAT={'プライマー系':'primer','樹脂系':'resin','トップ系':'top'};
-  const trNames=(trAdmin?getStaffNames():[(currentUser&&currentUser.name)||'']).filter(n=>n&&staffOk(n));
+  const trNames=(trAdmin?trStaffNames():[(currentUser&&currentUser.name)||'']).filter(n=>n&&staffOk(n));
   const trRows=[],trLack=[];
   trNames.forEach(n=>{const sp=truckSpanOf(n);if(sp)trRows.push({n,sp});else trLack.push(n);});
 
@@ -6445,7 +6445,7 @@ function showLoadlistHome() {
   if (currentUser && currentUser.role !== 'admin') {
     sel.innerHTML = `<option selected>${escHtml(currentUser.name)}</option><option>外注</option>`;
   } else {
-    const names = [...getStaffNames(), '外注'];
+    const names = [...getStaffNames().filter(n => n !== '外注'), '外注'];
     sel.innerHTML = '<option value="">積む人を選択</option>' + names.map(n => `<option${currentUser && currentUser.name === n ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
   }
   if (!document.getElementById('ll-date').value) document.getElementById('ll-date').value = getToday();
@@ -7392,7 +7392,7 @@ function computeAreaByStaff(completedFrom, completedTo){
 // 持ち出し表／入庫表の集計ロジック（画面表示・PDF出力で共通利用）
 // 加工・小分け（倉庫内変換）は現場への持ち出しではないため常に除外する
 function computeMoveStats(list, moveType, dateFilter){
-  const BASE_STAFF = getStaffNames();
+  const BASE_STAFF = getStaffNames().filter(n => n !== '外注'); // 外注は最後にまとめて足すので、ここでは除く（重複防止）
   const hasGaichuOut = moveType === 'out' && list.some(([,m]) => m.type === 'out' && m.staff === '外注' && !m.processing && dateFilter(m));
   const STAFF = moveType === 'out' ? (hasGaichuOut ? [...BASE_STAFF, '外注'] : BASE_STAFF) : ['外注'];
 
@@ -8127,6 +8127,8 @@ let _trStaff = '';
 let _trInput = {};
 
 function trIsAdmin() { return !!(adminLoggedIn || (currentUser && currentUser.role === 'admin')); }
+// 車の棚卸しの対象者（外注は会社の車ではないので除く）
+function trStaffNames() { return getStaffNames().filter(n => n !== '外注'); }
 function trFmt(v) { const r = Math.round((parseFloat(v) || 0) * 10) / 10; return r % 1 === 0 ? String(r) : r.toFixed(1); }
 
 // 今月の20日〜月末に、その人の車の棚卸しが済んでいるか
@@ -8143,7 +8145,7 @@ function updateTruckRemind() {
   if (parseInt(getToday().slice(8, 10), 10) < 20) { el.innerHTML = ''; return; }
   const badge = t => `<span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;background:#c0392b;color:#fff;font-size:11px;font-weight:700">${t}</span>`;
   if (trIsAdmin()) {
-    const yet = getStaffNames().filter(n => !trDoneThisMonth(n)).length;
+    const yet = trStaffNames().filter(n => !trDoneThisMonth(n)).length;
     el.innerHTML = yet ? badge('まだ' + yet + '人') : '';
   } else {
     const me = currentUser && currentUser.name;
@@ -8241,7 +8243,7 @@ async function showTruck() {
   }
   _trInput = {};
   if (!trIsAdmin()) _trStaff = (currentUser && currentUser.name) || '';
-  else if (!_trStaff || !getStaffNames().includes(_trStaff)) _trStaff = getStaffNames()[0] || '';
+  else if (!_trStaff || !trStaffNames().includes(_trStaff)) _trStaff = trStaffNames()[0] || '';
   renderTruck();
 }
 
@@ -8283,7 +8285,7 @@ function renderTruck() {
   const month = parseInt(today.slice(5, 7), 10);
   const canRecord = !!_trStaff && (admin || (currentUser && currentUser.name === _trStaff));
   const staffRow = admin
-    ? `<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${getStaffNames().map(n => `<button class="filter-btn ${_trStaff === n ? 'active' : ''}" style="flex-shrink:0" onclick="trSetStaff('${n.replace(/'/g, "\\'")}')">${escHtml(n)}${trIsDue(n) ? ' 🔴' : (trDoneThisMonth(n) ? ' ✅' : '')}</button>`).join('')}</div>`
+    ? `<div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">${trStaffNames().map(n => `<button class="filter-btn ${_trStaff === n ? 'active' : ''}" style="flex-shrink:0" onclick="trSetStaff('${n.replace(/'/g, "\\'")}')">${escHtml(n)}${trIsDue(n) ? ' 🔴' : (trDoneThisMonth(n) ? ' ✅' : '')}</button>`).join('')}</div>`
     : `<div style="font-size:14px;font-weight:700;color:#2d2a26">${escHtml(_trStaff)}</div>`;
   const done = trDoneThisMonth(_trStaff);
   const statusHtml = done
