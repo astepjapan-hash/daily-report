@@ -2612,8 +2612,9 @@ function aggregateSites(){
       const rawName=(s.name||'').trim();
       if(!rawName)return;
       const name=siteAliases[rawName]||siteAliases[siteKey(rawName)]||rawName;
-      if(!sites[name])sites[name]={name,company:getCompanyName(name),completed:false,completedDate:'',workers:{},history:[],primerKg:0,resinKan:0,resinWari:0,topKg:0,shitaji:new Set(),burner:new Set()};
+      if(!sites[name])sites[name]={name,company:getCompanyName(name),completed:false,completedDate:'',workers:{},history:[],entries:0,primerKg:0,resinKan:0,resinWari:0,topKg:0,shitaji:new Set(),burner:new Set()};
       const site=sites[name];
+      site.entries++; // この現場名で書かれた日報の件数（似た名前の現場を知らせるときに使う）
       const procs=s.processes||[];
       // 完了判定
       if(procs.includes('完了')){site.completed=true;if(!site.completedDate||r.date>site.completedDate)site.completedDate=r.date;}
@@ -2775,7 +2776,25 @@ function renderSiteList(){
   </div>
   </div>`;
 
-  content.innerHTML=searchHtml+'<div id="site-list-inner"></div>';
+  // 似た名前で別々に集計されている現場を見つけて知らせる（全角・半角・空白・末尾の「◯p」の違い）
+  const dupMap={};
+  Object.values(allSites).forEach(s=>{
+    const k=siteDupKey(s.name);
+    if(!k)return;
+    (dupMap[k]=dupMap[k]||[]).push(s);
+  });
+  const dupGroups=Object.values(dupMap).filter(g=>g.length>1);
+  const dupHtml=dupGroups.length?`<div style="background:#fff4e0;border:1.5px solid #e0a040;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:800;color:#a4610f;margin-bottom:4px">⚠️ 似た名前で別々に集計されている現場があります（${dupGroups.length}組）</div>
+    <div style="font-size:11px;color:#7a5a2a;line-height:1.6">書き方が少し違うだけで、別の現場として数えられています。まとめると、工程履歴・施工者・材料・面積が1つになります。</div>
+    ${dupGroups.slice(0,5).map(g=>`<div style="font-size:11px;color:#2d2a26;padding:5px 0;margin-top:5px;border-top:1px solid #f0dcb8;line-height:1.7">
+      ${g.map(s=>`・${escHtml(s.name)}　<span style="color:#888">日報${s.entries}件・${s.completed?'完了':'未完了'}</span>`).join('<br>')}
+    </div>`).join('')}
+    ${dupGroups.length>5?`<div style="font-size:11px;color:#888;margin-top:4px">ほか${dupGroups.length-5}組</div>`:''}
+    <div style="font-size:11px;color:#a4610f;font-weight:700;margin-top:6px">→ 管理者ページの「🔗 現場名の統合」でまとめられます</div>
+  </div>`:'';
+
+  content.innerHTML=searchHtml+dupHtml+'<div id="site-list-inner"></div>';
   window._completedSites=completed;
   renderSiteListInner();
 }
@@ -4608,11 +4627,12 @@ function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&a
 function siteKey(s){ return String(s||'').replace(/[.#$/\[\]]/g,'_'); }
 // 検索用の正規化（全角英数→半角、空白を無視、大文字小文字を無視）
 function normSite(s){
-  return String(s||'')
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
-    .replace(/[\s　]/g,'')
-    .toLowerCase();
+  // 全角・半角のゆれ（Ａ→A、ﾘﾌｫｰﾑ→リフォーム など）と空白をそろえてから比べる
+  return String(s||'').normalize('NFKC').replace(/[\s　]/g,'').toLowerCase();
 }
+// 「似た名前の現場」を見つけるためのキー。末尾の「◯p」（施工箇所の表記ゆれ）は無視する
+// 空白を消す前に外す（先に消すと「５期１３　6p」の数字がつながって消しすぎるため）
+function siteDupKey(name){ return normSite(String(name||'').normalize('NFKC').replace(/\s*\d+p\s*$/i,'')); }
 // 日報に実際に出てくる現場名（統合前の名前）と、その日報件数
 function getRawSiteNames(){
   const map={};
