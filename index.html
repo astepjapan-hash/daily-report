@@ -2776,25 +2776,7 @@ function renderSiteList(){
   </div>
   </div>`;
 
-  // 似た名前で別々に集計されている現場を見つけて知らせる（全角・半角・空白・末尾の「◯p」の違い）
-  const dupMap={};
-  Object.values(allSites).forEach(s=>{
-    const k=siteDupKey(s.name);
-    if(!k)return;
-    (dupMap[k]=dupMap[k]||[]).push(s);
-  });
-  const dupGroups=Object.values(dupMap).filter(g=>g.length>1);
-  const dupHtml=dupGroups.length?`<div style="background:#fff4e0;border:1.5px solid #e0a040;border-radius:10px;padding:10px 12px;margin-bottom:10px">
-    <div style="font-size:12px;font-weight:800;color:#a4610f;margin-bottom:4px">⚠️ 似た名前で別々に集計されている現場があります（${dupGroups.length}組）</div>
-    <div style="font-size:11px;color:#7a5a2a;line-height:1.6">書き方が少し違うだけで、別の現場として数えられています。まとめると、工程履歴・施工者・材料・面積が1つになります。</div>
-    ${dupGroups.slice(0,5).map(g=>`<div style="font-size:11px;color:#2d2a26;padding:5px 0;margin-top:5px;border-top:1px solid #f0dcb8;line-height:1.7">
-      ${g.map(s=>`・${escHtml(s.name)}　<span style="color:#888">日報${s.entries}件・${s.completed?'完了':'未完了'}</span>`).join('<br>')}
-    </div>`).join('')}
-    ${dupGroups.length>5?`<div style="font-size:11px;color:#888;margin-top:4px">ほか${dupGroups.length-5}組</div>`:''}
-    <div style="font-size:11px;color:#a4610f;font-weight:700;margin-top:6px">→ 管理者ページの「🔗 現場名の統合」でまとめられます</div>
-  </div>`:'';
-
-  content.innerHTML=searchHtml+dupHtml+'<div id="site-list-inner"></div>';
+  content.innerHTML=searchHtml+'<div id="site-list-inner"></div>';
   window._completedSites=completed;
   renderSiteListInner();
 }
@@ -4041,6 +4023,7 @@ async function renderAdminContent(){
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-alias')">🔗 現場名の統合 <span class="collapse-arrow" id="arrow-collapse-alias">▶</span></div>
       <div class="card collapse-body" id="collapse-alias" style="margin-bottom:20px">
         <div style="font-size:12px;color:#aaa;margin-bottom:12px">同じ現場が入力ゆれ（例：施工箇所の「○ｐ」違い）で別々に集計されてしまう場合、1つの名前にまとめられます。<br>現場名の一部で検索し、まとめたいものにチェックを入れて実行します。日報のデータは書き換わりません（集計の見え方だけが変わります）。</div>
+        ${renderMergeSuggestHtml()}
         <div class="field"><label class="lbl">① 現場名の一部を入れて検索</label>
           <div style="display:flex;gap:8px">
             <input type="text" id="merge-kw" placeholder="例: Ｇ田島２丁目１期" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMergeSites();}">
@@ -4681,6 +4664,16 @@ async function submitMergeSites(){
 
   if(!confirm('次の'+froms.length+'件を「'+to+'」にまとめます。\n\n'+froms.join('\n')+'\n\n※日報のデータは書き換えません（集計の見え方だけが変わります）\n※面積・メモ・会社の設定は、統合後の名前へ引き継ぎます\n\nよろしいですか？')) return;
 
+  if(!await applyMergeNames(froms,to)) return;
+  document.getElementById('merge-kw').value='';
+  document.getElementById('merge-to').value='';
+  window._mergeHits=[];
+  alert('統合しました！「集計」で確認してください。');
+  renderAdminContent();
+}
+
+// 統合の実行（「検索してまとめる」からも「似た名前の候補」からも使う）
+async function applyMergeNames(froms,to){
   const updates={};
   froms.forEach(f=>{ updates[siteKey(f)]=to; });
   // 今まとめる名前を「行き先」にしていた設定があれば、新しい名前に付け替える（行き先が迷子にならないように）
@@ -4691,7 +4684,7 @@ async function submitMergeSites(){
   if(siteAliases[siteKey(to)]) updates[siteKey(to)]=null;
 
   try{
-    await dbFetch('/siteAliases.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});
+    await dbWrite('/siteAliases.json',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});
     Object.entries(updates).forEach(([k,v])=>{ if(v===null) delete siteAliases[k]; else siteAliases[k]=v; });
     // 統合前の名前に登録済みの面積・メモ・会社を、統合後の名前へ引き継ぐ
     // （統合後の名前側が未設定の項目だけ埋める。元の設定は消さないので、統合を解除すれば元に戻る）
@@ -4709,16 +4702,73 @@ async function submitMergeSites(){
       const changed=newMeta.area!==toMeta.area||newMeta.memo!==toMeta.memo||newMeta.company!==toMeta.company;
       if(changed){
         const data={area:newMeta.area!=null?newMeta.area:'',memo:newMeta.memo!=null?newMeta.memo:'',name:to,company:newMeta.company!=null?newMeta.company:''};
-        await dbFetch('/siteMeta/'+encodeURIComponent(siteKey(to))+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        await dbWrite('/siteMeta/'+encodeURIComponent(siteKey(to))+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
         siteMeta[to]=data;
       }
     }catch(e){}
-    document.getElementById('merge-kw').value='';
-    document.getElementById('merge-to').value='';
-    window._mergeHits=[];
-    alert('統合しました！「集計」で確認してください。');
-    renderAdminContent();
-  }catch(e){ alert('保存に失敗しました。'); }
+    return true;
+  }catch(e){ alert('保存に失敗しました。'); return false; }
+}
+
+// ── 似た名前で別々に集計されている現場（その場でまとめられる） ──
+// 全角・半角、空白、末尾の「◯p」の違いだけで分かれている現場を見つける
+function mergeSuggestGroups(){
+  const map={};
+  Object.values(aggregateSites()).forEach(s=>{
+    const k=siteDupKey(s.name);
+    if(!k)return;
+    (map[k]=map[k]||[]).push(s);
+  });
+  // 日報の件数が多い順（同数なら完了している方を先に）＝残す名前の候補が上に来るように
+  return Object.values(map).filter(g=>g.length>1)
+    .map(g=>g.slice().sort((a,b)=>(b.entries-a.entries)||((b.completed?1:0)-(a.completed?1:0))));
+}
+
+function renderMergeSuggestHtml(){
+  const groups=mergeSuggestGroups();
+  window._mergeSuggest=groups.map(g=>g.map(s=>s.name));
+  if(!groups.length) return '';
+  return `<div style="background:#fff4e0;border:1.5px solid #e0a040;border-radius:10px;padding:10px 12px;margin-bottom:14px">
+    <div style="font-size:12px;font-weight:800;color:#a4610f;margin-bottom:4px">⚠️ 似た名前で別々に集計されている現場があります（${groups.length}組）</div>
+    <div style="font-size:11px;color:#7a5a2a;line-height:1.6">同じ現場なら、チェックを入れて「まとめる」を押してください。「◯p」などが違うときは、<b>残したい名前をタップ</b>すると下の欄に入ります（直接書き直してもOK）。</div>
+    ${groups.map((g,gi)=>`<div style="border-top:1px solid #f0dcb8;padding:8px 0;margin-top:6px">
+      ${g.map((s,si)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <input type="checkbox" class="msg-check-${gi}" value="${si}" checked style="width:18px;height:18px;flex-shrink:0">
+        <span onclick="pickSuggestTo(${gi},${si})" style="flex:1;font-size:12px;color:#2d2a26;cursor:pointer;word-break:break-all;line-height:1.5">${escHtml(s.name)}<br><span style="color:#888;font-size:11px">日報${s.entries}件・${s.completed?'完了':'未完了'}</span></span>
+      </div>`).join('')}
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+        <input type="text" id="msg-to-${gi}" value="${escHtml(g[0].name)}" style="flex:1;padding:7px 9px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:12px;font-family:inherit">
+        <button onclick="submitMergeSuggest(${gi})" style="flex-shrink:0;padding:8px 14px;background:#e07b4f;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">まとめる</button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+// 候補の名前をタップ → その組の「統合後の名前」に入れる
+function pickSuggestTo(gi,si){
+  const g=(window._mergeSuggest||[])[gi];
+  const el=document.getElementById('msg-to-'+gi);
+  if(g&&g[si]!=null&&el) el.value=g[si];
+}
+
+async function submitMergeSuggest(gi){
+  const g=(window._mergeSuggest||[])[gi]||[];
+  const to=(document.getElementById('msg-to-'+gi)?.value||'').trim();
+  const picked=Array.from(document.querySelectorAll('.msg-check-'+gi+':checked'))
+    .map(c=>g[parseInt(c.value,10)]).filter(n=>n!=null);
+  if(!to){ alert('統合後の名前を入力してください'); return; }
+  if(!picked.length){ alert('まとめたい現場名にチェックを入れてください'); return; }
+  const froms=picked.filter(f=>f!==to);
+  if(!froms.length){ alert('チェックした名前が「統合後の名前」と同じです。まとめる必要はありません。'); return; }
+  if(!confirm('次の'+froms.length+'件を「'+to+'」にまとめます。\n\n'+froms.join('\n')+'\n\n※日報のデータは書き換えません（集計の見え方だけが変わります）\n※面積・メモ・会社の設定は、統合後の名前へ引き継ぎます\n\nよろしいですか？')) return;
+  if(!await applyMergeNames(froms,to)) return;
+  alert('統合しました！「集計」で確認してください。');
+  renderAdminContent();
+  // 続けて作業できるように「現場名の統合」は開いたままにする
+  ['collapse-alias','collapse-alias-list'].forEach(id=>{
+    document.getElementById(id)?.classList.add('open');
+    document.getElementById('arrow-'+id)?.classList.add('open');
+  });
 }
 
 // ── 取引会社の追加・削除 ──
