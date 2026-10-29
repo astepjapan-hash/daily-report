@@ -996,22 +996,6 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
 </div>
 
 <!-- トースト -->
-<!-- 予定から現場名を選ぶ（打ち間違い・表記ゆれを防ぐ） -->
-<div class="modal-overlay" id="sitepick-modal" style="display:none">
-    <div class="modal-box" style="max-height:88vh;overflow-y:auto">
-      <div style="font-size:17px;font-weight:700;color:#2d2a26;margin-bottom:4px">📅 予定から現場名を選ぶ</div>
-      <div style="font-size:12px;color:#aaa;margin-bottom:12px">予定に入っている現場名をタップすると、そのまま入ります。打ち間違いや書き方のズレを防げます。</div>
-      <div class="month-nav" style="margin-bottom:8px">
-        <button class="month-nav-btn" onclick="spChangeDate(-1)">◀</button>
-        <span class="month-nav-label" id="sp-date-label" style="font-size:14px">―</span>
-        <button class="month-nav-btn" onclick="spChangeDate(1)">▶</button>
-      </div>
-      <input type="date" id="sp-date" onchange="renderSitePick()" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;margin-bottom:10px">
-      <div id="sp-list"></div>
-      <button class="btn-secondary" style="margin-top:12px;width:100%" onclick="closeSitePick()">閉じる</button>
-    </div>
-</div>
-
 <div class="modal-overlay" id="handover-modal" style="display:none">
     <div class="modal-box" style="max-height:88vh;overflow-y:auto">
       <div style="font-size:17px;font-weight:700;color:#2d2a26;margin-bottom:4px">🔄 受け渡し登録</div>
@@ -9074,5 +9058,22 @@ function showToast(msg) {
 
 
 </script>
+
+<!-- 予定から現場名を選ぶ（打ち間違い・表記ゆれを防ぐ）
+     どのタブからでも開けるよう、タブの中ではなく一番外側に置く -->
+<div class="modal-overlay" id="sitepick-modal" style="display:none;z-index:1100">
+  <div class="modal-box" style="max-height:88vh;overflow-y:auto">
+    <div style="font-size:17px;font-weight:700;color:#2d2a26;margin-bottom:4px">📅 予定から現場名を選ぶ</div>
+    <div style="font-size:12px;color:#aaa;margin-bottom:12px">予定に入っている現場名をタップすると、そのまま入ります。打ち間違いや書き方のズレを防げます。</div>
+    <div class="month-nav" style="margin-bottom:8px">
+      <button class="month-nav-btn" onclick="spChangeDate(-1)">◀</button>
+      <span class="month-nav-label" id="sp-date-label" style="font-size:14px">―</span>
+      <button class="month-nav-btn" onclick="spChangeDate(1)">▶</button>
+    </div>
+    <input type="date" id="sp-date" onchange="renderSitePick()" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;margin-bottom:10px">
+    <div id="sp-list"></div>
+    <button class="btn-secondary" style="margin-top:12px;width:100%" onclick="closeSitePick()">閉じる</button>
+  </div>
+</div>
 </body>
 </html>
