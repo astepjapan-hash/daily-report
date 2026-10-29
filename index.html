@@ -53,6 +53,7 @@ textarea { resize: vertical; }
 .weather-btn.selected { background: #e07b4f; color: #fff; border-color: #e07b4f; font-weight: 700; }
 .site-card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px; border: 1.5px solid #e0d8d0; }
 .site-top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.sitepick-btn { flex-shrink: 0; padding: 9px 10px; background: #fff; border: 1.5px solid #e07b4f; color: #e07b4f; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .site-input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1.5px solid #e0d8d0; font-size: 14px; }
 .remove-btn { background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 0 4px; }
 .time-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
@@ -995,6 +996,22 @@ button, input, select, textarea, label, a, .tab, .zk-tab, .filter-btn, .stats-se
 </div>
 
 <!-- トースト -->
+<!-- 予定から現場名を選ぶ（打ち間違い・表記ゆれを防ぐ） -->
+<div class="modal-overlay" id="sitepick-modal" style="display:none">
+    <div class="modal-box" style="max-height:88vh;overflow-y:auto">
+      <div style="font-size:17px;font-weight:700;color:#2d2a26;margin-bottom:4px">📅 予定から現場名を選ぶ</div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:12px">予定に入っている現場名をタップすると、そのまま入ります。打ち間違いや書き方のズレを防げます。</div>
+      <div class="month-nav" style="margin-bottom:8px">
+        <button class="month-nav-btn" onclick="spChangeDate(-1)">◀</button>
+        <span class="month-nav-label" id="sp-date-label" style="font-size:14px">―</span>
+        <button class="month-nav-btn" onclick="spChangeDate(1)">▶</button>
+      </div>
+      <input type="date" id="sp-date" onchange="renderSitePick()" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid #e0d8d0;font-size:14px;font-family:inherit;margin-bottom:10px">
+      <div id="sp-list"></div>
+      <button class="btn-secondary" style="margin-top:12px;width:100%" onclick="closeSitePick()">閉じる</button>
+    </div>
+</div>
+
 <div class="modal-overlay" id="handover-modal" style="display:none">
     <div class="modal-box" style="max-height:88vh;overflow-y:auto">
       <div style="font-size:17px;font-weight:700;color:#2d2a26;margin-bottom:4px">🔄 受け渡し登録</div>
@@ -1632,7 +1649,7 @@ function selectWeather(btn){document.querySelectorAll('.weather-btn').forEach(b=
 function addSite(){
   siteCount++;const id=siteCount;
   const div=document.createElement('div');div.className='site-card';div.id='site-'+id;
-  div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}"><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
+  div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}"><button type="button" class="sitepick-btn" onclick="openSitePick('site-name-${id}')">📅 予定</button><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
     <div class="time-row"><div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="time-in-${id}"></div><span class="time-sep">→</span><div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="time-out-${id}"></div></div>
     <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn" data-proc="${p}" onclick="toggleProc(this)">${p}</button>`).join('')}</div>
     <div class="material-section" style="border-top:1px solid #f0ebe5;padding-top:10px;margin-bottom:10px">
@@ -2088,6 +2105,54 @@ async function loadSchedules(){
   try{const res=await dbFetch('/schedules.json');schedules=await res.json()||{};}catch(e){schedules={};}
 }
 
+// ── 予定から現場名を選ぶ（手で打たずに済むので、書き方のズレが起きない） ──
+let _spTarget='';
+async function openSitePick(targetId){
+  _spTarget=targetId;
+  const el=document.getElementById('sp-date');
+  if(el&&!el.value)el.value=getLocalDateStr();
+  document.getElementById('sitepick-modal').style.display='flex';
+  document.getElementById('sp-list').innerHTML='<div class="loading">読み込み中...</div>';
+  await loadSchedules(); // 最新の予定を読み込んでから出す
+  renderSitePick();
+}
+function closeSitePick(){ document.getElementById('sitepick-modal').style.display='none'; }
+function spChangeDate(delta){
+  const el=document.getElementById('sp-date');
+  const d=new Date((el.value||getLocalDateStr())+'T00:00:00');
+  d.setDate(d.getDate()+delta);
+  el.value=d.toLocaleDateString('sv');
+  renderSitePick();
+}
+function renderSitePick(){
+  const ds=document.getElementById('sp-date').value||getLocalDateStr();
+  const lab=document.getElementById('sp-date-label');
+  if(lab){
+    const d=new Date(ds+'T00:00:00');
+    lab.textContent=`${d.getMonth()+1}月${d.getDate()}日（${'日月火水木金土'[d.getDay()]}）`;
+  }
+  // 同じ現場名が2回登録されていても1つにまとめて出す
+  const seen={};
+  const list=Object.values(schedules||{}).filter(s=>{
+    if(!s||s.date!==ds)return false;
+    const n=(s.site||'').trim();
+    if(!n||seen[n])return false;
+    seen[n]=1;return true;
+  });
+  document.getElementById('sp-list').innerHTML=list.length?list.map(s=>`
+    <div onclick="spPick('${encodeURIComponent(s.site)}')" style="background:#faf8f5;border:1.5px solid #e0d8d0;border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer">
+      <div style="font-size:14px;font-weight:700;color:#2d2a26;word-break:break-all">📍 ${escHtml(s.site)}</div>
+      ${s.task?`<div style="font-size:12px;color:#c97a1f;margin-top:2px">${escHtml(s.task)}</div>`:''}
+      ${s.address?`<div style="font-size:11px;color:#aaa;margin-top:2px">${escHtml(s.address)}</div>`:''}
+    </div>`).join('')
+    :'<div class="notice-empty">この日の予定はありません。◀▶で日付を変えてみてください</div>';
+}
+function spPick(enc){
+  const t=document.getElementById(_spTarget);
+  if(t)t.value=decodeURIComponent(enc);
+  closeSitePick();
+}
+
 function onListSearch(input){
   const q=input.value.trim();
   document.getElementById('list-search-clear').style.display=q?'block':'none';
@@ -2363,7 +2428,7 @@ async function editDraft(key){
     const div=document.createElement('div');
     div.className='site-card';div.id='site-'+id;
     // addSiteと同じHTMLを生成（toggleProc呼び出しなし）
-    div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}" value="${(s.name||'').replace(/"/g,'&quot;')}"><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
+    div.innerHTML=`<div class="site-top-row"><input class="site-input" type="text" placeholder="現場名 ${id}" id="site-name-${id}" value="${(s.name||'').replace(/"/g,'&quot;')}"><button type="button" class="sitepick-btn" onclick="openSitePick('site-name-${id}')">📅 予定</button><button class="remove-btn" onclick="removeSite(${id})">×</button></div>
       <div class="time-row"><div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="time-in-${id}" value="${s.timeIn||''}"></div><span class="time-sep">→</span><div class="time-field"><span class="time-label">退場</span><input type="time" class="time-input" id="time-out-${id}" value="${s.timeOut||''}"></div></div>
       <div class="process-grid">${PROCESSES.map(p=>`<button class="proc-btn ${s.processes?.includes(p)?'selected':''}" data-proc="${p}" onclick="toggleProc(this)">${p}</button>`).join('')}</div>
       <div class="material-section" style="border-top:1px solid #f0ebe5;padding-top:10px;margin-bottom:10px">
@@ -2465,6 +2530,7 @@ function addEditSite(){
   const newSiteHtml=`<div class="site-card" id="edit-site-${i}">
       <div class="site-top-row">
         <input class="site-input" placeholder="現場名 ${i+1}" id="edit-site-name-${i}">
+        <button type="button" class="sitepick-btn" onclick="openSitePick('edit-site-name-${i}')">📅 予定</button>
         <button class="remove-btn" onclick="document.getElementById('edit-site-${i}').remove()">×</button>
       </div>
       <div class="time-row">
@@ -5099,6 +5165,7 @@ function openReportEdit(key){
     return `<div class="site-card" id="edit-site-${i}">
       <div class="site-top-row">
         <input class="site-input" type="text" placeholder="現場名" id="edit-site-name-${i}" value="${s.name||''}">
+        <button type="button" class="sitepick-btn" onclick="openSitePick('edit-site-name-${i}')">📅 予定</button>
       </div>
       <div class="time-row">
         <div class="time-field"><span class="time-label">🕐 入場</span><input type="time" class="time-input" id="edit-time-in-${i}" value="${s.timeIn||''}"></div>
