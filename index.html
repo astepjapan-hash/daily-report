@@ -5350,6 +5350,17 @@ function calcWorkStats(seg){
     }
   }
 
+  // 日曜・休業日に出した日報は「休日出勤」として分けて数える
+  // （分母の稼働可能日数は日曜・休業日を除いているので、混ぜると数が合わなくなるため）
+  const offWorkByPerson={};
+  STAFF_LEAVE.forEach(m=>{
+    let off=0;
+    workStats[m].days.forEach(ds=>{
+      if(new Date(ds+'T00:00:00').getDay()===0||isHolidayFor(ds,m))off++;
+    });
+    offWorkByPerson[m]=off;
+  });
+
   if(gridEl)gridEl.innerHTML=STAFF_LEAVE.map(m=>{
     const s=workStats[m];
     const h=Math.floor(s.minutes/60);const min=s.minutes%60;
@@ -5357,7 +5368,8 @@ function calcWorkStats(seg){
     const yasumi=yasumiByPerson[m]||0;
     return `<div class="admin-stat-card">
       <div class="admin-stat-name">${m}</div>
-      <div class="admin-stat-row"><span class="admin-stat-key">作業日数</span><span class="admin-stat-val">${s.days.size}日 / ${possibleByPerson[m]||0}日<span style="font-size:10px;color:#aaa">（日曜・休業日除く）</span></span></div>
+      <div class="admin-stat-row"><span class="admin-stat-key">作業日数</span><span class="admin-stat-val">${s.days.size-(offWorkByPerson[m]||0)}日 / ${possibleByPerson[m]||0}日<span style="font-size:10px;color:#aaa">（日曜・休業日除く）</span></span></div>
+      <div class="admin-stat-row"><span class="admin-stat-key">🌤 休日出勤</span><span class="admin-stat-val" style="color:#c97a1f">${offWorkByPerson[m]||0}日</span></div>
       <div class="admin-stat-row"><span class="admin-stat-key">作業時間</span><span class="admin-stat-val">${h}h${min}m</span></div>
       <div class="admin-stat-row"><span class="admin-stat-key">🏖️ 有給</span><span class="admin-stat-val" style="color:#388e3c">${kyuka}日</span></div>
       <div class="admin-stat-row"><span class="admin-stat-key">😴 休み</span><span class="admin-stat-val" style="color:#7b4fb0">${yasumi}日</span></div>
