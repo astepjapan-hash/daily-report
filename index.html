@@ -4415,8 +4415,6 @@ async function openSalaryForm(){
   const month=document.getElementById('salary-month').value;
   const name=document.getElementById('salary-staff').value;
   if(!month||!name){alert('対象月とスタッフを選択してください');return;}
-  const p=salaryProfiles[name]||{};
-  if(!p.dailyRate){alert(name+'の日給単価が未設定です。先に固定項目設定を保存してください。');return;}
 
   // 作業日数・半日日数（日報から自動計算。半日は作業日数から外して半日日数に入れる）
   const _dc=salaryDayCounts(name,month);
@@ -4433,6 +4431,10 @@ async function openSalaryForm(){
     const res=await dbFetch('/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
     saved=await res.json()||{};
   }catch(e){}
+
+  // この月に使う単価。保存済みならその月の単価、無ければ今の固定項目設定を初期値にする
+  const r=(saved.rates&&Object.keys(saved.rates).length)?saved.rates:(salaryProfiles[name]||{});
+  if(!r.dailyRate){alert(name+'の日給単価が未設定です。先に固定項目設定を保存してください。');return;}
 
   const area=document.getElementById('salary-form-area');
   const [y,m]=month.split('-');
@@ -4463,14 +4465,34 @@ async function openSalaryForm(){
         <span>経費支払い分 <span style="font-size:10px;color:#7d967d">（承認済み ¥${expTotal.toLocaleString()}）</span></span>
         <span><input type="number" id="sal-expense" value="${saved.expense!==undefined?saved.expense:expTotal||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 円</span>
       </div>
-      <div id="salary-preview" style="border-top:1px dashed #e0d8d0;padding-top:10px;font-size:13px"></div>
+      <div style="border-top:1px dashed #e0d8d0;margin-top:2px;padding-top:10px">
+        <div style="font-size:12px;font-weight:700;color:#888">この月の単価・固定項目</div>
+        <div style="font-size:10px;color:#c49a6a;margin:2px 0 7px;line-height:1.5">${(saved.rates&&Object.keys(saved.rates).length)?'この月に保存されている金額です。':'今の固定項目設定から入れています。'}ここを変えても<b>この月だけ</b>に反映され、ほかの月や固定項目設定は変わりません</div>
+        ${SALARY_PROFILE_FIELDS.map(([k,label,unit])=>`
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+          <span>${label}</span>
+          <span><input type="number" id="sal-rate-${k}" value="${r[k]||''}" placeholder="0" min="0" style="width:90px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> ${unit}</span>
+        </div>`).join('')}
+      </div>
+      <div id="salary-preview" style="border-top:1px dashed #e0d8d0;padding-top:10px;margin-top:6px;font-size:13px"></div>
       <button class="btn-primary" style="margin-top:12px" onclick="saveSalaryData('${month}','${name}')">保存する</button>
     </div>`;
   updateSalaryPreview(name);
 }
 
+// 明細の画面に出ている「この月の単価」を読む（画面が無いときは今の固定項目設定）
+function salaryRatesFromForm(name){
+  const base=salaryProfiles[name]||{};
+  const out={};
+  SALARY_PROFILE_FIELDS.forEach(([k])=>{
+    const el=document.getElementById('sal-rate-'+k);
+    out[k]=el?(parseInt(el.value)||0):(base[k]||0);
+  });
+  return out;
+}
+
 function calcSalary(name){
-  const p=salaryProfiles[name]||{};
+  const p=salaryRatesFromForm(name);
   const workDays=parseInt(document.getElementById('sal-days')?.value)||0;
   const kyukaDays=parseInt(document.getElementById('sal-kyuka')?.value)||0;
   const halfDays=parseInt(document.getElementById('sal-half')?.value)||0;
@@ -8955,7 +8977,9 @@ function wlBuild(name, year) {
     const key = year + '-' + String(m).padStart(2, '0');
     const saved = (salaryDataAll[key] || {})[name];
     if (!saved || saved.workDays === undefined) { months.push(null); continue; }
-    months.push({ c: calcSalaryFromData(name, saved), at: atBuild(name, key) });
+    // rates が無い月は、今の固定項目設定で計算される（＝あとで設定を変えると金額が動く）
+    months.push({ c: calcSalaryFromData(name, saved), at: atBuild(name, key),
+      hasRates: !!(saved.rates && Object.keys(saved.rates).length) });
   }
   return months;
 }
@@ -9015,7 +9039,7 @@ function renderWageLedger() {
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;background:#fff;min-width:760px">
         <thead><tr><th style="${th};text-align:left;${stick};z-index:3">項目</th>
-          ${months.map((m, i) => `<th style="${th};text-align:right;${m ? '' : 'color:#ccc'}">${i + 1}月</th>`).join('')}
+          ${months.map((m, i) => `<th style="${th};text-align:right;${m ? '' : 'color:#ccc'}">${i + 1}月${(m && !m.hasRates) ? '<span style="color:#c0392b">※</span>' : ''}</th>`).join('')}
           <th style="${th};text-align:right;color:#c97a1f">合計</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -9024,7 +9048,7 @@ function renderWageLedger() {
       ※ 給料明細を保存していない月は空欄です<br>
       ※ 労働時間は日報の入場〜退場から休憩を引いた時間です（移動時間・事務所での作業は含みません）<br>
       ※ 時間外労働は1日8時間を超えた分、深夜労働は22時〜翌5時に重なった分です<br>
-      ※ 日給・各手当・保険料は、その月の<b>給料明細を保存したときの単価</b>で計算します（今後保存する月から。すでに保存済みの月は現在の設定で計算されるため、単価を変えた場合はその月の明細を保存し直してください）
+      <span style="color:#c0392b">※ が付いた月は、単価の記録がまだありません。</span>今の固定項目設定で計算しているため、設定を変えると金額が変わってしまいます。<b>給料明細でその月を開き、単価を確かめて「保存する」</b>を押すと、その月の金額が固定されます（※が消えます）
     </div>
     <div style="margin-top:12px"><button class="btn-primary" onclick="wlExportPdf()">📄 この人の賃金台帳をPDFで出力</button></div>
     <div style="margin-top:8px"><button class="btn-secondary" onclick="wlExportPdfAll()" style="width:100%;padding:12px;background:#fff;color:#2858b0;border:1.5px solid #2858b0;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📄 全員分をまとめてPDFで出力</button></div>
@@ -9047,7 +9071,7 @@ const WL_PDF_CSS = `<style>
 
 function wlPdfBlock(staff, year) {
   const months = wlBuild(staff, year);
-  const aoa = [['項目', ...months.map((m, i) => (i + 1) + '月'), '合計']];
+  const aoa = [['項目', ...months.map((m, i) => (i + 1) + '月' + ((m && !m.hasRates) ? '※' : '')), '合計']];
   WL_ROWS.forEach(row => {
     if (row.sec) { aoa.push([row.sec, ...months.map(() => ''), '']); return; }
     aoa.push([row.label, ...months.map(m => wlCell(row, m)), wlTotal(row, months)]);
