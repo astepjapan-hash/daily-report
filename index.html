@@ -8592,6 +8592,13 @@ let _atStaff = '';
 // （午後から入った現場では午前の休憩を引かない、といった実態に合わせるため）
 const AT_BREAKS = [['10:00','10:30'], ['12:00','13:00'], ['15:00','15:30']];
 function atMin(hm) { const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
+// 出勤簿の表示用に、現場名の「◯ｐ」から後ろをすべて取り除く
+// 例「アトム 喜多町 嵐邸 改修 10ｐ6ｐ4ｐ」→「アトム 喜多町 嵐邸 改修」
+// 例「小手指町１丁目整形外科EVﾋﾟｯﾄ 6ｐ ﾋﾞｯｸｻﾝ」→「小手指町１丁目整形外科EVﾋﾟｯﾄ」
+// （「ＬＰ」のように数字が前に無いＰは消えません）
+function atSiteName(name) {
+  return String(name || '').replace(/[0-9０-９]+[pPｐＰ][\s\S]*$/, '').replace(/[\s　]+/g, '　').trim();
+}
 // 重なっている時間帯を1つにまとめる
 // （現場1にいる間に現場2のマット切りを入力した日など、同じ時刻が二重に数えられるのを防ぐ）
 function atMergeRanges(ranges) {
@@ -8662,17 +8669,19 @@ function atBuild(staff, month) {
     const isHol = isHolidayFor(ds, staff);
     const reps = byDate[ds] || [];
     let kind = '', inT = '', outT = '', min = 0, net = 0;
-    const siteNames = [];
+    const siteMin = {}; // 現場名（◯ｐ抜き）→ その日にその現場にいた時間
     if (reps.length) {
       const ranges = [];
       reps.forEach(r => (r.sites || []).forEach(s => {
-        if (s.name) siteNames.push(s.name);
+        const nm = atSiteName(s.name);
+        let dur = 0;
         if (s.timeIn && s.timeOut) {
           const a = atMin(s.timeIn), b = atMin(s.timeOut);
-          if (b > a) ranges.push([a, b]);
+          if (b > a) { ranges.push([a, b]); dur = b - a; }
           if (!inT || s.timeIn < inT) inT = s.timeIn;
           if (!outT || s.timeOut > outT) outT = s.timeOut;
         }
+        if (nm) siteMin[nm] = (siteMin[nm] || 0) + dur;
       }));
       atMergeRanges(ranges).forEach(([a, b]) => { min += b - a; net += (b - a) - atBreakOverlap(a, b); });
       kind = (isSun || isHol) ? '休日出勤' : '出勤';
@@ -8683,9 +8692,10 @@ function atBuild(staff, month) {
     else if (isHol) { kind = '休業日'; sum.holiday++; }
     else if (isSun) { kind = '日曜'; sum.sunday++; }
     else { kind = '休み'; sum.yasumi++; } // 日報が無い稼働日は休み扱い（休み申請の有無にかかわらず）
-    const uniq = [...new Set(siteNames)];
+    // その日いちばん長くいた現場を代表に出す
+    const names = Object.keys(siteMin).sort((x, y) => siteMin[y] - siteMin[x]);
     rows.push({ d, dow, ds, kind, inT, outT, min, net: Math.max(0, net),
-      site: uniq.length ? (uniq[0] + (uniq.length > 1 ? ` 他${uniq.length - 1}件` : '')) : '' });
+      site: names.length ? (names[0] + (names.length > 1 ? ` 他${names.length - 1}件` : '')) : '' });
   }
   return { rows, sum };
 }
