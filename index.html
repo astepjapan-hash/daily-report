@@ -8982,10 +8982,14 @@ function renderWageLedger() {
   const saved = months.filter(Boolean).length;
   const th = 'padding:5px 6px;font-size:11px;font-weight:700;color:#7a6a55;background:#f5f0ea;white-space:nowrap';
   const td = 'padding:4px 6px;font-size:11px;border-bottom:1px solid #f0ebe4;white-space:nowrap;text-align:right';
+  // 横にスライドしても「項目」の列は左に貼り付いたままにする
+  const stick = 'position:sticky;left:0;z-index:2;box-shadow:1px 0 0 #e0d8d0';
   const rowsHtml = WL_ROWS.map(row => {
-    if (row.sec) return `<tr><td colspan="14" style="padding:4px 6px;font-size:11px;font-weight:800;color:#2d2a26;background:#faf6f0">${row.sec}</td></tr>`;
+    if (row.sec) return `<tr>
+      <td style="padding:4px 6px;font-size:11px;font-weight:800;color:#2d2a26;background:#faf6f0;white-space:nowrap;${stick}">${row.sec}</td>
+      <td colspan="13" style="padding:4px 6px;background:#faf6f0"></td></tr>`;
     return `<tr>
-      <td style="${td};text-align:left;${row.strong ? 'font-weight:800' : ''}">${row.label}</td>
+      <td style="${td};text-align:left;background:#fff;${stick};${row.strong ? 'font-weight:800' : ''}">${row.label}</td>
       ${months.map(m => `<td style="${td};${row.strong ? 'font-weight:800' : ''}">${wlCell(row, m)}</td>`).join('')}
       <td style="${td};font-weight:800;color:#c97a1f;background:#fdf8f2">${wlTotal(row, months)}</td>
     </tr>`;
@@ -9009,8 +9013,8 @@ function renderWageLedger() {
     <div style="font-size:12px;color:#2d2a26;margin-bottom:6px"><b>${escHtml(_wlStaff)}</b>　性別：男　／　給料明細を保存済み ${saved}ヶ月</div>
     ${saved ? '' : '<div class="notice-empty" style="margin-bottom:8px">この年はまだ給料明細が保存されていません。給料明細を保存すると、その月が埋まります</div>'}
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;min-width:760px">
-        <thead><tr><th style="${th};text-align:left">項目</th>
+      <table style="width:100%;border-collapse:collapse;background:#fff;min-width:760px">
+        <thead><tr><th style="${th};text-align:left;${stick};z-index:3">項目</th>
           ${months.map((m, i) => `<th style="${th};text-align:right;${m ? '' : 'color:#ccc'}">${i + 1}月</th>`).join('')}
           <th style="${th};text-align:right;color:#c97a1f">合計</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
