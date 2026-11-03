@@ -8774,6 +8774,15 @@ function renderAttendance() {
   </div>`;
 }
 
+// 出勤簿のPDFを1人A4縦1枚に収めるための体裁（文字と行間を詰める）
+const AT_PDF_CSS = `<style>
+  @media print{body{margin:0}}
+  h1{font-size:15px;margin:0 0 1px}
+  .sub{font-size:9px;margin-bottom:4px;line-height:1.4}
+  table{font-size:9px;margin-bottom:5px}
+  th,td{padding:1.5px 4px;line-height:1.25}
+</style>`;
+
 // PDF用の1人分（印刷ビューに入れる中身）
 function atPdfBlock(staff, month) {
   const [y, m] = month.split('-');
@@ -8791,13 +8800,13 @@ function atPdfBlock(staff, month) {
 function atExportPdf() {
   if (!adminLoggedIn) { alert('出力は管理者のみ可能です。'); return; }
   const [y, m] = _atMonth.split('-');
-  openPdfWindow(`出勤簿_${y}年${parseInt(m)}月_${_atStaff}`, atPdfBlock(_atStaff, _atMonth), 'portrait');
+  openPdfWindow(`出勤簿_${y}年${parseInt(m)}月_${_atStaff}`, AT_PDF_CSS + atPdfBlock(_atStaff, _atMonth), 'portrait');
 }
 
 function atExportPdfAll() {
   if (!adminLoggedIn) { alert('出力は管理者のみ可能です。'); return; }
   const [y, m] = _atMonth.split('-');
-  const inner = STAFF_LEAVE.map((n, i) =>
+  const inner = AT_PDF_CSS + STAFF_LEAVE.map((n, i) =>
     `<div style="${i ? 'page-break-before:always;' : ''}">${atPdfBlock(n, _atMonth)}</div>`).join('');
   openPdfWindow(`出勤簿_${y}年${parseInt(m)}月_全員`, inner, 'portrait');
 }
