@@ -54,6 +54,9 @@ textarea { resize: vertical; }
 .site-card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px; border: 1.5px solid #e0d8d0; }
 .site-top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .sitepick-btn { flex-shrink: 0; padding: 9px 10px; background: #fff; border: 1.5px solid #e07b4f; color: #e07b4f; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
+/* 出勤簿：パソコンは表、スマホは日ごとのカードで表示する */
+.at-cards { display: none; }
+@media (max-width: 760px) { .at-table-wrap { display: none; } .at-cards { display: block; } }
 .site-input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1.5px solid #e0d8d0; font-size: 14px; }
 .remove-btn { background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 0 4px; }
 .time-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
@@ -8794,6 +8797,24 @@ function renderAttendance() {
       <td style="${td};white-space:normal;word-break:break-all;color:#888;font-size:11px">${escHtml(r.site)}</td>
     </tr>`;
   }).join('');
+  // スマホ用：1日1枚のカード。働いた日だけ時間と現場を出す
+  const halfBtn = r => `<button onclick="atToggleHalf('${r.ds}')" style="padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;border:1.5px solid ${r.half ? '#e07b4f' : '#e0d8d0'};background:${r.half ? '#fdf0e9' : '#fff'};color:${r.half ? '#e07b4f' : '#bbb'}">${r.half ? '半日' : '1日'}</button>`;
+  const cardsHtml = d.rows.map(r => {
+    const c = AT_KIND_COLOR[r.kind] || '#2d2a26';
+    const dowColor = r.dow === 0 ? '#c0392b' : (r.dow === 6 ? '#2858b0' : '#888');
+    const head = `<span style="font-size:15px;font-weight:800;color:#2d2a26;min-width:30px;text-align:right">${r.d}</span>
+      <span style="font-size:12px;color:${dowColor};min-width:16px">${AT_DOW[r.dow]}</span>
+      <span style="font-size:13px;font-weight:700;color:${c}">${r.kind}</span>`;
+    if (r.kind !== '出勤' && r.kind !== '休日出勤') {
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #f0ebe4;background:#faf8f5">${head}</div>`;
+    }
+    return `<div style="padding:9px 12px;border-bottom:1px solid #f0ebe4;background:#fff">
+      <div style="display:flex;align-items:center;gap:8px">${head}<span style="margin-left:auto">${halfBtn(r)}</span></div>
+      <div style="font-size:13px;color:#2d2a26;margin-top:4px;padding-left:30px">🕐 ${r.inT || '-'} → ${r.outT || '-'}　<b>${r.min ? atHm(r.min) : '-'}</b>
+        <span style="color:#4a7c4a">（休憩引き <b>${r.min ? atHm(r.net) : '-'}</b>）</span></div>
+      ${r.site ? `<div style="font-size:12px;color:#888;margin-top:2px;padding-left:30px;word-break:break-all">📍 ${escHtml(r.site)}</div>` : ''}
+    </div>`;
+  }).join('');
   content.innerHTML = `<div class="wrap">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
@@ -8827,7 +8848,7 @@ function renderAttendance() {
         <span style="color:#4a7c4a">休憩を引いた時間　<b>${atHm(d.sum.net)}</b></span>
       </div>
     </div>
-    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+    <div class="at-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden">
         <thead><tr>
           <th style="${th}">日</th><th style="${th}">曜</th><th style="${th};text-align:left">区分</th>
@@ -8838,6 +8859,7 @@ function renderAttendance() {
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
+    <div class="at-cards" style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #f0ebe4">${cardsHtml}</div>
     <div style="font-size:10px;color:#b5aca0;line-height:1.7;margin-top:8px">
       ※ 出社＝その日の最初の入場、退社＝最後の退場です。移動時間や事務所での作業は入っていません<br>
       ※ 休憩は 10:00〜10:30／12:00〜13:00／15:00〜15:30 のうち、現場にいた時間と重なった分だけを差し引いています<br>
