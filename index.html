@@ -5302,18 +5302,23 @@ function calcWorkStats(seg){
     label=`${mv.slice(0,4)}年${parseInt(mv.slice(5,7))}月`;
   }
   const workStats={};
-  STAFF_LEAVE.forEach(m=>workStats[m]={days:new Set(),minutes:0});
+  const rangesBy={}; // 人 → 日付 → その日に入力された時間帯の一覧
+  STAFF_LEAVE.forEach(m=>{workStats[m]={days:new Set(),minutes:0};rangesBy[m]={};});
   Object.values(window._allReports||reports).forEach(r=>{
     if(!workStats[r.staffName])return;
     if(!r.date||r.date<dateFrom||r.date>dateTo)return;
     workStats[r.staffName].days.add(r.date);
     r.sites?.forEach(s=>{
       if(s.timeIn&&s.timeOut){
-        const [ih,im]=s.timeIn.split(':').map(Number);
-        const [oh,om]=s.timeOut.split(':').map(Number);
-        const diff=(oh*60+om)-(ih*60+im);
-        if(diff>0)workStats[r.staffName].minutes+=diff;
+        const a=atMin(s.timeIn),b=atMin(s.timeOut);
+        if(b>a)(rangesBy[r.staffName][r.date]=rangesBy[r.staffName][r.date]||[]).push([a,b]);
       }
+    });
+  });
+  // 同じ時間帯に複数の現場を入力している日でも、時間を二重に数えない
+  STAFF_LEAVE.forEach(m=>{
+    Object.values(rangesBy[m]).forEach(list=>{
+      atMergeRanges(list).forEach(([a,b])=>{workStats[m].minutes+=b-a;});
     });
   });
   const labelEl=document.getElementById('work-stats-label');
@@ -8587,6 +8592,18 @@ let _atStaff = '';
 // （午後から入った現場では午前の休憩を引かない、といった実態に合わせるため）
 const AT_BREAKS = [['10:00','10:30'], ['12:00','13:00'], ['15:00','15:30']];
 function atMin(hm) { const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
+// 重なっている時間帯を1つにまとめる
+// （現場1にいる間に現場2のマット切りを入力した日など、同じ時刻が二重に数えられるのを防ぐ）
+function atMergeRanges(ranges) {
+  const rs = ranges.filter(r => r[1] > r[0]).sort((a, b) => a[0] - b[0]);
+  const out = [];
+  rs.forEach(r => {
+    const last = out[out.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else out.push([r[0], r[1]]);
+  });
+  return out;
+}
 function atBreakOverlap(inMin, outMin) {
   let b = 0;
   AT_BREAKS.forEach(([s, e]) => { b += Math.max(0, Math.min(outMin, atMin(e)) - Math.max(inMin, atMin(s))); });
@@ -8647,16 +8664,17 @@ function atBuild(staff, month) {
     let kind = '', inT = '', outT = '', min = 0, net = 0;
     const siteNames = [];
     if (reps.length) {
+      const ranges = [];
       reps.forEach(r => (r.sites || []).forEach(s => {
         if (s.name) siteNames.push(s.name);
         if (s.timeIn && s.timeOut) {
           const a = atMin(s.timeIn), b = atMin(s.timeOut);
-          const diff = b - a;
-          if (diff > 0) { min += diff; net += diff - atBreakOverlap(a, b); }
+          if (b > a) ranges.push([a, b]);
           if (!inT || s.timeIn < inT) inT = s.timeIn;
           if (!outT || s.timeOut > outT) outT = s.timeOut;
         }
       }));
+      atMergeRanges(ranges).forEach(([a, b]) => { min += b - a; net += (b - a) - atBreakOverlap(a, b); });
       kind = (isSun || isHol) ? '休日出勤' : '出勤';
       if (kind === '出勤') sum.work++; else sum.offWork++;
       sum.min += min;
