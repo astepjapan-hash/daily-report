@@ -3647,7 +3647,7 @@ function exportExpensePdf(monthArg){
 }
 
 // ══════════ 全データバックアップ・復元 ══════════
-const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes','itemPrices','truckStocktakes'];
+const BACKUP_PATHS=['reports','leaves','absences','companyHolidays','drafts','notices','schedules','siteMeta','siteAliases','companies','leaveSettings','leaveResetDate','salaryProfiles','salaryData','guideImages','inventory','movements','alertSettings','expenses','users','authMap','loginList','loadingLists','orderLists','stocktakes','itemPrices','truckStocktakes','halfDays'];
 
 async function backupAllData(){
   if(!adminLoggedIn){alert('バックアップは管理者のみ可能です。');return;}
@@ -3760,8 +3760,8 @@ async function renderAdminContent(){
   const content=document.getElementById('admin-content');
   content.innerHTML='<div class="loading">読み込み中...</div>';
   try{
-    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes,chRes,coRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json'),dbFetch('/companyHolidays.json'),dbFetch('/companies.json')]);
-    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';companyHolidays=await chRes.json()||{};companies=await coRes.json()||{};
+    const [rRes,lRes,sRes,aRes,nRes,saRes,slRes,lrRes,chRes,coRes,hdRes]=await Promise.all([dbFetch('/reports.json'),dbFetch('/leaves.json'),dbFetch('/leaveSettings.json'),dbFetch('/absences.json'),dbFetch('/notices.json'),dbFetch('/siteAliases.json'),dbFetch('/salaryProfiles.json'),dbFetch('/leaveResetDate.json'),dbFetch('/companyHolidays.json'),dbFetch('/companies.json'),dbFetch('/halfDays.json')]);
+    reports=await rRes.json()||{};leaves=await lRes.json()||{};leaveSettings=await sRes.json()||{};absences=await aRes.json()||{};notices=await nRes.json()||{};siteAliases=await saRes.json()||{};salaryProfiles=await slRes.json()||{};const _lrd2=await lrRes.json();leaveResetDate=(typeof _lrd2==='string')?_lrd2:'';companyHolidays=await chRes.json()||{};companies=await coRes.json()||{};halfDayOverrides=await hdRes.json()||{};
   }catch(e){}
 
   // 作業時間・日数集計（全期間）
@@ -4417,8 +4417,10 @@ async function openSalaryForm(){
   const p=salaryProfiles[name]||{};
   if(!p.dailyRate){alert(name+'の日給単価が未設定です。先に固定項目設定を保存してください。');return;}
 
-  // 作業日数（日報からユニーク日数）
-  const workDays=new Set(Object.values(reports).filter(r=>r.staffName===name&&r.date?.startsWith(month)).map(r=>r.date)).size;
+  // 作業日数・半日日数（日報から自動計算。半日は作業日数から外して半日日数に入れる）
+  const _dc=salaryDayCounts(name,month);
+  const workDays=_dc.workDays;
+  const autoHalf=_dc.halfDays;
   // 有給日数（承認済み）
   const kyukaDays=Object.values(leaves).filter(l=>l.staffName===name&&l.status==='approved'&&l.date?.startsWith(month)).length;
   // 経費（承認済みの合計を自動反映）
@@ -4445,8 +4447,8 @@ async function openSalaryForm(){
         <span><input type="number" id="sal-kyuka" value="${saved.kyukaDays!==undefined?saved.kyukaDays:kyukaDays}" min="0" style="width:60px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 日</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
-        <span>半日日数</span>
-        <span><input type="number" id="sal-half" value="${saved.halfDays||''}" placeholder="0" min="0" style="width:60px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 日</span>
+        <span>半日日数 <span style="font-size:10px;color:#7d967d">（出勤簿より ${autoHalf}日）</span></span>
+        <span><input type="number" id="sal-half" value="${saved.halfDays!==undefined?saved.halfDays:(autoHalf||'')}" placeholder="0" min="0" style="width:60px;padding:4px 6px;border-radius:6px;border:1.5px solid #e0d8d0;text-align:right;font-family:inherit" oninput="updateSalaryPreview('${name}')"> 日</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
         <span>特別手当</span>
@@ -4551,8 +4553,10 @@ async function exportSalaryPdfAll(){
       const res=await dbFetch('/salaryData/'+month+'/'+encodeURIComponent(name)+'.json');
       d=await res.json()||{};
     }catch(e){}
-    if(d.workDays===undefined){
-      d.workDays=new Set(Object.values(reports).filter(r=>r.staffName===name&&r.date?.startsWith(month)).map(r=>r.date)).size;
+    if(d.workDays===undefined||d.halfDays===undefined){
+      const dc=salaryDayCounts(name,month);
+      if(d.workDays===undefined)d.workDays=dc.workDays;
+      if(d.halfDays===undefined)d.halfDays=dc.halfDays;
     }
     if(d.kyukaDays===undefined){
       d.kyukaDays=Object.values(leaves).filter(l=>l.staffName===name&&l.status==='approved'&&l.date?.startsWith(month)).length;
@@ -8587,6 +8591,28 @@ function siteMaterialCost(s) {
 // ══════════ 出勤簿（管理者のみ。日報の入場・退場から自動で作る） ══════════
 let _atMonth = '';
 let _atStaff = '';
+let halfDayOverrides = {}; // {'2026-10-26':{'山内浩一':true}} 手動で半日／1日を切り替えた日
+
+// その日が半日かどうか。工程が「現調」だけの日は半日とみなし、手動の切り替えがあればそちらを優先する
+function atIsHalf(staff, ds, reps) {
+  const ov = (halfDayOverrides[ds] || {})[staff];
+  if (ov !== undefined) return !!ov;
+  const procs = new Set();
+  reps.forEach(r => (r.sites || []).forEach(s => (s.processes || []).forEach(p => procs.add(p))));
+  return procs.size === 1 && procs.has('現調');
+}
+
+// その月の「半日の日数」と「半日を除いた作業日数」（給料明細の初期値に使う）
+function salaryDayCounts(name, month) {
+  const byDate = {};
+  Object.values(reports || {}).forEach(r => {
+    if (!r || r.staffName !== name || !(r.date || '').startsWith(month)) return;
+    (byDate[r.date] = byDate[r.date] || []).push(r);
+  });
+  let half = 0;
+  Object.entries(byDate).forEach(([ds, reps]) => { if (atIsHalf(name, ds, reps)) half++; });
+  return { workDays: Object.keys(byDate).length - half, halfDays: half };
+}
 
 // 会社の休憩時間。現場にいた時間と重なった分だけを差し引く
 // （午後から入った現場では午前の休憩を引かない、といった実態に合わせるため）
@@ -8623,12 +8649,13 @@ async function showAttendance() {
   const content = document.getElementById('admin-content');
   content.innerHTML = '<div class="loading">読み込み中...</div>';
   try {
-    const res = await Promise.all([dbFetch('/reports.json'), dbFetch('/leaves.json'), dbFetch('/absences.json'), dbFetch('/companyHolidays.json')]);
+    const res = await Promise.all([dbFetch('/reports.json'), dbFetch('/leaves.json'), dbFetch('/absences.json'), dbFetch('/companyHolidays.json'), dbFetch('/halfDays.json')]);
     if (!res.every(x => x.ok)) throw new Error('read');
     reports = await res[0].json() || {};
     leaves = await res[1].json() || {};
     absences = await res[2].json() || {};
     companyHolidays = await res[3].json() || {};
+    halfDayOverrides = await res[4].json() || {};
   } catch(e) {
     content.innerHTML = `<div class="wrap"><button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;margin-bottom:12px">← 戻る</button><div class="notice-empty">読み込みに失敗しました。電波の良い場所でもう一度開いてください</div></div>`;
     return;
@@ -8661,14 +8688,14 @@ function atBuild(staff, month) {
   Object.values(absences || {}).forEach(a => { if (a && a.staffName === staff && a.status === 'approved' && (a.date || '').startsWith(month)) absDays[a.date] = 1; });
 
   const rows = [];
-  const sum = { work: 0, offWork: 0, kyuka: 0, yasumi: 0, holiday: 0, sunday: 0, min: 0, net: 0 };
+  const sum = { work: 0, offWork: 0, half: 0, kyuka: 0, yasumi: 0, holiday: 0, sunday: 0, min: 0, net: 0 };
   for (let d = 1; d <= last; d++) {
     const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dow = new Date(ds + 'T00:00:00').getDay();
     const isSun = dow === 0;
     const isHol = isHolidayFor(ds, staff);
     const reps = byDate[ds] || [];
-    let kind = '', inT = '', outT = '', min = 0, net = 0;
+    let kind = '', inT = '', outT = '', min = 0, net = 0, half = false;
     const siteMin = {}; // 現場名（◯ｐ抜き）→ その日にその現場にいた時間
     if (reps.length) {
       const ranges = [];
@@ -8686,6 +8713,8 @@ function atBuild(staff, month) {
       atMergeRanges(ranges).forEach(([a, b]) => { min += b - a; net += (b - a) - atBreakOverlap(a, b); });
       kind = (isSun || isHol) ? '休日出勤' : '出勤';
       if (kind === '出勤') sum.work++; else sum.offWork++;
+      half = atIsHalf(staff, ds, reps);
+      if (half) sum.half++;
       sum.min += min;
       sum.net += Math.max(0, net);
     } else if (leaveDays[ds]) { kind = '有給'; sum.kyuka++; }
@@ -8694,7 +8723,7 @@ function atBuild(staff, month) {
     else { kind = '休み'; sum.yasumi++; } // 日報が無い稼働日は休み扱い（休み申請の有無にかかわらず）
     // その日いちばん長くいた現場を代表に出す
     const names = Object.keys(siteMin).sort((x, y) => siteMin[y] - siteMin[x]);
-    rows.push({ d, dow, ds, kind, inT, outT, min, net: Math.max(0, net),
+    rows.push({ d, dow, ds, kind, inT, outT, min, half, net: Math.max(0, net),
       site: names.length ? (names[0] + (names.length > 1 ? ` 他${names.length - 1}件` : '')) : '' });
   }
   return { rows, sum };
@@ -8716,6 +8745,9 @@ function renderAttendance() {
       <td style="${td};text-align:right;color:#888">${r.d}</td>
       <td style="${td};text-align:center;color:${r.dow === 0 ? '#c0392b' : (r.dow === 6 ? '#2858b0' : '#888')}">${AT_DOW[r.dow]}</td>
       <td style="${td};color:${c};font-weight:700">${r.kind}</td>
+      <td style="${td};text-align:center">${(r.kind === '出勤' || r.kind === '休日出勤')
+        ? `<button onclick="atToggleHalf('${r.ds}')" style="padding:2px 8px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;border:1.5px solid ${r.half ? '#e07b4f' : '#e0d8d0'};background:${r.half ? '#fdf0e9' : '#fff'};color:${r.half ? '#e07b4f' : '#bbb'}">${r.half ? '半日' : '1日'}</button>`
+        : '-'}</td>
       <td style="${td};text-align:center">${r.inT || '-'}</td>
       <td style="${td};text-align:center">${r.outT || '-'}</td>
       <td style="${td};text-align:right">${r.min ? atHm(r.min) : '-'}</td>
@@ -8744,6 +8776,8 @@ function renderAttendance() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;color:#2d2a26;line-height:1.7">
         <div>出勤　<b>${d.sum.work}日</b></div>
         <div>🌤 休日出勤　<b style="color:#c97a1f">${d.sum.offWork}日</b></div>
+        <div>⏱ うち半日　<b style="color:#e07b4f">${d.sum.half}日</b></div>
+        <div></div>
         <div>🏖️ 有給　<b style="color:#388e3c">${d.sum.kyuka}日</b></div>
         <div>😴 休み　<b style="color:#7b4fb0">${d.sum.yasumi}日</b></div>
         <div>🏢 休業日　<b style="color:#5b7fb5">${d.sum.holiday}日</b></div>
@@ -8758,6 +8792,7 @@ function renderAttendance() {
       <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden">
         <thead><tr>
           <th style="${th}">日</th><th style="${th}">曜</th><th style="${th};text-align:left">区分</th>
+          <th style="${th}">半日</th>
           <th style="${th}">出社</th><th style="${th}">退社</th><th style="${th}">現場にいた時間</th>
           <th style="${th}">休憩を引いた時間</th><th style="${th};text-align:left">現場</th>
         </tr></thead>
@@ -8767,7 +8802,8 @@ function renderAttendance() {
     <div style="font-size:10px;color:#b5aca0;line-height:1.7;margin-top:8px">
       ※ 出社＝その日の最初の入場、退社＝最後の退場です。移動時間や事務所での作業は入っていません<br>
       ※ 休憩は 10:00〜10:30／12:00〜13:00／15:00〜15:30 のうち、現場にいた時間と重なった分だけを差し引いています<br>
-      ※ 日曜・休業日に日報が出ている日は「休日出勤」、日報が無い稼働日は「休み」としています
+      ※ 日曜・休業日に日報が出ている日は「休日出勤」、日報が無い稼働日は「休み」としています<br>
+      ※ 工程が「現調」だけの日は半日と判定します。違うときは「半日／1日」を押して切り替えてください（給料明細にも反映されます）
     </div>
     <div style="margin-top:12px"><button class="btn-primary" onclick="atExportPdf()">📄 この人の出勤簿をPDFで出力</button></div>
     <div style="margin-top:8px"><button class="btn-secondary" onclick="atExportPdfAll()" style="width:100%;padding:12px;background:#fff;color:#2858b0;border:1.5px solid #2858b0;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📄 全員分をまとめてPDFで出力</button></div>
@@ -8787,14 +8823,28 @@ const AT_PDF_CSS = `<style>
 function atPdfBlock(staff, month) {
   const [y, m] = month.split('-');
   const d = atBuild(staff, month);
-  const aoa = [['日','曜','区分','出社','退社','現場にいた時間','休憩を引いた時間','現場']];
-  d.rows.forEach(r => aoa.push([r.d, AT_DOW[r.dow], r.kind, r.inT || '-', r.outT || '-',
+  const aoa = [['日','曜','区分','半日','出社','退社','現場にいた時間','休憩を引いた時間','現場']];
+  d.rows.forEach(r => aoa.push([r.d, AT_DOW[r.dow], r.kind, r.half ? '半日' : '', r.inT || '-', r.outT || '-',
     r.min ? atHm(r.min) : '-', r.min ? atHm(r.net) : '-', r.site]));
   return `<h1>出勤簿</h1><div class="sub">${y}年${parseInt(m)}月　／　${escHtml(staff)}</div>`
-    + pdfTableHtml([['出勤','休日出勤','有給','休み','休業日','現場にいた時間','休憩を引いた時間'],
-        [d.sum.work + '日', d.sum.offWork + '日', d.sum.kyuka + '日', d.sum.yasumi + '日', d.sum.holiday + '日', atHm(d.sum.min), atHm(d.sum.net)]])
+    + pdfTableHtml([['出勤','休日出勤','うち半日','有給','休み','休業日','現場にいた時間','休憩を引いた時間'],
+        [d.sum.work + '日', d.sum.offWork + '日', d.sum.half + '日', d.sum.kyuka + '日', d.sum.yasumi + '日', d.sum.holiday + '日', atHm(d.sum.min), atHm(d.sum.net)]])
     + pdfTableHtml(aoa)
     + '<div class="sub">※ 出社＝最初の入場、退社＝最後の退場（移動時間・事務所での作業は含みません）／休憩は 10:00〜10:30・12:00〜13:00・15:00〜15:30 のうち現場にいた時間と重なった分を差し引き</div>';
+}
+
+// 「半日／1日」の切り替え（押すたびに入れ替わり、その日だけ手動の設定として残る）
+async function atToggleHalf(ds) {
+  if (!adminLoggedIn) return;
+  const reps = Object.values(reports || {}).filter(r => r && r.staffName === _atStaff && r.date === ds);
+  if (!reps.length) return;
+  const next = !atIsHalf(_atStaff, ds, reps);
+  try {
+    await dbWrite('/halfDays/' + ds + '/' + encodeURIComponent(_atStaff) + '.json',
+      { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(next) });
+    (halfDayOverrides[ds] = halfDayOverrides[ds] || {})[_atStaff] = next;
+    renderAttendance();
+  } catch(e) { alert('保存に失敗しました。電波の良い場所でもう一度お試しください。'); }
 }
 
 function atExportPdf() {
