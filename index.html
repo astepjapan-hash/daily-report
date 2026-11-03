@@ -3801,6 +3801,7 @@ async function renderAdminContent(){
 
       <button onclick="showOrderlistHome()" style="width:100%;margin-top:10px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">🛒 注文リスト（材料の買い物メモ）<span style="color:#e07b4f">▶</span></button>
       <button onclick="showYearReport()" style="width:100%;margin-top:8px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">📊 年間レポート<span style="color:#e07b4f">▶</span></button>
+      <button onclick="showAttendance()" style="width:100%;margin-top:8px;padding:13px 14px;background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;font-size:14px;font-weight:700;color:#2d2a26;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between">🗓 出勤簿<span style="color:#e07b4f">▶</span></button>
 
       <div class="section-title collapse-header" style="margin-top:8px" onclick="toggleCollapse('collapse-work')">⏱ 作業時間・作業日数 <span class="collapse-arrow" id="arrow-collapse-work">▶</span></div>
       <div class="collapse-body" id="collapse-work" style="margin-bottom:20px">
@@ -8576,6 +8577,201 @@ function siteMaterialCost(s) {
     c += meters * perM;
   }
   return c;
+}
+
+// ══════════ 出勤簿（管理者のみ。日報の入場・退場から自動で作る） ══════════
+let _atMonth = '';
+let _atStaff = '';
+
+// 会社の休憩時間。現場にいた時間と重なった分だけを差し引く
+// （午後から入った現場では午前の休憩を引かない、といった実態に合わせるため）
+const AT_BREAKS = [['10:00','10:30'], ['12:00','13:00'], ['15:00','15:30']];
+function atMin(hm) { const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
+function atBreakOverlap(inMin, outMin) {
+  let b = 0;
+  AT_BREAKS.forEach(([s, e]) => { b += Math.max(0, Math.min(outMin, atMin(e)) - Math.max(inMin, atMin(s))); });
+  return b;
+}
+function atHm(min) { const m = Math.max(0, Math.round(min)); return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0') + 'm'; }
+
+async function showAttendance() {
+  if (!adminLoggedIn) return;
+  const content = document.getElementById('admin-content');
+  content.innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const res = await Promise.all([dbFetch('/reports.json'), dbFetch('/leaves.json'), dbFetch('/absences.json'), dbFetch('/companyHolidays.json')]);
+    if (!res.every(x => x.ok)) throw new Error('read');
+    reports = await res[0].json() || {};
+    leaves = await res[1].json() || {};
+    absences = await res[2].json() || {};
+    companyHolidays = await res[3].json() || {};
+  } catch(e) {
+    content.innerHTML = `<div class="wrap"><button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0;margin-bottom:12px">← 戻る</button><div class="notice-empty">読み込みに失敗しました。電波の良い場所でもう一度開いてください</div></div>`;
+    return;
+  }
+  if (!_atMonth) _atMonth = new Date().toLocaleDateString('sv').slice(0, 7);
+  if (!_atStaff || !STAFF_LEAVE.includes(_atStaff)) _atStaff = STAFF_LEAVE[0] || '';
+  renderAttendance();
+}
+
+function atChangeMonth(delta) {
+  const [y, m] = _atMonth.split('-').map(n => parseInt(n, 10));
+  const d = new Date(y, m - 1 + delta, 1);
+  _atMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  renderAttendance();
+}
+function atSetStaff(n) { _atStaff = n; renderAttendance(); }
+
+// 1人・1ヶ月分の出勤簿を組み立てる
+// 区分の決め方：日報あり→出勤（日曜・休業日なら休日出勤）／無いときは 有給→休業日→日曜→休み の順
+function atBuild(staff, month) {
+  const [y, m] = month.split('-').map(n => parseInt(n, 10));
+  const last = new Date(y, m, 0).getDate();
+  const byDate = {};
+  Object.values(reports || {}).forEach(r => {
+    if (!r || r.staffName !== staff || !(r.date || '').startsWith(month)) return;
+    (byDate[r.date] = byDate[r.date] || []).push(r);
+  });
+  const leaveDays = {}, absDays = {};
+  Object.values(leaves || {}).forEach(l => { if (l && l.staffName === staff && l.status === 'approved' && (l.date || '').startsWith(month)) leaveDays[l.date] = 1; });
+  Object.values(absences || {}).forEach(a => { if (a && a.staffName === staff && a.status === 'approved' && (a.date || '').startsWith(month)) absDays[a.date] = 1; });
+
+  const rows = [];
+  const sum = { work: 0, offWork: 0, kyuka: 0, yasumi: 0, holiday: 0, sunday: 0, min: 0, net: 0 };
+  for (let d = 1; d <= last; d++) {
+    const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dow = new Date(ds + 'T00:00:00').getDay();
+    const isSun = dow === 0;
+    const isHol = isHolidayFor(ds, staff);
+    const reps = byDate[ds] || [];
+    let kind = '', inT = '', outT = '', min = 0, net = 0;
+    const siteNames = [];
+    if (reps.length) {
+      reps.forEach(r => (r.sites || []).forEach(s => {
+        if (s.name) siteNames.push(s.name);
+        if (s.timeIn && s.timeOut) {
+          const a = atMin(s.timeIn), b = atMin(s.timeOut);
+          const diff = b - a;
+          if (diff > 0) { min += diff; net += diff - atBreakOverlap(a, b); }
+          if (!inT || s.timeIn < inT) inT = s.timeIn;
+          if (!outT || s.timeOut > outT) outT = s.timeOut;
+        }
+      }));
+      kind = (isSun || isHol) ? '休日出勤' : '出勤';
+      if (kind === '出勤') sum.work++; else sum.offWork++;
+      sum.min += min;
+      sum.net += Math.max(0, net);
+    } else if (leaveDays[ds]) { kind = '有給'; sum.kyuka++; }
+    else if (isHol) { kind = '休業日'; sum.holiday++; }
+    else if (isSun) { kind = '日曜'; sum.sunday++; }
+    else { kind = '休み'; sum.yasumi++; } // 日報が無い稼働日は休み扱い（休み申請の有無にかかわらず）
+    const uniq = [...new Set(siteNames)];
+    rows.push({ d, dow, ds, kind, inT, outT, min, net: Math.max(0, net),
+      site: uniq.length ? (uniq[0] + (uniq.length > 1 ? ` 他${uniq.length - 1}件` : '')) : '' });
+  }
+  return { rows, sum };
+}
+
+const AT_DOW = ['日','月','火','水','木','金','土'];
+const AT_KIND_COLOR = { '出勤':'#2d2a26', '休日出勤':'#c97a1f', '有給':'#388e3c', '休み':'#7b4fb0', '休業日':'#5b7fb5', '日曜':'#bbb' };
+
+function renderAttendance() {
+  const content = document.getElementById('admin-content');
+  const [y, m] = _atMonth.split('-');
+  const d = atBuild(_atStaff, _atMonth);
+  const th = 'padding:6px 4px;font-size:11px;font-weight:700;color:#7a6a55;background:#f5f0ea;white-space:nowrap';
+  const td = 'padding:5px 4px;font-size:12px;border-bottom:1px solid #f0ebe4;white-space:nowrap';
+  const rowsHtml = d.rows.map(r => {
+    const c = AT_KIND_COLOR[r.kind] || '#2d2a26';
+    const dim = (r.kind === '日曜' || r.kind === '休業日' || r.kind === '休み' || r.kind === '有給');
+    return `<tr${dim ? ' style="background:#faf8f5"' : ''}>
+      <td style="${td};text-align:right;color:#888">${r.d}</td>
+      <td style="${td};text-align:center;color:${r.dow === 0 ? '#c0392b' : (r.dow === 6 ? '#2858b0' : '#888')}">${AT_DOW[r.dow]}</td>
+      <td style="${td};color:${c};font-weight:700">${r.kind}</td>
+      <td style="${td};text-align:center">${r.inT || '-'}</td>
+      <td style="${td};text-align:center">${r.outT || '-'}</td>
+      <td style="${td};text-align:right">${r.min ? atHm(r.min) : '-'}</td>
+      <td style="${td};text-align:right;color:#4a7c4a">${r.min ? atHm(r.net) : '-'}</td>
+      <td style="${td};white-space:normal;word-break:break-all;color:#888;font-size:11px">${escHtml(r.site)}</td>
+    </tr>`;
+  }).join('');
+  content.innerHTML = `<div class="wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <button onclick="renderAdminContent()" style="background:none;border:none;color:#e07b4f;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← 戻る</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700;color:#2d2a26">🗓 出勤簿</div>
+        <div style="font-size:11px;color:#aaa">日報の入場・退場から自動で作ります（管理者のみ）</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-bottom:8px">
+      ${STAFF_LEAVE.map(n => `<button class="filter-btn ${_atStaff === n ? 'active' : ''}" style="flex-shrink:0" onclick="atSetStaff('${n.replace(/'/g, "\\'")}')">${escHtml(n)}</button>`).join('')}
+    </div>
+    <div class="month-nav" style="margin-bottom:10px">
+      <button class="month-nav-btn" onclick="atChangeMonth(-1)">◀</button>
+      <span class="month-nav-label">${y}年${parseInt(m)}月</span>
+      <button class="month-nav-btn" onclick="atChangeMonth(1)">▶</button>
+    </div>
+    <div style="background:#fff;border:1.5px solid #e0d8d0;border-radius:12px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:800;color:#2d2a26;margin-bottom:6px">${escHtml(_atStaff)}　${y}年${parseInt(m)}月の合計</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;color:#2d2a26;line-height:1.7">
+        <div>出勤　<b>${d.sum.work}日</b></div>
+        <div>🌤 休日出勤　<b style="color:#c97a1f">${d.sum.offWork}日</b></div>
+        <div>🏖️ 有給　<b style="color:#388e3c">${d.sum.kyuka}日</b></div>
+        <div>😴 休み　<b style="color:#7b4fb0">${d.sum.yasumi}日</b></div>
+        <div>🏢 休業日　<b style="color:#5b7fb5">${d.sum.holiday}日</b></div>
+        <div>日曜　<b style="color:#888">${d.sum.sunday}日</b></div>
+      </div>
+      <div style="border-top:1px solid #f0ebe4;margin-top:6px;padding-top:6px;font-size:12px;line-height:1.7">
+        現場にいた時間　<b>${atHm(d.sum.min)}</b><br>
+        <span style="color:#4a7c4a">休憩を引いた時間　<b>${atHm(d.sum.net)}</b></span>
+      </div>
+    </div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden">
+        <thead><tr>
+          <th style="${th}">日</th><th style="${th}">曜</th><th style="${th};text-align:left">区分</th>
+          <th style="${th}">出社</th><th style="${th}">退社</th><th style="${th}">現場にいた時間</th>
+          <th style="${th}">休憩を引いた時間</th><th style="${th};text-align:left">現場</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="font-size:10px;color:#b5aca0;line-height:1.7;margin-top:8px">
+      ※ 出社＝その日の最初の入場、退社＝最後の退場です。移動時間や事務所での作業は入っていません<br>
+      ※ 休憩は 10:00〜10:30／12:00〜13:00／15:00〜15:30 のうち、現場にいた時間と重なった分だけを差し引いています<br>
+      ※ 日曜・休業日に日報が出ている日は「休日出勤」、日報が無い稼働日は「休み」としています
+    </div>
+    <div style="margin-top:12px"><button class="btn-primary" onclick="atExportPdf()">📄 この人の出勤簿をPDFで出力</button></div>
+    <div style="margin-top:8px"><button class="btn-secondary" onclick="atExportPdfAll()" style="width:100%;padding:12px;background:#fff;color:#2858b0;border:1.5px solid #2858b0;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📄 全員分をまとめてPDFで出力</button></div>
+  </div>`;
+}
+
+// PDF用の1人分（印刷ビューに入れる中身）
+function atPdfBlock(staff, month) {
+  const [y, m] = month.split('-');
+  const d = atBuild(staff, month);
+  const aoa = [['日','曜','区分','出社','退社','現場にいた時間','休憩を引いた時間','現場']];
+  d.rows.forEach(r => aoa.push([r.d, AT_DOW[r.dow], r.kind, r.inT || '-', r.outT || '-',
+    r.min ? atHm(r.min) : '-', r.min ? atHm(r.net) : '-', r.site]));
+  return `<h1>出勤簿</h1><div class="sub">${y}年${parseInt(m)}月　／　${escHtml(staff)}</div>`
+    + pdfTableHtml([['出勤','休日出勤','有給','休み','休業日','現場にいた時間','休憩を引いた時間'],
+        [d.sum.work + '日', d.sum.offWork + '日', d.sum.kyuka + '日', d.sum.yasumi + '日', d.sum.holiday + '日', atHm(d.sum.min), atHm(d.sum.net)]])
+    + pdfTableHtml(aoa)
+    + '<div class="sub">※ 出社＝最初の入場、退社＝最後の退場（移動時間・事務所での作業は含みません）／休憩は 10:00〜10:30・12:00〜13:00・15:00〜15:30 のうち現場にいた時間と重なった分を差し引き</div>';
+}
+
+function atExportPdf() {
+  if (!adminLoggedIn) { alert('出力は管理者のみ可能です。'); return; }
+  const [y, m] = _atMonth.split('-');
+  openPdfWindow(`出勤簿_${y}年${parseInt(m)}月_${_atStaff}`, atPdfBlock(_atStaff, _atMonth), 'portrait');
+}
+
+function atExportPdfAll() {
+  if (!adminLoggedIn) { alert('出力は管理者のみ可能です。'); return; }
+  const [y, m] = _atMonth.split('-');
+  const inner = STAFF_LEAVE.map((n, i) =>
+    `<div style="${i ? 'page-break-before:always;' : ''}">${atPdfBlock(n, _atMonth)}</div>`).join('');
+  openPdfWindow(`出勤簿_${y}年${parseInt(m)}月_全員`, inner, 'portrait');
 }
 
 async function showYearReport() {
